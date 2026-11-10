@@ -4,7 +4,16 @@ For whoever continues jenktui (a person or an agent). Read this first, then [TOD
 
 ## What it is
 
-A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete and unit-tested. It has not yet been run against a real Jenkins (see the checklist in TODO.md).
+A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete.
+
+## Current state
+
+- **Released:** `v0.1.1` (six archives, macOS/Linux/Windows on amd64 and arm64, plus `checksums.txt`). `v0.1.0` exists too but predates the Homebrew cask.
+- **Install channels:** Homebrew cask in `dursunkoc/homebrew-tap` (`brew install dursunkoc/tap/jenktui`), `install.sh` (checked against the real release), release archives, `go install`. The Homebrew install itself has not been tried by anyone yet.
+- **Verified:** CI is green (vet, gofmt, `go test -race`); there are unit tests per package and an end-to-end suite (`e2e_test.go`) against the fake Jenkins. The owner ran the app against their real Jenkins and reported it works. They did not itemise the checklist in TODO.md, so a server that behaves differently (parallel pipeline stages, Multibranch layouts, crumb settings) may still surprise.
+- **Not covered by tests:** the monitor's automatic 3s/30s polling schedule, spinner animation, and a job deleted from Jenkins between loading and triggering.
+- **Open work:** [TODO.md](../TODO.md): tech debt, known gaps in v1, and ideas for later.
+- **Elsewhere:** the user wiki is a separate repo, `github.com/dursunkoc/jenktui.wiki`, kept locally beside this one at `../jenktui.wiki` (pages: Home, Getting Started, Configuration, Collections and the Run Monitor, Filtering, Keyboard Reference, Troubleshooting, Development). Update it when user-facing behaviour changes, and push it separately.
 
 ## Layout
 
@@ -49,7 +58,7 @@ These were agreed with the user. Change them only if the user asks.
 
 ## Jenkins facts that bit us or will
 
-- **CSRF crumb:** on Jenkins 2.176+ the crumb is tied to the web session. The client keeps a cookie jar so the session cookie from `/crumbIssuer` returns with the POST. If the crumb endpoint refuses (403), the trigger proceeds without one and lets the POST decide. A 403 on the POST is reported as `ErrForbidden` with Jenkins' own text; only 401 means bad credentials. This fix is unverified against the real server.
+- **CSRF crumb:** on Jenkins 2.176+ the crumb is tied to the web session. The client keeps a cookie jar so the session cookie from `/crumbIssuer` returns with the POST. If the crumb endpoint refuses (403), the trigger proceeds without one and lets the POST decide. A 403 on the POST is reported as `ErrForbidden` with Jenkins' own text; only 401 means bad credentials. The owner's Jenkins accepts triggers with this approach; servers with other crumb or proxy settings may behave differently, and the error text now says why.
 - **Queue items** return 404 shortly after a build starts. `ResolveQueue` reports `ErrQueueItemGone`, and the monitor then falls back to the job's last build if it started after the trigger.
 - **Pipeline stages** come from `/wfapi/describe`. Freestyle jobs and servers without the plugin return 404 (`ErrNoStages`), which the UI treats as "badge only". Parallel stages are read as children of one stage; real Jenkins may report them differently.
 - **Multibranch:** detected by `_class` containing `WorkflowMultiBranchProject`. Branch job names are URL-encoded (`feature%2Fx`) and stay encoded in job keys and in `collections.toml`; the decoded name is only for matching and display.
@@ -62,21 +71,24 @@ These were agreed with the user. Change them only if the user asks.
 - The binary is built with `go build -o jenktui .` and is git-ignored.
 - Parallel work went well when each task owned a disjoint package and the `core` contract stayed fixed. Keep `main.go` and `docs/ui-contract.md` edits with one owner at a time.
 - The repo's remote is `https://github.com/dursunkoc/jenktui.git`. Do not push or create releases without the owner asking.
+- **Git identity:** this repo has a repo-local identity, `dursunkoc <dursunkoc@gmail.com>`. The owner's global git identity is a work address that should not appear on this public repo, so keep the local setting and do not commit from another checkout without it.
+- **`refs/notes/ai`:** a `git-ai` tool in the owner's environment attaches notes to commits and pushes that ref. It is not part of any branch and can be ignored.
+- **GitHub tokens:** pushes use the owner's own credentials. Never ask for, paste or store a token. The release job uses the repo secret `HOMEBREW_TAP_TOKEN` (fine-grained, Contents read and write on the tap only); if releases start failing at the Homebrew step, check whether it has expired.
 
 ## Releasing
 
 Releases are built by goreleaser from a pushed tag. The version comes from the tag; nothing in the code is edited to release.
 
 1. `main` is green in CI and the real-Jenkins checklist in TODO.md is done.
-2. Tag and push: `git tag -a v0.1.0 -m "jenktui v0.1.0" && git push origin v0.1.0`.
+2. Tag and push, with the next version number: `git tag -a vX.Y.Z -m "jenktui vX.Y.Z" && git push origin vX.Y.Z`.
 3. `.github/workflows/release.yml` runs `go vet` and `go test`, then goreleaser builds archives for macOS, Linux and Windows (amd64 and arm64), writes `checksums.txt`, and creates the GitHub release with a generated changelog. Tags with a suffix such as `-rc1` are marked as pre-releases; a plain `v0.1.0` is a normal release.
 4. Check the release page: six archives, the checksums, and `jenktui --version` from one of them.
 
 Homebrew and the install script:
 
 - Each release also updates the cask `jenktui` in the tap repo `github.com/dursunkoc/homebrew-tap` (users run `brew install dursunkoc/tap/jenktui`). This needs, once: an initialised public repo `dursunkoc/homebrew-tap`, and a fine-grained token with Contents read and write on that repo, saved as the secret `HOMEBREW_TAP_TOKEN` in the `jenktui` repo. Without the secret the release job fails after the GitHub release has been created.
-- goreleaser's `brews` option is deprecated; the config uses `homebrew_casks`. Its generated cask has not been run through `brew audit` (the check could not run on the author's network), so check `brew install dursunkoc/tap/jenktui` after the first release.
-- `install.sh` (macOS and Linux, no Go needed) downloads the latest release archive, verifies it against `checksums.txt`, and installs to `/usr/local/bin` or `~/.local/bin`. `JENKTUI_VERSION`, `INSTALL_DIR` and `JENKTUI_BASE_URL` override its defaults (the last one is for testing against a local server). Its "latest release" lookup has only been exercised once a real release exists.
+- goreleaser's `brews` option is deprecated; the config uses `homebrew_casks`. Its generated cask has not been run through `brew audit` (the check could not run on the author's network), so run `brew install dursunkoc/tap/jenktui` on a Mac after a release. The cask was published by `v0.1.1` and its checksums match the release files.
+- `install.sh` (macOS and Linux, no Go needed) downloads the latest release archive, verifies it against `checksums.txt`, and installs to `/usr/local/bin` or `~/.local/bin`. `JENKTUI_VERSION`, `INSTALL_DIR` and `JENKTUI_BASE_URL` override its defaults (the last one is for testing against a local server). It has been run against the real `v0.1.0` and `v0.1.1` releases, including the latest-release lookup and a pinned version.
 
 To try the build without publishing anything, run `goreleaser release --snapshot --clean` (output goes to the git-ignored `dist/`). `goreleaser check` validates the config.
 
