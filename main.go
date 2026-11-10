@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -15,9 +16,20 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/entry"
 	"github.com/dursunkoc/jenktui/internal/ui/monitor"
 	"github.com/dursunkoc/jenktui/internal/ui/trigger"
+	"github.com/dursunkoc/jenktui/internal/version"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print the version and exit")
+	flag.Usage = func() {
+		fmt.Fprintf(flag.CommandLine.Output(), "jenktui is a terminal UI for Jenkins.\n\nUsage: jenktui [--version]\n\nSettings live in ~/.config/jenktui/config.toml (set JENKTUI_CONFIG_DIR to change the directory).\n")
+	}
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(version.String())
+		return
+	}
+
 	dir, err := config.Dir()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)

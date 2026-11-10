@@ -62,3 +62,16 @@ These were agreed with the user. Change them only if the user asks.
 - The binary is built with `go build -o jenktui .` and is git-ignored.
 - Parallel work went well when each task owned a disjoint package and the `core` contract stayed fixed. Keep `main.go` and `docs/ui-contract.md` edits with one owner at a time.
 - The repo's remote is `https://github.com/dursunkoc/jenktui.git`. Do not push or create releases without the owner asking.
+
+## Releasing
+
+Releases are built by goreleaser from a pushed tag. The version comes from the tag; nothing in the code is edited to release.
+
+1. `main` is green in CI and the real-Jenkins checklist in TODO.md is done.
+2. Tag and push: `git tag -a v0.1.0 -m "jenktui v0.1.0" && git push origin v0.1.0`.
+3. `.github/workflows/release.yml` runs `go vet` and `go test`, then goreleaser builds archives for macOS, Linux and Windows (amd64 and arm64), writes `checksums.txt`, and creates the GitHub release with a generated changelog. Tags below `v1.0.0`, or with a suffix such as `-rc1`, are marked as pre-releases.
+4. Check the release page: six archives, the checksums, and `jenktui --version` from one of them.
+
+To try the build without publishing anything, run `goreleaser release --snapshot --clean` (output goes to the git-ignored `dist/`). `goreleaser check` validates the config.
+
+A pushed tag is cached by Go's module proxy and should not be moved. If a release is wrong, fix it and publish the next patch version. Versions are shown by `internal/version`: release builds get them from linker flags, `go install module@vX.Y.Z` builds from Go's build info, and other builds show `dev`.

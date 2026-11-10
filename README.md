@@ -4,11 +4,15 @@ A rich terminal UI for Jenkins. Browse every job under a parent folder, curate n
 
 ## Install
 
+Download a binary for macOS, Linux or Windows from the [Releases](https://github.com/dursunkoc/jenktui/releases) page, unpack it, and put `jenktui` on your `PATH`. Or, with Go installed:
+
 ```sh
 go install github.com/dursunkoc/jenktui@latest
 ```
 
 Or build from a checkout: `go build -o jenktui .`
+
+`jenktui --version` prints the version.
 
 ## Configuration
 

@@ -1,0 +1,47 @@
+# Release builds are produced by .github/workflows/release.yml when a v* tag is
+# pushed. Try it locally without publishing anything:
+#   goreleaser release --snapshot --clean
+version: 2
+
+project_name: jenktui
+
+builds:
+  - id: jenktui
+    main: .
+    binary: jenktui
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags:
+      - -s -w
+      - -X github.com/dursunkoc/jenktui/internal/version.Version={{ .Version }}
+      - -X github.com/dursunkoc/jenktui/internal/version.Commit={{ .ShortCommit }}
+      - -X github.com/dursunkoc/jenktui/internal/version.Date={{ .Date }}
+
+archives:
+  - id: jenktui
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+
+release:
+  # v0.x tags and tags with a suffix such as -rc1 are marked as pre-releases.
+  prerelease: auto

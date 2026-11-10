@@ -4,10 +4,11 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Before the first release
 
-- [ ] **Make the first commit and push.** The repo has no commits yet. Create `dursunkoc/jenktui` on GitHub (public, MIT), push `main`, and check the CI run (`.github/workflows/ci.yml`) goes green. `go install github.com/dursunkoc/jenktui@latest` only works after this.
+- [ ] **Push and check CI.** The first commit exists locally. Push `main` to `dursunkoc/jenktui` (the owner decides how to handle the amended first commit) and check the CI run (`.github/workflows/ci.yml`) goes green. It has never run.
 - [ ] **Check against the real Jenkins** (the test server is a fake). See the checklist below. Fix whatever differs.
 - [ ] **End-to-end tests.** Drive whole flows against `jenkinstest`: splash → login → Collection → trigger (single and multi-job with Common Parameters) → Run Monitor. Each screen already has its own unit tests, so these only cover the joins between them.
-- [ ] **Release setup.** Add a version string (`jenktui --version`) and a goreleaser config, tag `v0.1.0`, attach binaries.
+- [x] **Release setup.** `jenktui --version`, `.goreleaser.yaml` and `.github/workflows/release.yml` are in place and a local snapshot build of all six platforms works.
+- [ ] **Tag `v0.1.0`** once the items above are done. See "Releasing" in [docs/HANDOFF.md](docs/HANDOFF.md). The release workflow has never run, so check the first release page afterwards.
 
 ### Real-Jenkins checklist
 
