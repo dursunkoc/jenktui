@@ -1,0 +1,75 @@
+# UI contract (package `internal/ui/core`)
+
+Screens code against this page. Changes here affect every screen, so keep them small and update this page with them.
+
+## Screen
+
+```go
+type Screen interface {
+    Init() tea.Cmd
+    Update(msg tea.Msg) (Screen, tea.Cmd) // return self (or a new value) as Screen
+    View() string                         // body only
+    Title() string                        // header text
+    Keys() []key.Binding                  // shown in the help bar
+}
+```
+
+The Router draws the title bar (row 1) and help bar (last row); `View` renders only the body area.
+
+## Session
+
+```go
+type Session struct { Config config.Config; Client JenkinsClient }
+type JenkinsClient interface { // implemented by *jenkins.Client
+    Ping(ctx context.Context) (string, error)
+    ListJobs(ctx context.Context, parent string) ([]jenkins.Job, error)
+    JobParameters(ctx context.Context, fullName string) ([]jenkins.ParamDef, error)
+}
+```
+
+Pass `*Session` to screen constructors. `Client` is nil until login succeeds; the login screen sets it. Credentials live only inside the client, in memory.
+
+## Router and navigation
+
+`core.NewRouter(session, rootScreen)` is the root `tea.Model`. Navigate by returning a message as a command:
+
+| Message | Effect |
+|---|---|
+| `Push{Screen}` | push; screen gets `Init()` then a size message |
+| `Pop{}` | pop (no-op at root) |
+| `Replace{Screen}` | swap top (e.g. splash -> login) |
+| `Quit{}` | exit program |
+
+Use `core.Cmd(core.Push{s})` to build the `tea.Cmd`. `ctrl+c` always quits globally; screens handle `esc` (emit `Pop`) and `q` themselves.
+
+Size: the Router forwards `tea.WindowSizeMsg` to the active screen with Height already reduced by the 2 chrome rows, so a screen can lay out using it directly. A newly entered screen immediately receives the current size. Only the top screen receives messages; async results for a popped screen are dropped, so use `Replace`/`Push` rather than relying on background screens.
+
+Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.TooSmall`, `core.MinWidth/MinHeight`).
+
+## Theme
+
+`core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle`.
+
+- `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing)` returns a colored label.
+- `th.ErrorView(title, err, hint)` boxed error with a hint line; `th.NoticeView(title, hint)` neutral box. Map domain errors to a `hint` in your own screen; core does not import `internal/jenkins`.
+
+## Keymap
+
+Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
+
+## Loading indicators
+
+`core.NewLoading(th)` returns a `core.Loading`, a spinner that ticks only while active. Embed it in a screen.
+
+- `Start() tea.Cmd`: mark active, return the first tick (nil if already active). Batch it with the fetch command.
+- `Update(msg) tea.Cmd`: call on `spinner.TickMsg`; returns the next tick, or nil if idle, stale or foreign (so idle screens never redraw).
+- `Stop()`: work finished. The indicator stays `Active()` until the minimum visible time (`core.DefaultMinLoading`, 500ms; `SetMin`, clock injectable with `SetNow`) has elapsed since `Start()`; ticks keep the chain alive until the minimum has elapsed AND the work is done, then it ends by itself. A fast refresh therefore still visibly flashes.
+- `StopNow()`: finished, hide at once (no minimum). Use it after a blocking `Modal` (nothing to flash behind it) and when leaving a screen.
+- `View(text)`: inline `spinner text` for a header/status line.
+- `Modal(text, w, h)`: `th.Box` with spinner and text, centered in w x h.
+
+Rules: use `Modal` when the screen has nothing to show yet and is fetching; use `View("refreshing…")` in the header when old data stays visible (never hide or shift rows). No goroutines; ticks are plain commands.
+
+Minimum visible time applies to header spinners: Collection view `R`, Catalog/Picker reload, and the Run Monitor's cycles (automatic and manual). Screens use `Stop()` when data was already visible and `StopNow()` when a modal was shown; headers test `load.Active()` so the spinner lingers.
+
+Run Monitor `R` (list view, help bar `R refresh`): starts an immediate cycle polling every pollable row (ignores per-row due-ness; still skips failed-to-start, left-queue, cancelled, missing rows), bumps the generation so the in-flight cycle and its scheduled tick are dropped, and shows the header spinner. When the cycle completes the next tick is scheduled as usual (one tick chain alive). `R` is ignored while a details view is open and behind the first-load modal.

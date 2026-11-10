@@ -1,0 +1,5 @@
+/jenktui
+/dist/
+*.test
+*.out
+.DS_Store
