@@ -4,7 +4,10 @@ package jenkinstest
 
 import (
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -146,17 +149,44 @@ type Server struct {
 	queue          []QueueItem
 	nextQueue      int
 	triggers       []Trigger
+	rejects        map[string]reject // job full name -> forced answer to trigger POSTs
+}
+
+type reject struct {
+	status int
+	body   string
 }
 
 // New starts a fake Jenkins that is closed via t.Cleanup. Default credentials
 // are "me"/"tok"; the crumb issuer is off.
 func New(t *testing.T) *Server {
 	t.Helper()
+	return newServer(t, false)
+}
+
+// NewTLS is New served over HTTPS with httptest's self-signed certificate, for
+// testing certificate errors. The URL starts with "https://"; CACertPEM
+// returns the certificate that makes it trusted.
+func NewTLS(t *testing.T) *Server {
+	t.Helper()
+	return newServer(t, true)
+}
+
+func newServer(t *testing.T, tlsOn bool) *Server {
+	t.Helper()
 	s := &Server{
 		t: t, user: "me", tok: "tok", crumb: defaultCrumbValue, nextQueue: 100,
 		nodes: map[string]*node{"": {folder: true}},
 	}
-	s.ts = httptest.NewServer(http.HandlerFunc(s.serve))
+	if tlsOn {
+		// Untrusted-certificate clients abort handshakes; keep that out of test logs.
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(s.serve))
+		ts.Config.ErrorLog = log.New(io.Discard, "", 0)
+		ts.StartTLS()
+		s.ts = ts
+	} else {
+		s.ts = httptest.NewServer(http.HandlerFunc(s.serve))
+	}
 	s.URL = s.ts.URL
 	t.Cleanup(s.ts.Close)
 	return s
@@ -164,6 +194,28 @@ func New(t *testing.T) *Server {
 
 // Client returns the underlying HTTP client usable for TLS-less requests.
 func (s *Server) Client() *http.Client { return s.ts.Client() }
+
+// CACertPEM returns the PEM-encoded certificate of a NewTLS server (nil for a
+// plain HTTP server), suitable for a ca_cert file.
+func (s *Server) CACertPEM() []byte {
+	if s.ts.TLS == nil || len(s.ts.TLS.Certificates) == 0 {
+		return nil
+	}
+	return pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: s.ts.TLS.Certificates[0].Certificate[0]})
+}
+
+// RejectTrigger makes POSTs to /build and /buildWithParameters of job (full
+// name) answer with status and body instead of queueing a build; nothing is
+// recorded in Triggers. Use it to model a job the user may not build (403).
+func (s *Server) RejectTrigger(job string, status int, body string) *Server {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.rejects == nil {
+		s.rejects = map[string]reject{}
+	}
+	s.rejects[job] = reject{status: status, body: body}
+	return s
+}
 
 // SetAuth sets the accepted basic-auth credentials.
 func (s *Server) SetAuth(user, token string) *Server {
@@ -445,6 +497,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case len(rest) == 2 && rest[0] == "api" && rest[1] == "json" && r.Method == http.MethodGet:
 		writeJSON(w, s.itemJSON(full, n))
 	case r.Method == http.MethodPost && len(rest) == 1 && (rest[0] == "build" || rest[0] == "buildWithParameters") && !n.folder:
+		if rj, ok := s.rejects[full]; ok {
+			http.Error(w, rj.body, rj.status)
+			return
+		}
 		_ = r.ParseForm()
 		id := s.addQueue(QueueItem{Job: full, Why: "Waiting for next available executor", Params: r.Form})
 		s.triggers = append(s.triggers, Trigger{Job: full, Endpoint: rest[0], Params: r.Form, QueueID: id})

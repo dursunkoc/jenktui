@@ -44,7 +44,7 @@ These were agreed with the user. Change them only if the user asks.
 - **Loading feedback:** blocking `Modal` when a screen has nothing to show yet, header spinner when old data stays visible (`core.Loading`, 500ms minimum visible time).
 - **Keys:** reuse `core.KeyUp/Down/Enter/Back/Filter/Quit`. In a list, text typed into the filter box includes spaces; `↓` moves focus to the list and `↑` on the first row returns to the box.
 - **Styling:** use the theme, never literal colours. Selected rows are bold accent, the cursor row is reverse video.
-- **Tests:** plain `go test`, driving `Update` with messages against `jenkinstest`; no real terminal and no sleeping. Anything time-based takes an injectable clock. Run `gofmt -l .`, `go vet ./...`, `go test -count=1 ./...` before committing; CI also runs `-race`.
+- **Tests:** plain `go test`, driving `Update` with messages against `jenkinstest`; no real terminal and no sleeping. `e2e_test.go` in the root package drives the whole app through `newDeps` (the production wiring) using helpers in `e2e_helpers_test.go` (`newApp`, `key`, `typeText`, `screenText`, ...). Timers are dropped, so advance the monitor with `R`. Add a scenario there when a change spans screens. Anything time-based takes an injectable clock. Run `gofmt -l .`, `go vet ./...`, `go test -count=1 ./...` before committing; CI also runs `-race`.
 - **Docs:** when behaviour changes, update README (keys, config), GLOSSARY (terms only, no implementation detail) and `docs/ui-contract.md` (if `core` changes) in the same change.
 
 ## Jenkins facts that bit us or will

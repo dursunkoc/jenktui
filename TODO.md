@@ -13,7 +13,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
 - [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The generated cask could not be run through `brew audit` here, so this is its first real use.
-- [ ] **End-to-end tests.** Drive whole flows against `jenkinstest`: splash → login → Collection → trigger (single and multi-job with Common Parameters) → Run Monitor. Each screen already has its own unit tests, so these only cover the joins between them.
+- [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
 ### Real-Jenkins checklist
 
