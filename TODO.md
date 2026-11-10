@@ -4,15 +4,15 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.1.0` is tagged and released (six archives plus `checksums.txt`), CI is green, and `install.sh` works against it. It was tagged on `b32362c`, which is before the Homebrew cask config (`dc47e27`), so the tap has no cask yet.
+`v0.1.1` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew cask is published in the tap. `v0.1.0` was tagged before the cask config existed, so it has no cask; nothing else differs.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
 - [x] Homebrew tap repo `dursunkoc/homebrew-tap` created, and the `HOMEBREW_TAP_TOKEN` secret saved (the secret's value and permissions are untested until a release uses it).
 - [x] `install.sh` tested against the real release: latest-release lookup, a pinned version, a strict POSIX shell.
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
-- [ ] **Publish the Homebrew cask: tag `v0.1.1`** on the current `main`. A tag cannot be moved (Go's module proxy caches it), so a patch release is the way to get the cask published. Then check the Casks folder appears in the tap, and that the release job stays green (it is the first run that uses `HOMEBREW_TAP_TOKEN`).
-- [ ] After that, test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The generated cask could not be run through `brew audit` here.
+- [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
+- [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The generated cask could not be run through `brew audit` here, so this is its first real use.
 - [ ] **End-to-end tests.** Drive whole flows against `jenkinstest`: splash → login → Collection → trigger (single and multi-job with Common Parameters) → Run Monitor. Each screen already has its own unit tests, so these only cover the joins between them.
 
 ### Real-Jenkins checklist
