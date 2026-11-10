@@ -1,0 +1,28 @@
+e2e_helpers_test.go
+  s_651b86250b7e6d::t_aeaad7d98027af 1-442
+e2e_test.go
+  s_651b86250b7e6d::t_8d46f497dfc218 1-644
+  s_651b86250b7e6d::t_e0cb27668ce009 645-1518
+TODO.md
+  s_651b86250b7e6d::t_33202bd74a79d8 16
+docs/HANDOFF.md
+  s_651b86250b7e6d::t_7cbf80d14b561b 47
+internal/jenkins/jenkinstest/server.go
+  s_651b86250b7e6d::t_e71e9d57ae3b59 7,9-10,152-157,163-175,181-189,198-219,500-503
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "8aa6f22f3e730ffa84204fe10d20b65c924d5fc9",
+  "prompts": {},
+  "sessions": {
+    "s_651b86250b7e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9a1c4690-769d-4bf2-89bb-5e41f0c20d69",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
