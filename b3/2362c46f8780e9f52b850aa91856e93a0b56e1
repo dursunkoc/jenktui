@@ -1,0 +1,37 @@
+TODO.md
+  s_651b86250b7e6d::t_fcf23b616ad060 7
+  s_651b86250b7e6d::t_b75d740b56217d 10-11
+main.go
+  s_651b86250b7e6d::t_ec4db3e859d174 4
+  s_651b86250b7e6d::t_44cd126023f26d 19
+  s_651b86250b7e6d::t_4e3b0d8d0ed9a0 23-32
+README.md
+  s_651b86250b7e6d::t_37deb435b24fc6 7-8,15
+  s_651b86250b7e6d::t_c342aacf9e7370 16
+.github/workflows/release.yml
+  s_651b86250b7e6d::t_6451189f62627b 1-28
+.goreleaser.yaml
+  s_651b86250b7e6d::t_a3c714c28f895a 1-47
+docs/HANDOFF.md
+  s_651b86250b7e6d::t_d25ff3c9b590e7 65-77
+internal/version/version.go
+  s_651b86250b7e6d::t_a542bedc09c22e 1-86
+internal/version/version_test.go
+  s_651b86250b7e6d::t_2ea3b7b758e5e0 1-38
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b32362c46f8780e9f52b850aa91856e93a0b56e1",
+  "prompts": {},
+  "sessions": {
+    "s_651b86250b7e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9a1c4690-769d-4bf2-89bb-5e41f0c20d69",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
