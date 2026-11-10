@@ -69,8 +69,14 @@ Releases are built by goreleaser from a pushed tag. The version comes from the t
 
 1. `main` is green in CI and the real-Jenkins checklist in TODO.md is done.
 2. Tag and push: `git tag -a v0.1.0 -m "jenktui v0.1.0" && git push origin v0.1.0`.
-3. `.github/workflows/release.yml` runs `go vet` and `go test`, then goreleaser builds archives for macOS, Linux and Windows (amd64 and arm64), writes `checksums.txt`, and creates the GitHub release with a generated changelog. Tags below `v1.0.0`, or with a suffix such as `-rc1`, are marked as pre-releases.
+3. `.github/workflows/release.yml` runs `go vet` and `go test`, then goreleaser builds archives for macOS, Linux and Windows (amd64 and arm64), writes `checksums.txt`, and creates the GitHub release with a generated changelog. Tags with a suffix such as `-rc1` are marked as pre-releases; a plain `v0.1.0` is a normal release.
 4. Check the release page: six archives, the checksums, and `jenktui --version` from one of them.
+
+Homebrew and the install script:
+
+- Each release also updates the cask `jenktui` in the tap repo `github.com/dursunkoc/homebrew-tap` (users run `brew install dursunkoc/tap/jenktui`). This needs, once: an initialised public repo `dursunkoc/homebrew-tap`, and a fine-grained token with Contents read and write on that repo, saved as the secret `HOMEBREW_TAP_TOKEN` in the `jenktui` repo. Without the secret the release job fails after the GitHub release has been created.
+- goreleaser's `brews` option is deprecated; the config uses `homebrew_casks`. Its generated cask has not been run through `brew audit` (the check could not run on the author's network), so check `brew install dursunkoc/tap/jenktui` after the first release.
+- `install.sh` (macOS and Linux, no Go needed) downloads the latest release archive, verifies it against `checksums.txt`, and installs to `/usr/local/bin` or `~/.local/bin`. `JENKTUI_VERSION`, `INSTALL_DIR` and `JENKTUI_BASE_URL` override its defaults (the last one is for testing against a local server). Its "latest release" lookup has only been exercised once a real release exists.
 
 To try the build without publishing anything, run `goreleaser release --snapshot --clean` (output goes to the git-ignored `dist/`). `goreleaser check` validates the config.
 

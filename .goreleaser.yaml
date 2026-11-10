@@ -43,5 +43,23 @@ changelog:
       - "^chore:"
 
 release:
-  # v0.x tags and tags with a suffix such as -rc1 are marked as pre-releases.
+  # Tags with a suffix such as v0.2.0-rc1 are marked as pre-releases; v0.1.0 is not.
   prerelease: auto
+
+# Publishes a Homebrew cask to github.com/dursunkoc/homebrew-tap on each release:
+#   brew install dursunkoc/tap/jenktui
+homebrew_casks:
+  - name: jenktui
+    repository:
+      owner: dursunkoc
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    homepage: https://github.com/dursunkoc/jenktui
+    description: Terminal UI for Jenkins
+    # The binaries are not signed or notarized, so clear macOS's quarantine flag.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/jenktui"]
+          end
