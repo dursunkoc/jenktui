@@ -1,0 +1,19 @@
+GLOSSARY.md
+  s_a7dde8a5844683::t_24bd8ac5d98e6e 36-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c9f15a4790d44c7251e1d2a5ada002248e8884f4",
+  "prompts": {},
+  "sessions": {
+    "s_a7dde8a5844683": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "621ff411-7f27-413e-b145-0bacea984770",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
