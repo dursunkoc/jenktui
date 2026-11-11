@@ -1,0 +1,24 @@
+internal/ui/entry/splash.go
+  s_26ac0d5c200416::t_6ce5cf4ebaf97b 17-18,20-25
+  s_26ac0d5c200416::t_12541600d752f0 182-185,191-192
+internal/ui/entry/entry_test.go
+  s_26ac0d5c200416::t_12541600d752f0 309-310,342,346-347
+  s_26ac0d5c200416::t_a91e2963561062 13-14
+  s_26ac0d5c200416::t_e50c60a8b8e8ef 308,311-341,343-345,348-350
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "70543423f2140830c7ec31b2711c127013a6d480",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

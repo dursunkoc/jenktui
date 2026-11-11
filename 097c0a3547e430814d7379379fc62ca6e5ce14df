@@ -1,0 +1,25 @@
+e2e_test.go
+  s_26ac0d5c200416::t_90d5544f47fa55 1418-1419,1429-1431
+internal/ui/monitor/monitor_test.go
+  s_26ac0d5c200416::t_386c9efbe77ed8 310
+  s_26ac0d5c200416::t_90d5544f47fa55 217,231,261,274,323,342,448,467,477,493,503,512,532,575,644,669,697,710,715,723,745,832,848-855
+  s_26ac0d5c200416::t_46fb16977c8769 856
+internal/ui/monitor/render.go
+  s_26ac0d5c200416::t_3d110c8fbb8605 37-39,46,57-65
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "097c0a3547e430814d7379379fc62ca6e5ce14df",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

@@ -1,0 +1,64 @@
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_25f54a4c74f059 46
+internal/ui/collections/collections_test.go
+  s_26ac0d5c200416::t_8fa031225281ad 60
+  s_26ac0d5c200416::t_8a8d8b6ddf42da 55
+  s_26ac0d5c200416::t_b198d025726010 295,310
+internal/ui/collections/view.go
+  s_26ac0d5c200416::t_a14dfbcd8948aa 13
+  s_26ac0d5c200416::t_8a8d8b6ddf42da 251
+  s_26ac0d5c200416::t_8fa031225281ad 194
+  s_26ac0d5c200416::t_ffbe241a6fc98a 61,63,67-72
+internal/ui/core/core_test.go
+  s_26ac0d5c200416::t_b5e3dd6783cee1 298-312
+internal/ui/catalog/catalog.go
+  s_26ac0d5c200416::t_ffbe241a6fc98a 86,240-255
+  s_26ac0d5c200416::t_fe521981f80e6e 256
+internal/ui/collections/picker.go
+  s_26ac0d5c200416::t_ffbe241a6fc98a 73
+e2e_test.go
+  s_26ac0d5c200416::t_8a8d8b6ddf42da 787
+  s_26ac0d5c200416::t_b5e3dd6783cee1 758-775
+  s_26ac0d5c200416::t_b45f4fd48dbfb1 783-784,800,805,824-825,839-840,851,863,868,870,881,888,914,926,934
+README.md
+  s_26ac0d5c200416::t_25f54a4c74f059 54
+internal/ui/widgets/list_test.go
+  s_26ac0d5c200416::t_b5e3dd6783cee1 274-303
+internal/ui/catalog/catalog_test.go
+  s_26ac0d5c200416::t_b198d025726010 172,177,187,200,204
+  s_26ac0d5c200416::t_b5e3dd6783cee1 328-349
+internal/ui/monitor/render.go
+  s_26ac0d5c200416::t_8fa031225281ad 110,276,316-323
+  s_26ac0d5c200416::t_d37fb5068fd58f 324
+internal/ui/widgets/list.go
+  s_26ac0d5c200416::t_ffbe241a6fc98a 19,421-424,442,445-455
+main.go
+  s_26ac0d5c200416::t_8fa031225281ad 97-98,101
+  s_26ac0d5c200416::t_8a8d8b6ddf42da 107-108,122
+docs/ui-contract.md
+  s_26ac0d5c200416::t_25f54a4c74f059 71-74
+internal/ui/core/names.go
+  s_26ac0d5c200416::t_f72375729d85ff 20-45
+internal/ui/monitor/monitor.go
+  s_26ac0d5c200416::t_8fa031225281ad 120,241-247
+  s_26ac0d5c200416::t_c45f9375759b17 248-251
+internal/ui/collections/collections.go
+  s_26ac0d5c200416::t_8a8d8b6ddf42da 35-38
+  s_26ac0d5c200416::t_8fa031225281ad 42-45,333-348
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e7c8f1b8633ddf756f172cca53ab7a7793d7668b",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

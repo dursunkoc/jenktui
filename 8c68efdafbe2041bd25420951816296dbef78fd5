@@ -1,0 +1,25 @@
+e2e_helpers_test.go
+  s_26ac0d5c200416::t_02c01c5b47fcf3 411-419,433-435
+internal/ui/collections/view.go
+  s_26ac0d5c200416::t_02c01c5b47fcf3 82
+internal/ui/collections/collections.go
+  s_26ac0d5c200416::t_02c01c5b47fcf3 69-78,196
+e2e_test.go
+  s_26ac0d5c200416::t_02c01c5b47fcf3 629,631
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8c68efdafbe2041bd25420951816296dbef78fd5",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

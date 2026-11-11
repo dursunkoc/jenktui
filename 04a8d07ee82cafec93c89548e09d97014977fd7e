@@ -1,0 +1,26 @@
+main.go
+  s_26ac0d5c200416::t_07780e34018c36 111-112
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_de2e74387e0174 46
+internal/ui/trigger/trigger.go
+  s_26ac0d5c200416::t_07780e34018c36 40-43,112-120,204,227,243,336-337,397,514,574-577,586,603,605
+e2e_test.go
+  s_26ac0d5c200416::t_1994dde24e3b0f 907,942-962
+  s_26ac0d5c200416::t_5513dce7a8d64c 963
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "04a8d07ee82cafec93c89548e09d97014977fd7e",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

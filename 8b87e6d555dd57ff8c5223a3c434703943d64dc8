@@ -1,0 +1,44 @@
+internal/ui/widgets/list_test.go
+  s_26ac0d5c200416::t_c61476b8a3150b 244-260,263-267,269-270,272-279,281-282,285-290,292,295-298,301-304,306-307,309-311,313-323
+README.md
+  s_26ac0d5c200416::t_d95c8919c830ad 54
+e2e_helpers_test.go
+  s_26ac0d5c200416::t_e063d0e89f6e4a 17,286-313
+internal/ui/catalog/catalog_test.go
+  s_26ac0d5c200416::t_e1521715c08638 6,173,178-183,193-194,204,208,354-357
+  s_26ac0d5c200416::t_d8fbc7918ea1c3 268
+  s_26ac0d5c200416::t_5c0422d8db11ba 358
+internal/ui/widgets/list.go
+  s_26ac0d5c200416::t_d9733caf1605c8 19,417-418,421,435-441,444-445,447,459-475,486-488,493,497,499-503,505-513,516-520
+  s_26ac0d5c200416::t_4b13cc1bb4f817 407,419-420,422-423,476-485,489-492,494-496,498,504,514-515,521
+  s_26ac0d5c200416::t_659adfd0008fb1 11
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_d95c8919c830ad 20,46
+internal/ui/catalog/catalog.go
+  s_26ac0d5c200416::t_38deb1ec6ef219 84,258-263
+  s_26ac0d5c200416::t_d224cdfdd59037 12
+  s_26ac0d5c200416::t_34a495bbd1038c 264-265
+e2e_test.go
+  s_26ac0d5c200416::t_e063d0e89f6e4a 768,785-787,789,803-804,809,828-830,844-846,857-858,870-871,875-877,879-880,891-892,899,937,945-946
+  s_26ac0d5c200416::t_e1521715c08638 9,759-761,790
+internal/ui/collections/collections_test.go
+  s_26ac0d5c200416::t_e1521715c08638 7,311
+internal/ui/collections/picker.go
+  s_26ac0d5c200416::t_38deb1ec6ef219 70
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "8b87e6d555dd57ff8c5223a3c434703943d64dc8",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}

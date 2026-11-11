@@ -1,0 +1,22 @@
+internal/ui/widgets/list_test.go
+  s_26ac0d5c200416::t_1780dbab3200ed 10,243-271
+  s_26ac0d5c200416::t_e16ffa58e58390 272-273
+internal/ui/widgets/list.go
+  s_26ac0d5c200416::t_8bdd014daf845a 430-436,440,445,447,449-450
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fc85cdd9f4d453d8a720179e4ec176c40836e08b",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
