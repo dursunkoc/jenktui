@@ -34,16 +34,16 @@ func (m *model) View() string {
 	for vi, i := range vis {
 		blocks = append(blocks, m.block(vi, i))
 	}
-	// Window the blocks so the cursor stays visible (two lines are the header
-	// and the blank line under it).
-	avail := m.h - 2
+	// Window the blocks so the cursor stays visible (one line is the blank
+	// line under the title; the status line is the Subtitle).
+	avail := m.h - 1
 	start := 0
 	if m.h > 0 {
 		for start < m.cursor && lines(blocks[start:m.cursor+1]) > avail {
 			start++
 		}
 	}
-	out := []string{m.fit(m.th.MutedTxt.Render(m.header())), ""}
+	out := []string{""}
 	for _, b := range blocks[start:] {
 		out = append(out, b...)
 	}
@@ -54,6 +54,15 @@ func (m *model) View() string {
 }
 
 // header is the filter line above the list.
+// Subtitle is the status line shown on the title row while the runs list is
+// on screen (not over the details view, a notice or the first-load modal).
+func (m *model) Subtitle() string {
+	if len(m.runs) == 0 || m.details || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
+		return ""
+	}
+	return m.header()
+}
+
 func (m *model) header() string {
 	h := m.baseHeader()
 	if m.load.Active() {
