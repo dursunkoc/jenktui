@@ -1,0 +1,19 @@
+docs/HANDOFF.md
+  s_a7dde8a5844683::t_40a9e25461884f 11,91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "1c170505338c8f8bb9b22562500d8eb0807c4f49",
+  "prompts": {},
+  "sessions": {
+    "s_a7dde8a5844683": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "621ff411-7f27-413e-b145-0bacea984770",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
