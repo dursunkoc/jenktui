@@ -1,0 +1,53 @@
+e2e_test.go
+  s_26ac0d5c200416::t_fec9cc1a0fdebd 438-462,464-479
+  s_26ac0d5c200416::t_fd59dc9eec7e3c 14
+  s_26ac0d5c200416::t_d2dadbfb0bb2c1 463
+internal/ui/widgets/list.go
+  s_26ac0d5c200416::t_85ba6a6cb118d9 35
+  s_26ac0d5c200416::t_2208b89f33c7e3 32-34,36,40-43,140-150,152-158,301
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_fb1f7eae18f459 45
+internal/ui/monitor/monitor.go
+  s_26ac0d5c200416::t_9cd9db6a38b577 334-349
+internal/ui/collections/picker.go
+  s_26ac0d5c200416::t_9cd9db6a38b577 118-135
+internal/ui/catalog/branchpanel.go
+  s_26ac0d5c200416::t_23703c2636f625 24
+internal/ui/catalog/catalog.go
+  s_26ac0d5c200416::t_23703c2636f625 123-139
+internal/ui/collections/view.go
+  s_26ac0d5c200416::t_9cd9db6a38b577 83-101
+docs/ui-contract.md
+  s_26ac0d5c200416::t_fb1f7eae18f459 19-27,67
+internal/ui/core/help.go
+  s_26ac0d5c200416::t_3612962f5f77db 7,19-23,26-39,45-49,51-61,63-83,85-86,88-89,91-94,96-98,100,102-107,109-119,121,123-135,137-169,176,190,194-195,198-199,205,207-216
+  s_26ac0d5c200416::t_85ba6a6cb118d9 136,171-175,177-189,191-193,196-197,200-204
+  s_26ac0d5c200416::t_d2dadbfb0bb2c1 43
+  s_26ac0d5c200416::t_5d4d1bc5e474d1 42,50,62,84,87,90,95,99,101,108,120
+  s_26ac0d5c200416::t_c3048956984814 40-41,44,170
+README.md
+  s_26ac0d5c200416::t_fb1f7eae18f459 78,80
+internal/ui/core/core_test.go
+  s_26ac0d5c200416::t_b21d94cf5b985d 10-11,104-229,231-235
+  s_26ac0d5c200416::t_eaedd9d72216d2 230
+internal/ui/collections/collections.go
+  s_26ac0d5c200416::t_9cd9db6a38b577 143,195-208
+internal/ui/core/router.go
+  s_26ac0d5c200416::t_64026acdec0fe5 6,21,40-48,75-86,90,95,100,117-134
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "90046c3c1ec5d9e6f336903d773125ed7f030898",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
