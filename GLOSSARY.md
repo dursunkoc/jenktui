@@ -33,3 +33,9 @@ A member of a Collection that no longer exists on the Jenkins server. It stays i
 
 **Status Filter**
 A view limit that shows only Jobs whose latest build has one chosen status (for example failed). It combines with text filtering, and only affects what is shown.
+
+**Help Panel**
+The overlay opened with `?` on screens whose footer ends in `? all keys`. It lists every key of the screen in groups; `Esc` or `?` closes it.
+
+**Relative Name**
+How a Job is displayed: its full path without the Parent Job's prefix, folders separated by a muted `›`. Filtering, saved Collections and the Jenkins API still use the full path.
