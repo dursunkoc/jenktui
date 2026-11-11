@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/muesli/termenv"
 )
@@ -237,5 +238,36 @@ func TestCursorRowHighlighted(t *testing.T) {
 	rows = strings.Split(l.View(), "\n")
 	if strings.Contains(rows[3], "\x1b[7") || (!strings.Contains(rows[4], "\x1b[7") && !strings.Contains(rows[4], ";7")) {
 		t.Fatalf("highlight should follow the cursor: %q / %q", rows[3], rows[4])
+	}
+}
+
+// The cursor row must not shift its text or badge: on every row the box
+// starts in the same column and the badge is one column after the label.
+func TestCursorRowKeepsAlignment(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "team/app/build", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "team/app/deploy", Badge: core.StatusFailed, ShowBadge: true},
+		{Key: "gone/job", Missing: true},
+	})
+	for _, keys := range [][]string{nil, {"down"}, {"down", "down"}} {
+		run(l, keys...)
+		rows := strings.Split(ansi.Strip(l.View()), "\n")[filterRows:]
+		for i, row := range rows {
+			if c := strings.Index(row, "["); c != 2 {
+				t.Fatalf("after %v: row %d box at column %d, want 2: %q", keys, i, c, row)
+			}
+			label := strings.Fields(row[strings.Index(row, "]")+1:])[0]
+			end := strings.Index(row, label) + len(label)
+			if !strings.HasPrefix(row[end:], " ● ") && !strings.HasPrefix(row[end:], " ") {
+				t.Fatalf("after %v: row %d badge not one column after the label: %q", keys, i, row)
+			}
+			if strings.HasPrefix(row[end:], "  ") {
+				t.Fatalf("after %v: row %d has two spaces before the badge: %q", keys, i, row)
+			}
+		}
+		if !strings.HasPrefix(rows[l.cursor], ">") {
+			t.Fatalf("after %v: cursor row lacks the > marker: %q", keys, rows[l.cursor])
+		}
 	}
 }

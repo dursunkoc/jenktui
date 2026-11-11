@@ -427,25 +427,27 @@ func (l *List) View() string {
 			// returns them to the plain style.
 			style = l.theme.Selected
 		}
+		// Every row is a 2-column gutter, the text, then " " and the badge.
+		// The cursor row is drawn in reverse video (readable on any terminal
+		// theme) with one column of padding on each side; the padding takes
+		// the place of the gutter's second column and of the space before
+		// the badge, so text and badges stay in the same columns as on the
+		// other rows.
+		prefix, gap := "  ", " "
 		if r == l.cursor {
-			// The row under the cursor is drawn in reverse video, which stays
-			// readable on any terminal theme.
 			style = style.Reverse(true).Bold(true)
 			line = " " + line + " "
+			prefix, gap = l.theme.Selected.Render(">"), ""
 		}
 		line = style.Render(line)
 		switch {
 		case it.Missing:
-			line += " " + l.theme.Badge(core.StatusMissing)
+			line += gap + l.theme.Badge(core.StatusMissing)
 		case it.ShowBadge:
-			line += " " + l.theme.Badge(it.Badge)
+			line += gap + l.theme.Badge(it.Badge)
 		}
-		line = lipgloss.NewStyle().MaxWidth(max(l.w-2, 1)).Render(line)
-		if r == l.cursor {
-			b.WriteString("\n" + l.theme.Selected.Render("> ") + line)
-		} else {
-			b.WriteString("\n  " + line)
-		}
+		line = lipgloss.NewStyle().MaxWidth(max(l.w-lipgloss.Width(prefix), 1)).Render(line)
+		b.WriteString("\n" + prefix + line)
 	}
 	return b.String()
 }
