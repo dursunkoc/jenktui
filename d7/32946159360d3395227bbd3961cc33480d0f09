@@ -1,0 +1,43 @@
+internal/ui/catalog/catalog_test.go
+  s_26ac0d5c200416::t_0d223c31b1f514 71-72,77-78
+  s_26ac0d5c200416::t_8ab859ca61ce0c 79
+internal/ui/collections/picker.go
+  s_26ac0d5c200416::t_536574de16b8c7 70,73
+internal/ui/core/core_test.go
+  s_26ac0d5c200416::t_0d223c31b1f514 281-297
+e2e_test.go
+  s_26ac0d5c200416::t_0d223c31b1f514 175-176
+  s_26ac0d5c200416::t_9f67bc27089937 619-650
+internal/ui/core/names.go
+  s_26ac0d5c200416::t_8e8364465c386c 1-19
+internal/ui/monitor/monitor.go
+  s_26ac0d5c200416::t_536574de16b8c7 39
+internal/ui/collections/view.go
+  s_26ac0d5c200416::t_536574de16b8c7 67
+main.go
+  s_26ac0d5c200416::t_536574de16b8c7 83
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_d392b7f5dfcfbe 46
+internal/ui/monitor/render.go
+  s_26ac0d5c200416::t_536574de16b8c7 110,276
+internal/ui/catalog/catalog.go
+  s_26ac0d5c200416::t_536574de16b8c7 83,86
+README.md
+  s_26ac0d5c200416::t_d392b7f5dfcfbe 53-54,61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "d732946159360d3395227bbd3961cc33480d0f09",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
