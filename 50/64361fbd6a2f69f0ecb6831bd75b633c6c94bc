@@ -1,0 +1,34 @@
+TODO.md
+  s_26ac0d5c200416::t_585f6324b01668 22
+internal/ui/entry/login.go
+  s_26ac0d5c200416::t_d5013197eacd38 22,113,147
+e2e_test.go
+  s_26ac0d5c200416::t_d5013197eacd38 229,251
+internal/ui/entry/entry.go
+  s_26ac0d5c200416::t_d5013197eacd38 81
+internal/ui/entry/entry_test.go
+  s_26ac0d5c200416::t_d5013197eacd38 197
+  s_26ac0d5c200416::t_d17a903fcea1f8 208-212
+README.md
+  s_26ac0d5c200416::t_585f6324b01668 44
+internal/jenkins/client.go
+  s_26ac0d5c200416::t_d5013197eacd38 24
+docs/HANDOFF.md
+  s_26ac0d5c200416::t_585f6324b01668 7,33
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5064361fbd6a2f69f0ecb6831bd75b633c6c94bc",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
