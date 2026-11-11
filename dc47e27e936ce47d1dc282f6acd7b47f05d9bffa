@@ -1,0 +1,30 @@
+install.sh
+  s_651b86250b7e6d::t_a8e0d627fa3ed5 1-121
+README.md
+  s_651b86250b7e6d::t_64cdfa9e056534 7-9,12,15-25
+TODO.md
+  s_651b86250b7e6d::t_d1e27e5b396530 13
+  s_651b86250b7e6d::t_a7885c4dc35698 7-8
+.github/workflows/release.yml
+  s_651b86250b7e6d::t_3a054fbb51c409 29-31
+.goreleaser.yaml
+  s_651b86250b7e6d::t_0fc671fb691079 46,48-65
+docs/HANDOFF.md
+  s_651b86250b7e6d::t_a5bb918dcd46c0 72,75-80
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "dc47e27e936ce47d1dc282f6acd7b47f05d9bffa",
+  "prompts": {},
+  "sessions": {
+    "s_651b86250b7e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9a1c4690-769d-4bf2-89bb-5e41f0c20d69",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}

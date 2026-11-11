@@ -1,0 +1,19 @@
+TODO.md
+  s_651b86250b7e6d::t_44a933261476bb 5,7-15,20,22-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "5939baba99ceed4532d1beefe91734687b114766",
+  "prompts": {},
+  "sessions": {
+    "s_651b86250b7e6d": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "9a1c4690-769d-4bf2-89bb-5e41f0c20d69",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
