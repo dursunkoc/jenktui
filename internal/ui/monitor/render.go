@@ -34,15 +34,16 @@ func (m *model) View() string {
 	for vi, i := range vis {
 		blocks = append(blocks, m.block(vi, i))
 	}
-	// Window the blocks so the cursor stays visible (one line is the header).
-	avail := m.h - 1
+	// Window the blocks so the cursor stays visible (two lines are the header
+	// and the blank line under it).
+	avail := m.h - 2
 	start := 0
 	if m.h > 0 {
 		for start < m.cursor && lines(blocks[start:m.cursor+1]) > avail {
 			start++
 		}
 	}
-	out := []string{m.fit(m.th.MutedTxt.Render(m.header()))}
+	out := []string{m.fit(m.th.MutedTxt.Render(m.header())), ""}
 	for _, b := range blocks[start:] {
 		out = append(out, b...)
 	}

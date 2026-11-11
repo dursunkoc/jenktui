@@ -1331,6 +1331,22 @@ func TestMonitorOpensHidingSuccessAndToggles(t *testing.T) {
 	h.expect("4 jobs")
 }
 
+// The Run Monitor's status line is separated from the job list by a blank
+// line.
+func TestMonitorBlankLineAboveJobs(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Mix")
+	h.key("m")
+	h.expectTitle("Run Monitor: Mix")
+	rows := strings.Split(h.screenText(), "\n")
+	if !strings.Contains(rows[1], "hiding 2 successful") || rows[2] != "" || !strings.Contains(rows[3], "team/") {
+		t.Fatalf("monitor rows:\n%s", strings.Join(rows[:5], "\n"))
+	}
+}
+
 func TestMonitorFromCollectionsListAndBack(t *testing.T) {
 	f := mixFixture(t)
 	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
