@@ -14,13 +14,15 @@ import (
 
 const tickInterval = 80 * time.Millisecond
 
+// logo is the splash art. Every line has the same width, so the lines stay
+// aligned when the block is centred.
 var logo = []string{
-	`    _            _    _             _ `,
-	`   (_) ___ _ __ | | _| |_ _   _ (_)`,
-	`   | |/ _ \ '_ \| |/ / __| | | || |`,
-	`   | |  __/ | | |   <| |_| |_| || |`,
-	`  _/ |\___|_| |_|_|\_\\__|\__,_||_|`,
-	` |__/                              `,
+	`   _            _    _          _ `,
+	`  (_) ___ _ __ | | _| |_ _   _ (_)`,
+	`  | |/ _ \ '_ \| |/ / __| | | || |`,
+	`  | |  __/ | | |   <| |_| |_| || |`,
+	` _/ |\___|_| |_|_|\_\\__|\__,_||_|`,
+	`|__/                              `,
 }
 
 // tagline sits under the logo and says what the name stands for.
@@ -177,14 +179,17 @@ func (s *Splash) logoView() string {
 	return strings.TrimRight(sb.String(), "\n")
 }
 
-// taglineView centres the tagline on the logo's width, so it stays under the
-// logo whatever the terminal width.
+// taglineView centres the tagline under the logo, so both share one centre
+// whatever the terminal width. When the leftover is odd the extra column
+// goes on the left: the j's tail sticks out on the left of the logo, so its
+// body sits a little to the right.
 func (s *Splash) taglineView() string {
 	w := 0
 	for _, line := range logo {
 		w = max(w, lipgloss.Width(line))
 	}
-	return s.th.Title.Width(w).Align(lipgloss.Center).Render(tagline)
+	left := max(w-lipgloss.Width(tagline)+1, 0) / 2
+	return s.th.Title.PaddingLeft(left).Width(w).Render(tagline)
 }
 
 func (s *Splash) Title() string { return "jenktui" }

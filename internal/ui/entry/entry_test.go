@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
@@ -301,5 +303,48 @@ func TestRouterIntegration(t *testing.T) {
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
 	if v := r.View(); !strings.Contains(v, "checking") || !strings.Contains(v, "Jenkins Terminal User Interface") {
 		t.Fatalf("splash view:\n%s", v)
+	}
+}
+
+// The logo lines and the tagline must share one centre: every logo line
+// starts in the same column and the tagline is centred under the logo.
+func TestSplashLogoAndTaglineAligned(t *testing.T) {
+	w := lipgloss.Width(logo[0])
+	for i, line := range logo {
+		if lipgloss.Width(line) != w {
+			t.Fatalf("logo line %d is %d wide, line 0 is %d", i, lipgloss.Width(line), w)
+		}
+	}
+	for _, termW := range []int{60, 61, 80, 121} {
+		s := NewSplash(&core.Session{}, Deps{ConfigDir: t.TempDir()})
+		s.Update(tea.WindowSizeMsg{Width: termW, Height: 24})
+		rows := strings.Split(ansi.Strip(s.View()), "\n")
+		start := -1
+		for i, l := range logo {
+			col := -1
+			for _, r := range rows {
+				if c := strings.Index(r, l); c >= 0 {
+					col = c
+					break
+				}
+			}
+			if col < 0 {
+				t.Fatalf("width %d: logo line %d not found:\n%s", termW, i, strings.Join(rows, "\n"))
+			}
+			if start < 0 {
+				start = col
+			} else if col != start {
+				t.Fatalf("width %d: logo line %d starts at %d, line 0 at %d", termW, i, col, start)
+			}
+		}
+		col := -1
+		for _, r := range rows {
+			if c := strings.Index(r, tagline); c >= 0 {
+				col = c
+			}
+		}
+		if want := start + (w-lipgloss.Width(tagline)+1)/2; col != want {
+			t.Fatalf("width %d: tagline starts at %d, want %d (centred under the logo)", termW, col, want)
+		}
 	}
 }
