@@ -1,0 +1,77 @@
+docs/HANDOFF.md
+  s_a7dde8a5844683::t_3331d8e9e8286b 7,29,42,54-55
+README.md
+  s_a7dde8a5844683::t_42f66b87c79d64 44,53-54,61,80,82
+TODO.md
+  s_a7dde8a5844683::t_082fde2207a09d 22
+docs/ui-contract.md
+  s_a7dde8a5844683::t_9f817d9ed325e3 17-32,71-74,77
+e2e_helpers_test.go
+  s_a7dde8a5844683::t_5eefcb8ea2735f 17,267,274-285,291,298-325,330,348,370,423-431,445-447
+e2e_test.go
+  s_a7dde8a5844683::t_e66d1fbb2c3b92 9,15,176-177,231,253,439-500,561,608-653,761-779,787-789,791-792,805-806,811,830-832,846-848,859-860,872-873,877-879,881-882,893-894,901,920,927,939,947-948,956-977,1432-1448
+internal/jenkins/client.go
+  s_a7dde8a5844683::t_fada4c1a6a79ec 24
+internal/ui/catalog/branchpanel.go
+  s_a7dde8a5844683::t_51d1db79692320 24
+internal/ui/catalog/catalog.go
+  s_a7dde8a5844683::t_6fc19516f7e46d 12,84,87,124-140,148,216-223,238-263
+internal/ui/catalog/catalog_test.go
+  s_a7dde8a5844683::t_fe009cab03086f 6,66,71-73,78-80,91,100,105,109-110,172-173,178-183,192-194,203-204,208-209,218-219,224-225,267-268,284-285,293,301,315,319,323-358
+internal/ui/collections/collections.go
+  s_a7dde8a5844683::t_32e271b91b51dc 35-38,42-45,69-87,165,205,217-230,311,352-367,414,433
+internal/ui/collections/collections_test.go
+  s_a7dde8a5844683::t_5c7dc8ae443282 7,56,61,169-170,187-188,202,222,232-233,246-247,261-262,296,311,362-363,409-410,415-416,434,438,445,449,454,461,482,489-490,496,504,508,512-520
+internal/ui/collections/picker.go
+  s_a7dde8a5844683::t_11dfe89f4ae95f 70,73,118-135,144,214-222,236
+internal/ui/collections/view.go
+  s_a7dde8a5844683::t_bb2fcb55884955 13,61,63,67-72,82,88-106,113,175,194,251,265-275,289
+internal/ui/core/core_test.go
+  s_a7dde8a5844683::t_8bdf8b7e3b20e0 10-11,38,42,85-90,110-312
+internal/ui/core/help.go
+  s_a7dde8a5844683::t_7f292c53f73c86 7,19-23,26-121,123-205,207-216
+internal/ui/core/names.go
+  s_a7dde8a5844683::t_6e5b75f426d6f0 1-45
+internal/ui/core/router.go
+  s_a7dde8a5844683::t_ef1e74c0f5c950 6,9,12-14,23,42-50,77-88,92,97,102,113-132,138-158
+internal/ui/core/screen.go
+  s_a7dde8a5844683::t_178938f9e150ed 42-48
+internal/ui/entry/entry.go
+  s_a7dde8a5844683::t_bd54b5526bddec 81
+internal/ui/entry/entry_test.go
+  s_a7dde8a5844683::t_bd322d2b242813 13-14,199,210-242,332,336-378
+internal/ui/entry/login.go
+  s_a7dde8a5844683::t_68a715c4deec95 22,113,140-142,150,159-167
+internal/ui/entry/splash.go
+  s_a7dde8a5844683::t_a446aa124b1d69 17-18,20-25,28-30,164,182-194
+internal/ui/monitor/monitor.go
+  s_a7dde8a5844683::t_4d6e5701ebeadc 9,40,121,242-252,331-332,334-336,338-341,343,356-371
+internal/ui/monitor/monitor_test.go
+  s_a7dde8a5844683::t_a3e75441359ef2 217,231,261,274,310,323,342,448,467,477,493,503,512,532,575,644,669,697,710,715,723,745,832,848-870
+internal/ui/monitor/render.go
+  s_a7dde8a5844683::t_cf9c9c0e106abb 37-38,46,57-65,119,285,325-333
+internal/ui/trigger/trigger.go
+  s_a7dde8a5844683::t_38b9ffee53702e 40-43,112-120,204,227,243,336-337,397,514,574-577,586,603,605
+internal/ui/widgets/list.go
+  s_a7dde8a5844683::t_d0da6290c29563 6,12,20,34-38,42-45,142-152,154-160,266-270,307,377-378,381,403,407-408,418-425,437-444,448-456,460,462,464-465,469-564
+internal/ui/widgets/list_test.go
+  s_a7dde8a5844683::t_7af86683b32c26 10,103,109,230,232-233,235-236,240-390
+main.go
+  s_a7dde8a5844683::t_c642f72f3d7f7f 83,97-98,101,107-108,111-112,124
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c89f79f04eeaf4402031dce6b842dc5679a15c0f",
+  "prompts": {},
+  "sessions": {
+    "s_a7dde8a5844683": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "621ff411-7f27-413e-b145-0bacea984770",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
