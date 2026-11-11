@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -62,16 +63,20 @@ func kmsg(s string) tea.KeyMsg {
 func TestLoadSuccess(t *testing.T) {
 	f := &fakeLister{jobs: []jenkins.Job{{FullName: "team/a", Color: "blue"}, {FullName: "team/b", Color: "red_anime"}, {FullName: "x/c", Color: "red"}}}
 	s := New(f, "team")
-	if v := s.View(); !strings.Contains(v, "Loading") {
+	if v := shown(s); !strings.Contains(v, "Loading") {
 		t.Fatalf("loading view: %q", v)
 	}
 	feed(t, s, s.Init())
 	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	v := s.View()
-	for _, want := range []string{"3 jobs", "team/a", "SUCCESS", "RUNNING", "FAILED"} {
+	v := shown(s)
+	// names are shown relative to the parent; one outside it stays whole.
+	for _, want := range []string{"3 jobs", "[ ] a ", "[ ] b ", "[ ] x › c ", "SUCCESS", "RUNNING", "FAILED"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q:\n%s", want, v)
 		}
+	}
+	if strings.Contains(v, "team/") {
+		t.Errorf("parent prefix shown:\n%s", v)
 	}
 	if f.got != "team" {
 		t.Errorf("parent = %q", f.got)
@@ -83,7 +88,7 @@ func TestLoadSuccess(t *testing.T) {
 	s.Update(kmsg("/"))
 	s.Update(kmsg("x"))
 	s.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if v := s.View(); !strings.Contains(v, "1 of 3 jobs") {
+	if v := shown(s); !strings.Contains(v, "1 of 3 jobs") {
 		t.Errorf("filtered view:\n%s", v)
 	}
 }
@@ -92,17 +97,17 @@ func TestErrorAndRetry(t *testing.T) {
 	f := &fakeLister{errs: []error{errors.New("boom")}, jobs: []jenkins.Job{{FullName: "a"}}}
 	s := New(f, "")
 	feed(t, s, s.Init())
-	v := s.View()
+	v := shown(s)
 	if !strings.Contains(v, "boom") || !strings.Contains(v, "retry") {
 		t.Fatalf("error view:\n%s", v)
 	}
 	_, cmd := s.Update(kmsg("r"))
-	if !strings.Contains(s.View(), "Loading") {
+	if !strings.Contains(shown(s), "Loading") {
 		t.Fatal("retry should show spinner")
 	}
 	feed(t, s, cmd)
-	if f.calls != 2 || !strings.Contains(s.View(), "1 jobs") {
-		t.Fatalf("calls=%d view:\n%s", f.calls, s.View())
+	if f.calls != 2 || !strings.Contains(shown(s), "1 jobs") {
+		t.Fatalf("calls=%d view:\n%s", f.calls, shown(s))
 	}
 }
 
@@ -164,13 +169,18 @@ func typeText(s *Screen, text string) {
 
 func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 	s := newBranchScreen(t, []string{"main", "release/*"}, nil)
-	v := s.View()
-	for _, want := range []string{"branches: filtered (2 patterns)", "plain", "app/main", "lib (no matching branches)"} {
+	v := shown(s)
+	for _, want := range []string{"branches: filtered (2 patterns)", "plain"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("missing %q:\n%s", want, v)
 		}
 	}
-	if strings.Contains(v, "feature/x") || strings.Contains(v, "lib/dev") {
+	for _, want := range [][2]string{{"app", "main"}, {"lib", "(no matching branches)"}} {
+		if !branchRow(want[0], want[1]).MatchString(v) {
+			t.Errorf("missing row %q / %q:\n%s", want[0], want[1], v)
+		}
+	}
+	if strings.Contains(v, "feature/x") || branchRow("lib", "dev").MatchString(v) {
 		t.Errorf("filtered branches visible:\n%s", v)
 	}
 	// Placeholder is not selectable ("a" selects all).
@@ -179,11 +189,9 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 		t.Errorf("selected = %v (placeholder must be skipped)", got)
 	}
 	s.Update(kmsg("b"))
-	v = s.View()
-	for _, want := range []string{"branches: all", "app/feature/x", "lib/dev"} {
-		if !strings.Contains(v, want) {
-			t.Errorf("filter off, missing %q:\n%s", want, v)
-		}
+	v = shown(s)
+	if !strings.Contains(v, "branches: all") || !branchRow("app", "feature/x").MatchString(v) || !branchRow("lib", "dev").MatchString(v) {
+		t.Errorf("filter off, missing rows:\n%s", v)
 	}
 	if strings.Contains(v, "no matching") {
 		t.Errorf("no placeholder expected when off:\n%s", v)
@@ -192,13 +200,13 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 
 func TestBranchFilterNoPatternsShowsAll(t *testing.T) {
 	s := newBranchScreen(t, nil, nil)
-	v := s.View()
-	if !strings.Contains(v, "branches: all") || !strings.Contains(v, "lib/dev") {
+	v := shown(s)
+	if !strings.Contains(v, "branches: all") || !branchRow("lib", "dev").MatchString(v) {
 		t.Errorf("view:\n%s", v)
 	}
 	s.Update(kmsg("b")) // turning "on" with no patterns must not hide anything
-	if !strings.Contains(s.View(), "lib/dev") {
-		t.Errorf("empty filter hid rows:\n%s", s.View())
+	if !branchRow("lib", "dev").MatchString(shown(s)) {
+		t.Errorf("empty filter hid rows:\n%s", shown(s))
 	}
 }
 
@@ -207,14 +215,14 @@ func TestBranchFilterEditor(t *testing.T) {
 	s := newBranchScreen(t, nil, func(p []string) error { saved = append(saved, p); return nil })
 
 	s.Update(kmsg("B"))
-	if !strings.Contains(s.View(), "no patterns") {
-		t.Fatalf("editor view:\n%s", s.View())
+	if !strings.Contains(shown(s), "no patterns") {
+		t.Fatalf("editor view:\n%s", shown(s))
 	}
 	s.Update(kmsg("a"))
 	typeText(s, "[bad")
 	s.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if !strings.Contains(s.View(), "unclosed") || len(s.patterns) != 0 {
-		t.Fatalf("invalid pattern should be rejected:\n%s", s.View())
+	if !strings.Contains(shown(s), "unclosed") || len(s.patterns) != 0 {
+		t.Fatalf("invalid pattern should be rejected:\n%s", shown(s))
 	}
 	s.Update(tea.KeyMsg{Type: tea.KeyBackspace})
 	s.Update(tea.KeyMsg{Type: tea.KeyBackspace})
@@ -256,8 +264,8 @@ func TestBranchFilterEditor(t *testing.T) {
 	if s.editing || len(saved) != 1 || len(saved[0]) != 1 || saved[0][0] != "main" {
 		t.Fatalf("editing=%v saved=%v", s.editing, saved)
 	}
-	v := s.View()
-	if !strings.Contains(v, "branches: filtered (1 pattern)") || strings.Contains(v, "lib/dev") || !strings.Contains(v, "lib (no matching branches)") {
+	v := shown(s)
+	if !strings.Contains(v, "branches: filtered (1 pattern)") || branchRow("lib", "dev").MatchString(v) || !branchRow("lib", "(no matching branches)").MatchString(v) {
 		t.Errorf("filter not applied after edit:\n%s", v)
 	}
 }
@@ -273,8 +281,8 @@ func TestBranchFilterEditorSaveErrorAndNoChange(t *testing.T) {
 	s.Update(kmsg("B"))
 	s.Update(kmsg("d"))
 	s.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if calls != 1 || !strings.Contains(s.View(), "disk full") {
-		t.Fatalf("calls=%d view:\n%s", calls, s.View())
+	if calls != 1 || !strings.Contains(shown(s), "disk full") {
+		t.Fatalf("calls=%d view:\n%s", calls, shown(s))
 	}
 }
 
@@ -282,7 +290,7 @@ func TestLoadingModalReplacedByData(t *testing.T) {
 	f := &fakeLister{jobs: []jenkins.Job{{FullName: "a", Color: "blue"}}}
 	s := New(f, "")
 	s.Update(tea.WindowSizeMsg{Width: 60, Height: 12})
-	if v := s.View(); !strings.Contains(v, "Loading jobs…") || !strings.Contains(v, "╭") {
+	if v := shown(s); !strings.Contains(v, "Loading jobs…") || !strings.Contains(v, "╭") {
 		t.Fatalf("modal expected: %q", v)
 	}
 	cmd := s.Init()
@@ -290,7 +298,7 @@ func TestLoadingModalReplacedByData(t *testing.T) {
 		t.Fatal("spinner must run while loading")
 	}
 	feed(t, s, cmd)
-	v := s.View()
+	v := shown(s)
 	if strings.Contains(v, "Loading") || !strings.Contains(v, "1 jobs") {
 		t.Fatalf("data expected: %q", v)
 	}
@@ -304,11 +312,47 @@ func TestRetryShowsModalThenStops(t *testing.T) {
 	s := New(f, "")
 	feed(t, s, s.Init())
 	_, cmd := s.Update(kmsg("r"))
-	if v := s.View(); !strings.Contains(v, "Loading jobs…") || !s.load.Active() {
+	if v := shown(s); !strings.Contains(v, "Loading jobs…") || !s.load.Active() {
 		t.Fatalf("retry must show the modal: %q", v)
 	}
 	feed(t, s, cmd)
-	if s.load.Active() || !strings.Contains(s.View(), "1 jobs") {
+	if s.load.Active() || !strings.Contains(shown(s), "1 jobs") {
 		t.Fatal("retry did not complete")
 	}
+}
+
+// shown is what the screen puts on the terminal: the subtitle on the title
+// row (if any), then the body.
+func shown(s core.Screen) string {
+	if st, ok := s.(core.Subtitler); ok {
+		return st.Subtitle() + "\n" + s.View()
+	}
+	return s.View()
+}
+
+func TestJobName(t *testing.T) {
+	for _, tc := range []struct {
+		job    jenkins.Job
+		parent string
+		want   string
+	}{
+		{jenkins.Job{FullName: "team/app/build"}, "team", "app/build"},
+		{jenkins.Job{FullName: "team/ui/feature%2Fx", Multibranch: "team/ui", Branch: "feature/x"}, "team", "ui › feature/x"},
+		{jenkins.Job{FullName: "ui/PR-2454", Multibranch: "ui", Branch: "PR-2454"}, "", "ui › PR-2454"},
+		// the parent is the Multibranch Project itself: keep its name
+		{jenkins.Job{FullName: "ui/develop", Multibranch: "ui", Branch: "develop"}, "ui", "ui › develop"},
+	} {
+		if got := JobName(tc.job, tc.parent).String(); got != tc.want {
+			t.Errorf("JobName(%q, %q) = %q, want %q", tc.job.FullName, tc.parent, got, tc.want)
+		}
+	}
+	r := Row(jenkins.Job{FullName: "ui/feature%2Fx", Multibranch: "ui", Branch: "feature/x"}, "", core.StatusSuccess)
+	if r.Key != "ui/feature%2Fx" || r.Label != "ui" || r.Branch != "feature/x" {
+		t.Errorf("Row = %+v (the key must stay the full, encoded name)", r)
+	}
+}
+
+// branchRow matches a row showing name and branch in their own columns.
+func branchRow(name, branch string) *regexp.Regexp {
+	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
 }

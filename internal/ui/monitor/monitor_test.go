@@ -214,7 +214,7 @@ func TestLifecycleAndContext(t *testing.T) {
 	if m.runs[0].phase != phRunning || m.runs[0].num != 7 || len(m.runs[0].stages) != 2 {
 		t.Fatalf("running: %+v", m.runs[0])
 	}
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	for _, w := range []string{"RUNNING", "job", "#7", "1m00s", "✔ Build → ⟳ Test"} {
 		if !strings.Contains(v, w) {
 			t.Errorf("view missing %q:\n%s", w, v)
@@ -228,7 +228,7 @@ func TestLifecycleAndContext(t *testing.T) {
 		if m.runs[0].phase != phFinished || m.runs[0].result != res {
 			t.Fatalf("%s: %+v", res, m.runs[0])
 		}
-		if v := ansi.Strip(m.View()); !strings.Contains(v, map[string]string{"FAILURE": "FAILED"}[res]+strings.Replace(res, "FAILURE", "", 1)) || !strings.Contains(v, "1m30s") {
+		if v := ansi.Strip(shown(m)); !strings.Contains(v, map[string]string{"FAILURE": "FAILED"}[res]+strings.Replace(res, "FAILURE", "", 1)) || !strings.Contains(v, "1m30s") {
 			t.Errorf("finished view %s: %s", res, v)
 		}
 	}
@@ -258,7 +258,7 @@ func TestQueueGoneFallback(t *testing.T) {
 	if m.runs[1].phase != phLeftQueue {
 		t.Fatalf("old: %+v", m.runs[1])
 	}
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	if !strings.Contains(v, "left queue") || strings.Contains(v, "→") {
 		t.Fatalf("view:\n%s", v)
 	}
@@ -271,7 +271,7 @@ func TestCancelledAndFailedStart(t *testing.T) {
 	if m.runs[0].result != "ABORTED" || m.runs[1].phase != phFailedStart {
 		t.Fatalf("%+v", m.runs)
 	}
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "failed to start: boom") {
+	if v := ansi.Strip(shown(m)); !strings.Contains(v, "failed to start: boom") {
 		t.Fatal(v)
 	}
 }
@@ -307,7 +307,7 @@ func TestNavigationDetailsAndTruncation(t *testing.T) {
 	if m.cursor != 0 {
 		t.Fatal("up")
 	}
-	v := m.View()
+	v := m.View() // the body; the Router fits the subtitle to the title row
 	if !strings.Contains(ansi.Strip(v), "Verify [✔ unit ‖ ⟳ it]") {
 		t.Fatalf("parallel rendering:\n%s", ansi.Strip(v))
 	}
@@ -320,7 +320,7 @@ func TestNavigationDetailsAndTruncation(t *testing.T) {
 		t.Fatal("expected ellipsis on narrow terminal")
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if d := ansi.Strip(m.View()); !m.details || !strings.Contains(d, "5s") || !strings.Contains(d, "Deploy-to-production") {
+	if d := ansi.Strip(shown(m)); !m.details || !strings.Contains(d, "5s") || !strings.Contains(d, "Deploy-to-production") {
 		t.Fatalf("details:\n%s", d)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -339,7 +339,7 @@ func TestEmptyRunsKeepsScheduling(t *testing.T) {
 	if len(*rec) != 1 || (*rec)[0].d != DefaultSlowInterval {
 		t.Fatalf("%v", *rec)
 	}
-	_ = m.View()
+	_ = shown(m)
 }
 
 // One long-lived monitor can be left and reopened: its runs and resolved build
@@ -445,7 +445,7 @@ func TestCollectionInitialSnapshot(t *testing.T) {
 	if (*rec)[0].d != DefaultFastInterval {
 		t.Fatalf("a running row => fast, got %v", (*rec)[0].d)
 	}
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	for _, w := range []string{"NOT BUILT", "MISSING", "showing all", "4 remaining", "RUNNING", "FAILED"} {
 		if !strings.Contains(v, w) {
 			t.Errorf("view missing %q:\n%s", w, v)
@@ -464,7 +464,7 @@ func TestSuccessFilterToggleAndCursorMapping(t *testing.T) {
 	if strings.Join(names, ",") != "b,c,d,gone" {
 		t.Fatalf("visible %v", names)
 	}
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	if !strings.Contains(v, "hiding 2 successful (s to show)") || !strings.Contains(v, "4 remaining") || strings.Contains(v, "  a  ") {
 		t.Fatalf("filtered view:\n%s", v)
 	}
@@ -474,7 +474,7 @@ func TestSuccessFilterToggleAndCursorMapping(t *testing.T) {
 		t.Fatalf("cursor maps to %q", m.runs[m.selected()].run.Job)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	if d := ansi.Strip(m.View()); !strings.Contains(d, "c #2") {
+	if d := ansi.Strip(shown(m)); !strings.Contains(d, "c #2") {
 		t.Fatalf("details of wrong row:\n%s", d)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -490,7 +490,7 @@ func TestSuccessFilterToggleAndCursorMapping(t *testing.T) {
 	if m.hideSuccess || len(m.visible()) != 6 || m.runs[m.selected()].run.Job != "gone" {
 		t.Fatalf("toggle: hide=%v vis=%d", m.hideSuccess, len(m.visible()))
 	}
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "showing all (s to hide successful)") {
+	if v := ansi.Strip(shown(m)); !strings.Contains(v, "showing all (s to hide successful)") {
 		t.Fatal(v)
 	}
 }
@@ -500,7 +500,7 @@ func TestAllSucceededNotice(t *testing.T) {
 	m, _, _ := newColl(c, []string{"a", "b"}, nil)
 	HideSuccess(m, true)
 	cycle(m)
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	if !strings.Contains(v, "All 2 jobs succeeded") || !strings.Contains(v, "s to show") {
 		t.Fatalf("notice:\n%s", v)
 	}
@@ -509,7 +509,7 @@ func TestAllSucceededNotice(t *testing.T) {
 		t.Fatal("no details on an empty view")
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "a") || strings.Contains(v, "succeeded") {
+	if v := ansi.Strip(shown(m)); !strings.Contains(v, "a") || strings.Contains(v, "succeeded") {
 		t.Fatalf("after s:\n%s", v)
 	}
 }
@@ -529,7 +529,7 @@ func TestTriggerAddReplacesRowAndShowsAll(t *testing.T) {
 	if m.runs[0].phase != phQueued || m.runs[0].why != "busy" {
 		t.Fatalf("queue ref not resolved: %+v", m.runs[0])
 	}
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "QUEUED") {
+	if v := ansi.Strip(shown(m)); !strings.Contains(v, "QUEUED") {
 		t.Fatal(v)
 	}
 	// Triggering a job that is not a row (yet) appends one; a failed start shows.
@@ -572,7 +572,7 @@ func TestSetJobsKeepsStateAddsAndDrops(t *testing.T) {
 	if !SetJobs(m, nil, nil) || len(m.runs) != 0 || m.cursor != 0 {
 		t.Fatal("empty collection")
 	}
-	_ = m.View()
+	_ = shown(m)
 }
 
 func TestSlowAndFastPollingDueness(t *testing.T) {
@@ -641,7 +641,7 @@ func TestStagesOnlyForRunningAndFailedDetails(t *testing.T) {
 	if c.stageN["b"] != 1 || len(m.runs[1].stages) != 1 {
 		t.Fatalf("details of failed row: %v %+v", c.stageN, m.runs[1].stages)
 	}
-	if d := ansi.Strip(m.View()); !strings.Contains(d, "✘ Build") {
+	if d := ansi.Strip(shown(m)); !strings.Contains(d, "✘ Build") {
 		t.Fatalf("details:\n%s", d)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -666,7 +666,7 @@ func TestStagesOnlyForRunningAndFailedDetails(t *testing.T) {
 	m2.Update(tea.KeyMsg{Type: tea.KeyDown})
 	_, cmd = m2.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	deliver(m2, cmd)
-	if d := ansi.Strip(m2.View()); !strings.Contains(d, "No pipeline stages") {
+	if d := ansi.Strip(shown(m2)); !strings.Contains(d, "No pipeline stages") {
 		t.Fatalf("details:\n%s", d)
 	}
 }
@@ -694,7 +694,7 @@ func TestLoadingModalThenHeaderSpinner(t *testing.T) {
 	if !m.load.Active() {
 		t.Fatal("cycle in flight must activate the spinner")
 	}
-	v := ansi.Strip(m.View())
+	v := ansi.Strip(shown(m))
 	if !strings.Contains(v, "Loading Nightly") || strings.Contains(v, "showing all") {
 		t.Fatalf("first cycle must show the modal only:\n%s", v)
 	}
@@ -707,12 +707,12 @@ func TestLoadingModalThenHeaderSpinner(t *testing.T) {
 		}
 	}
 	m.Update(results[0])
-	v = ansi.Strip(m.View())
+	v = ansi.Strip(shown(m))
 	if strings.Contains(v, "Loading Nightly") || !strings.Contains(v, "refreshing…") {
 		t.Fatalf("pending cycle with data must show the header spinner:\n%s", v)
 	}
 	m.Update(results[1])
-	if m.load.Active() || strings.Contains(ansi.Strip(m.View()), "refreshing…") {
+	if m.load.Active() || strings.Contains(ansi.Strip(shown(m)), "refreshing…") {
 		t.Fatal("spinner must stop when the cycle ends")
 	}
 	if cmd := m.load.Update(spinner.TickMsg{}); cmd != nil {
@@ -720,7 +720,7 @@ func TestLoadingModalThenHeaderSpinner(t *testing.T) {
 	}
 	// A later cycle over existing data: header spinner, rows never hidden.
 	m.Update(tickMsg{gen: m.gen})
-	v = ansi.Strip(m.View())
+	v = ansi.Strip(shown(m))
 	if !strings.Contains(v, "refreshing…") || !strings.Contains(v, "RUNNING") {
 		t.Fatalf("refresh must keep rows and show the spinner:\n%s", v)
 	}
@@ -742,7 +742,7 @@ func TestRefreshKeyPollsAllPollableRowsAndShowsSpinner(t *testing.T) {
 	c.buildN = nil // forget the first cycle; no time has passed, so slow rows are not due
 	before := len(*rec)
 	_, cmd := m.Update(keyR())
-	if !m.load.Active() || !strings.Contains(ansi.Strip(m.View()), "refreshing…") {
+	if !m.load.Active() || !strings.Contains(ansi.Strip(shown(m)), "refreshing…") {
 		t.Fatal("R must show the header spinner")
 	}
 	exec(m, cmd)
@@ -829,7 +829,7 @@ func TestFastAutomaticCycleKeepsSpinnerUntilMinimum(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	_, cmd := m.Update(tickMsg{gen: m.gen})
 	exec(m, cmd) // cycle finishes instantly
-	if !m.load.Active() || !strings.Contains(ansi.Strip(m.View()), "refreshing…") {
+	if !m.load.Active() || !strings.Contains(ansi.Strip(shown(m)), "refreshing…") {
 		t.Fatal("a fast cycle must still flash the spinner")
 	}
 	clk.t = clk.t.Add(time.Second)
@@ -844,4 +844,27 @@ func helpKeys(m *model) []string {
 		out = append(out, k.Help().Key+" "+k.Help().Desc)
 	}
 	return out
+}
+
+// shown is what the monitor puts on the terminal: its subtitle on the title
+// row, then the body.
+func shown(s core.Screen) string {
+	if st, ok := s.(core.Subtitler); ok {
+		return st.Subtitle() + "\n" + s.View()
+	}
+	return s.View()
+}
+
+func TestTitleNamesParent(t *testing.T) {
+	for _, tc := range []struct{ parent, name, want string }{
+		{"", "", "Run Monitor"},
+		{"", "Ops", "Run Monitor: Ops"},
+		{"team", "Ops", "Run Monitor · team · Ops"},
+		{"team/", "", "Run Monitor · team"},
+	} {
+		m := NewCollection(Deps{Parent: tc.parent}, tc.name, nil, nil)
+		if got := m.Title(); got != tc.want {
+			t.Errorf("Title(parent %q, name %q) = %q, want %q", tc.parent, tc.name, got, tc.want)
+		}
+	}
 }

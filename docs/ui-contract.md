@@ -14,7 +14,22 @@ type Screen interface {
 }
 ```
 
-The Router draws the title bar (row 1) and help bar (last row); `View` renders only the body area.
+The Router draws the title bar (row 1) and a footer: a full-width rule and, under it, the help bar (last row). `View` renders only the body area, which is 3 rows shorter than the terminal.
+
+```go
+type Subtitler interface { Subtitle() string } // optional
+```
+
+A screen with a status line (counts, filter state, notices) implements `Subtitler` instead of drawing that line in its body. The Router shows it on the title row after the title, in muted text, cut with `…` to fit the width (dropped when there is no room). Return `""` while there is nothing to count (first load, error, an editor open).
+
+```go
+type HelpGroup struct { Title string; Keys []key.Binding }
+type FullHelper interface { FullHelp() []HelpGroup } // optional
+```
+
+A screen with more keys than fit on one line implements `FullHelper`. Its `Keys()` then returns only the 4 or 5 main keys; the Router ends the help bar with `? all keys`, and `?` opens a panel at the bottom of the body with every group from `FullHelp()` as columns (`esc` or `?` closes it). While the panel is open the Router takes every key, and it closes on any navigation. `FullHelp()` returns nil while a text field has focus (filter box, name input, editor), during a first load or on an error: then there is no `? all keys`, and `?` reaches the screen as typed text. While a list's filter box has focus, `Keys()` returns `list.FilterEditKeys()`.
+
+The help bar never runs past the terminal width: keys that do not fit are dropped from the end and marked `…`; `? all keys` is never dropped.
 
 ## Session
 
@@ -53,9 +68,13 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 - `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing)` returns a colored label.
 - `th.ErrorView(title, err, hint)` boxed error with a hint line; `th.NoticeView(title, hint)` neutral box. Map domain errors to a `hint` in your own screen; core does not import `internal/jenkins`.
 
+## Job names
+
+`core.RelName(full, parent)` drops the Parent Job's prefix for display. `core.JobName{Name, Branch}` is how a job is shown; `String()` joins a Multibranch project and its branch with `core.BranchSep` (" › "), `Render(th)` draws the separator muted. Do not put a muted separator inside a row that has its own style (cursor, selected): the inner reset would cut that row's highlight short.
+
 ## Keymap
 
-Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
+Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. `?` is reserved for the help panel (`KeyHelp`, `KeyCloseHelp`, handled by the Router) on `FullHelper` screens. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
 
 ## Loading indicators
 

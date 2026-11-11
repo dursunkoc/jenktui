@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/ui/catalog"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/widgets"
 )
@@ -57,14 +58,18 @@ func (s *viewScreen) readMembers() {
 }
 
 func (s *viewScreen) rebuild() {
-	color := map[string]string{}
+	jobs := map[string]jenkins.Job{}
 	for _, j := range s.cat.Jobs {
-		color[j.FullName] = j.Color
+		jobs[j.FullName] = j
 	}
 	items := make([]widgets.Item, len(s.members))
 	for i, k := range s.members {
-		c, ok := color[k]
-		items[i] = widgets.Item{Key: k, Badge: badge(c), ShowBadge: true, Missing: s.loaded && !ok}
+		j, ok := jobs[k]
+		if !ok {
+			j = jenkins.Job{FullName: k} // missing: no branch info, shown by name
+		}
+		items[i] = catalog.Row(j, s.deps.Parent, badge(j.Color))
+		items[i].Missing = s.loaded && !ok
 	}
 	s.list.SetItems(items)
 }
@@ -74,22 +79,38 @@ func (s *viewScreen) Init() tea.Cmd {
 	return tea.Batch(s.load.Start(), s.loadCatalog(s.seq))
 }
 
-func (s *viewScreen) Title() string { return "Collection · " + s.name }
+func (s *viewScreen) Title() string { return s.titled("Collection") + " · " + s.name }
 
 func (s *viewScreen) Keys() []key.Binding {
 	if s.err != nil || s.loading && !s.loaded {
 		return []key.Binding{keyRefresh, core.KeyBack, core.KeyQuit}
 	}
-	ks := []key.Binding{core.KeyUp, core.KeyDown}
-	ks = append(ks, s.list.Keys()...)
-	return append(ks, keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh, core.KeyBack, core.KeyQuit)
+	if s.list.Filtering() {
+		return s.list.FilterEditKeys()
+	}
+	return []key.Binding{keyTrigger, keyMonitor, widgets.KeySelect, core.KeyFilter, core.KeyBack}
+}
+
+// FullHelp groups every key of an opened Collection for the help panel. It
+// is nil before the first load, on an error, or while the filter has focus.
+func (s *viewScreen) FullHelp() []core.HelpGroup {
+	if s.err != nil || s.loading && !s.loaded || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.MoveKeys()...)},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: s.list.FilterKeys()},
+		{Title: "Actions", Keys: []key.Binding{keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *viewScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-2, 1))
+		s.list.SetSize(s.w, max(s.h-1, 1))
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
 	case loadedMsg:
@@ -151,7 +172,7 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 	case !s.loaded:
 		return s, nil
 	case key.Matches(m, keyEdit):
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "Edit "+s.name, s.members, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("Edit", s.name), s.members, func(keys []string) error {
 			if !s.persist(keys) {
 				return fmt.Errorf("%s", s.notice)
 			}
@@ -170,7 +191,7 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		for _, k := range s.missing() {
 			missing[k] = true
 		}
-		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing)})
+		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing, namesOf(s.members, s.cat, s.deps.Parent))})
 	case key.Matches(m, keyRemove):
 		if it, ok := s.list.Cursor(); ok && it.Missing {
 			keys := slices.DeleteFunc(slices.Clone(s.members), func(k string) bool { return k == it.Key })
@@ -227,7 +248,7 @@ func (s *viewScreen) trigger() (core.Screen, tea.Cmd) {
 	if len(skipped) > 0 {
 		s.notice = "skipped missing: " + strings.Join(skipped, ", ")
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys)})
+	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys, namesOf(s.members, s.cat, s.deps.Parent))})
 }
 
 func (s *viewScreen) View() string {
@@ -240,6 +261,17 @@ func (s *viewScreen) View() string {
 			text = "Refreshing " + s.name + "…"
 		}
 		return s.load.Modal(text, s.w, s.h)
+	}
+	if len(s.members) == 0 {
+		return "\n" + s.theme.MutedTxt.Render("Empty collection. Press e to add jobs.")
+	}
+	return s.list.View()
+}
+
+// Subtitle is the count line shown next to the title.
+func (s *viewScreen) Subtitle() string {
+	if s.err != nil || !s.loaded {
+		return ""
 	}
 	head := plural(len(s.members), "job")
 	if n := len(s.list.Selected()); n > 0 {
@@ -254,8 +286,5 @@ func (s *viewScreen) View() string {
 	if s.loading || s.load.Active() {
 		head += " · " + s.load.View("refreshing…")
 	}
-	if len(s.members) == 0 {
-		return s.theme.MutedTxt.Render(head) + "\n" + s.theme.MutedTxt.Render("Empty collection. Press e to add jobs.")
-	}
-	return s.theme.MutedTxt.Render(head) + "\n" + s.list.View()
+	return head
 }

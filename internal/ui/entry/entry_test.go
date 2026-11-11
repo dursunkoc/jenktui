@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
@@ -194,7 +196,7 @@ func TestLoginValidationAndPrefill(t *testing.T) {
 		t.Fatal("username should be prefilled and token focused")
 	}
 	_, cmd := enter(l)
-	if cmd != nil || l.msg != "API token is required" {
+	if cmd != nil || l.msg != "password or API token is required" {
 		t.Fatalf("msg=%q", l.msg)
 	}
 	l.user.SetValue("")
@@ -204,6 +206,39 @@ func TestLoginValidationAndPrefill(t *testing.T) {
 	}
 	if l.token.EchoMode != textinput.EchoPassword {
 		t.Fatal("token must be masked")
+	}
+	// a password works as well as an API token, and the label must say so;
+	// where the secret goes is told in a note at the bottom of the box.
+	l.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	rows := strings.Split(ansi.Strip(l.View()), "\n")
+	text := strings.Join(rows, "\n")
+	if !strings.Contains(text, "│ Password or API token ") || strings.Contains(text, "(kept in memory") {
+		t.Fatalf("label:\n%s", text)
+	}
+	// the note is the last thing in the box, under a rule, after the fields.
+	label, rule, note := -1, -1, -1
+	for i, r := range rows {
+		switch {
+		case strings.Contains(r, "Password or API token"):
+			label = i
+		case strings.Contains(r, "│ ───"):
+			rule = i
+		case strings.Contains(r, "Your password"):
+			note = i
+		}
+	}
+	if !(label >= 0 && label < rule && rule+1 == note) {
+		t.Fatalf("note should come right under a rule, after the fields:\n%s", text)
+	}
+	var words []string
+	for _, r := range rows[note:] {
+		if strings.Contains(r, "╰") {
+			break // the box ends right after the note
+		}
+		words = append(words, strings.Fields(strings.Trim(r, " │"))...)
+	}
+	if got := strings.Join(words, " "); got != memoryNote {
+		t.Fatalf("note text = %q", got)
 	}
 }
 
@@ -294,7 +329,50 @@ func TestRouterIntegration(t *testing.T) {
 	sess := &core.Session{}
 	r := core.NewRouter(sess, NewSplash(sess, Deps{ConfigDir: t.TempDir()}))
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	if v := r.View(); !strings.Contains(v, "checking") {
+	if v := r.View(); !strings.Contains(v, "checking") || !strings.Contains(v, "Jenkins Terminal User Interface") {
 		t.Fatalf("splash view:\n%s", v)
+	}
+}
+
+// The logo lines and the tagline must share one centre: every logo line
+// starts in the same column and the tagline is centred under the logo.
+func TestSplashLogoAndTaglineAligned(t *testing.T) {
+	w := lipgloss.Width(logo[0])
+	for i, line := range logo {
+		if lipgloss.Width(line) != w {
+			t.Fatalf("logo line %d is %d wide, line 0 is %d", i, lipgloss.Width(line), w)
+		}
+	}
+	for _, termW := range []int{60, 61, 80, 121} {
+		s := NewSplash(&core.Session{}, Deps{ConfigDir: t.TempDir()})
+		s.Update(tea.WindowSizeMsg{Width: termW, Height: 24})
+		rows := strings.Split(ansi.Strip(s.View()), "\n")
+		start := -1
+		for i, l := range logo {
+			col := -1
+			for _, r := range rows {
+				if c := strings.Index(r, l); c >= 0 {
+					col = c
+					break
+				}
+			}
+			if col < 0 {
+				t.Fatalf("width %d: logo line %d not found:\n%s", termW, i, strings.Join(rows, "\n"))
+			}
+			if start < 0 {
+				start = col
+			} else if col != start {
+				t.Fatalf("width %d: logo line %d starts at %d, line 0 at %d", termW, i, col, start)
+			}
+		}
+		col := -1
+		for _, r := range rows {
+			if c := strings.Index(r, tagline); c >= 0 {
+				col = c
+			}
+		}
+		if want := start + (w-lipgloss.Width(tagline)+1)/2; col != want {
+			t.Fatalf("width %d: tagline starts at %d, want %d (centred under the logo)", termW, col, want)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/dursunkoc/jenktui/internal/branchfilter"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/widgets"
@@ -80,10 +81,10 @@ func (s *Screen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: it.Label, Disabled: true}
+			rows[i] = PlaceholderRow(it, s.parent)
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Badge: statusFromColor(it.Job.Color), ShowBadge: true}
+		rows[i] = Row(it.Job, s.parent, statusFromColor(it.Job.Color))
 	}
 	s.list.SetItems(rows)
 }
@@ -120,15 +121,31 @@ func (s *Screen) Keys() []key.Binding {
 		return []key.Binding{keyRetry, core.KeyBack, core.KeyQuit}
 	case s.loading:
 		return []key.Binding{core.KeyBack, core.KeyQuit}
+	case s.list.Filtering():
+		return s.list.FilterEditKeys()
 	}
-	return append(append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.Keys()...), KeyBranch, KeyEditor, core.KeyBack, core.KeyQuit)
+	return []key.Binding{core.KeyFilter, widgets.KeySelect, KeyBranch, core.KeyBack}
+}
+
+// FullHelp groups every catalog key for the help panel (? key). It is nil
+// while loading, on an error, or while a text field has focus.
+func (s *Screen) FullHelp() []core.HelpGroup {
+	if s.editing || s.err != nil || s.loading || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: append(s.list.FilterKeys(), KeyBranch, KeyEditor)},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *Screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-1, 1)) // 1 row for the count line
+		s.list.SetSize(s.w, max(s.h, 1))
 		return s, nil
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
@@ -196,6 +213,14 @@ func (s *Screen) View() string {
 	if s.editing {
 		return s.EditorView()
 	}
+	return s.list.View()
+}
+
+// Subtitle is the count and filter line shown next to the title.
+func (s *Screen) Subtitle() string {
+	if s.err != nil || s.loading && !s.loaded || s.editing {
+		return ""
+	}
 	count := fmt.Sprintf("%d jobs", s.list.Total())
 	if s.list.Filter() != "" {
 		count = fmt.Sprintf("%d of %d jobs", s.list.Len(), s.list.Total())
@@ -210,7 +235,32 @@ func (s *Screen) View() string {
 	if s.notice != "" {
 		count += " · " + s.notice
 	}
-	return s.theme.MutedTxt.Render(count) + "\n" + s.list.View()
+	return count
+}
+
+// JobName is how job j is shown under parent: relative to the parent, and
+// for a branch of a Multibranch Project as the project plus the decoded
+// branch name ("digital-ui › feature/x" rather than "digital-ui/feature%2Fx").
+func JobName(j jenkins.Job, parent string) core.JobName {
+	if j.Multibranch != "" && j.Branch != "" {
+		return core.JobName{Name: core.RelName(j.Multibranch, parent), Branch: j.Branch}
+	}
+	return core.JobName{Name: core.RelName(j.FullName, parent)}
+}
+
+// Row is the list row for job j: keyed by its full name, labelled with
+// JobName.
+func Row(j jenkins.Job, parent string, badge core.Status) widgets.Item {
+	n := JobName(j, parent)
+	return widgets.Item{Key: j.FullName, Label: n.Name, Branch: n.Branch, Badge: badge, ShowBadge: true}
+}
+
+// PlaceholderRow is the disabled row of a Multibranch Project with no
+// (matching) branches: the project in the name column, the reason, e.g.
+// "(no matching branches)", in the branch column.
+func PlaceholderRow(it branchfilter.Item, parent string) widgets.Item {
+	why := strings.TrimSpace(strings.TrimPrefix(it.Label, it.Project))
+	return widgets.Item{Key: it.Key(), Label: core.RelName(it.Project, parent), Branch: why, Disabled: true}
 }
 
 // statusFromColor maps a Jenkins "color" hint to a badge status.

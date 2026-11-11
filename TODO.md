@@ -19,7 +19,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 Things the fake server cannot prove. If any of these looks wrong on your Jenkins, report the exact behaviour and fix the fixtures too.
 
-- Login succeeds with a username and API token, and a wrong token shows the authentication hint.
+- Login succeeds with a username and API token, and with a username and password (including triggering a build, which needs a CSRF crumb), and a wrong one shows the authentication hint.
 - The Job Catalog lists your folders and Multibranch Projects correctly, and the status badges match each job's last build.
 - Branch names decode correctly (`feature%2Fx` shown and matched as `feature/x`). A project with no matching branches shows the dim row.
 - Triggering works: a plain job, a parameterized job, and a Multibranch branch. If a trigger fails, the error carries Jenkins' own text.

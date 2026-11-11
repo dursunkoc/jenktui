@@ -4,7 +4,7 @@ For whoever continues jenktui (a person or an agent). Read this first, then [TOD
 
 ## What it is
 
-A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete and unit-tested. It has not yet been run against a real Jenkins (see the checklist in TODO.md).
+A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and a password or API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete and unit-tested. It has not yet been run against a real Jenkins (see the checklist in TODO.md).
 
 ## Layout
 
@@ -17,7 +17,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/branchfilter` | Pure glob matcher and filter for Multibranch branch names. |
 | `internal/paramsmerge` | Pure logic that finds Common Parameters across jobs and resolves final values per job. |
 | `internal/ui/core` | `Screen` interface, `Router`, theme, keymap, `Loading` spinner. Frozen contract, documented in `docs/ui-contract.md`. |
-| `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder). |
+| `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. A blank line, the filter row, a blank line and the column titles (Pipeline, Branch, Status) sit above the rows. |
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
 | `internal/ui/collections` | Collections list, opened Collection view, picker. |
@@ -30,7 +30,7 @@ Screens receive their dependencies through constructors (listers, factories, fil
 
 These were agreed with the user. Change them only if the user asks.
 
-- **Credentials are never stored.** Username and API token are asked on every start and live in memory inside the client.
+- **Credentials are never stored.** Username and password or API token are asked on every start and live in memory inside the client.
 - **Go with Bubble Tea** (the user chose it over Python with Textual).
 - **Config:** TOML, `~/.config/jenktui/`, overridable with `JENKTUI_CONFIG_DIR`. Settings and Collections are separate files so the app never rewrites the hand-edited one except for Branch Filter patterns.
 - **Branch Filter** is one global list of case-sensitive globs on the decoded branch name. It only affects browsing and picking, never branches already in a Collection.
@@ -42,7 +42,8 @@ These were agreed with the user. Change them only if the user asks.
 
 - **Bubble Tea:** all async work is a `tea.Cmd`; no goroutines of our own. Screens that poll or fetch use a generation counter (monitor) or sequence number (collections) and drop stale messages. Spinner ticks stop when nothing is loading, so idle screens do not redraw.
 - **Loading feedback:** blocking `Modal` when a screen has nothing to show yet, header spinner when old data stays visible (`core.Loading`, 500ms minimum visible time).
-- **Keys:** reuse `core.KeyUp/Down/Enter/Back/Filter/Quit`. In a list, text typed into the filter box includes spaces; `↓` moves focus to the list and `↑` on the first row returns to the box.
+- **Keys:** reuse `core.KeyUp/Down/Enter/Back/Filter/Quit`. Screens with many keys implement `core.FullHelper`: `Keys()` returns only the few main ones for the help bar and `FullHelp()` groups all of them for the `?` panel (see `docs/ui-contract.md`). In a list, text typed into the filter box includes spaces; `↓` moves focus to the list and `↑` on the first row returns to the box.
+- **Job names** are shown relative to the Parent Job, and a Multibranch branch as `project › branch` with the decoded branch name: build them with `catalog.JobName(job, parent)` (a `core.JobName`) or `catalog.Row`. List items keep the full name as `Key` (filtering, selection, saved Collections) and put the project in `Label`, the branch in `Branch`; the list draws name, branch and badge as aligned columns sized to all its items, with the folders in the name column separated by a muted " › ". In e2e tests a job path such as `team/api/build` also matches that list form (helper `has`), so one expectation works on lists and on the Run Monitor and trigger screens, which print the path. The Run Monitor gets the names through `monitor.SetNames` and the trigger screen through `trigger.Deps.Names`; a job they have no name for is shown with `core.RelName`.
 - **Styling:** use the theme, never literal colours. Selected rows are bold accent, the cursor row is reverse video.
 - **Tests:** plain `go test`, driving `Update` with messages against `jenkinstest`; no real terminal and no sleeping. `e2e_test.go` in the root package drives the whole app through `newDeps` (the production wiring) using helpers in `e2e_helpers_test.go` (`newApp`, `key`, `typeText`, `screenText`, ...). Timers are dropped, so advance the monitor with `R`. Add a scenario there when a change spans screens. Anything time-based takes an injectable clock. Run `gofmt -l .`, `go vet ./...`, `go test -count=1 ./...` before committing; CI also runs `-race`.
 - **Docs:** when behaviour changes, update README (keys, config), GLOSSARY (terms only, no implementation detail) and `docs/ui-contract.md` (if `core` changes) in the same change.

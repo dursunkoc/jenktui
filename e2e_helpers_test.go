@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -263,11 +264,23 @@ func (h *harness) title() string { return h.router.Top().Title() }
 
 func contains(text string, subs ...string) bool {
 	for _, s := range subs {
-		if !strings.Contains(text, s) {
+		if !has(text, s) {
 			return false
 		}
 	}
 	return true
+}
+
+// has reports whether text contains sub. A job path such as
+// "team/api/build" also matches its form in a list's name column, "team ›
+// api › build", so the same expectation works on lists and on screens that
+// print the path (Run Monitor, trigger). The list form itself is checked by
+// its own tests.
+func has(text, sub string) bool {
+	if strings.Contains(text, sub) {
+		return true
+	}
+	return strings.Contains(sub, "/") && strings.Contains(text, strings.ReplaceAll(sub, "/", " › "))
 }
 
 // expect fails unless every substring is on screen.
@@ -275,18 +288,46 @@ func (h *harness) expect(subs ...string) {
 	h.t.Helper()
 	text := h.screenText()
 	for _, s := range subs {
-		if !strings.Contains(text, s) {
+		if !has(text, s) {
 			h.t.Fatalf("screen does not contain %q\n--- screen (%s) ---\n%s", s, h.title(), text)
 		}
 	}
 }
 
 // expectNot fails if any substring is on screen.
+// branchRow matches a list row that shows name and branch in their own
+// columns: "[ ] proj      main     ● SUCCESS".
+func branchRow(name, branch string) *regexp.Regexp {
+	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
+}
+
+// expectBranch takes name, branch pairs; each must be a list row.
+func (h *harness) expectBranch(pairs ...string) {
+	h.t.Helper()
+	text := h.screenText()
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if !branchRow(pairs[i], pairs[i+1]).MatchString(text) {
+			h.t.Fatalf("no row with %q and branch %q\n--- screen (%s) ---\n%s", pairs[i], pairs[i+1], h.title(), text)
+		}
+	}
+}
+
+// expectNoBranch takes name, branch pairs; none may be a list row.
+func (h *harness) expectNoBranch(pairs ...string) {
+	h.t.Helper()
+	text := h.screenText()
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if branchRow(pairs[i], pairs[i+1]).MatchString(text) {
+			h.t.Fatalf("unexpected row with %q and branch %q\n--- screen (%s) ---\n%s", pairs[i], pairs[i+1], h.title(), text)
+		}
+	}
+}
+
 func (h *harness) expectNot(subs ...string) {
 	h.t.Helper()
 	text := h.screenText()
 	for _, s := range subs {
-		if strings.Contains(text, s) {
+		if has(text, s) {
 			h.t.Fatalf("screen unexpectedly contains %q\n--- screen (%s) ---\n%s", s, h.title(), text)
 		}
 	}
@@ -304,7 +345,7 @@ func (h *harness) expectTitle(want string) {
 func (h *harness) row(sub string) string {
 	h.t.Helper()
 	for _, l := range strings.Split(h.screenText(), "\n") {
-		if strings.Contains(l, sub) {
+		if has(l, sub) {
 			return l
 		}
 	}
@@ -326,7 +367,7 @@ func (h *harness) expectRow(sub string, want ...string) {
 // hasLine reports whether any screen line contains sub.
 func (h *harness) hasLine(sub string) bool {
 	for _, l := range strings.Split(h.screenText(), "\n") {
-		if strings.Contains(l, sub) {
+		if has(l, sub) {
 			return true
 		}
 	}
@@ -379,7 +420,15 @@ func (h *harness) menuTo(index int) {
 	h.key("enter")
 }
 
-func (h *harness) openCollections() { h.t.Helper(); h.menuTo(0); h.expectTitle("Collections") }
+// openCollections opens the Collections list (titled "Collections", plus
+// " · parent" when a parent job is set).
+func (h *harness) openCollections() {
+	h.t.Helper()
+	h.menuTo(0)
+	if t := h.title(); t != "Collections" && !strings.HasPrefix(t, "Collections · ") {
+		h.t.Fatalf("not on the Collections list: %q", t)
+	}
+}
 
 func (h *harness) openCatalog() {
 	h.t.Helper()
@@ -393,7 +442,9 @@ func (h *harness) openCatalog() {
 func (h *harness) openCollection(name string) {
 	h.t.Helper()
 	h.key("enter")
-	h.expectTitle("Collection · " + name)
+	if t := h.title(); t != "Collection · "+name && !(strings.HasPrefix(t, "Collection · ") && strings.HasSuffix(t, " · "+name)) {
+		h.t.Fatalf("title = %q, want Collection · [parent · ]%s", t, name)
+	}
 }
 
 // ---- files ----

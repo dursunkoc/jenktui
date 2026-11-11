@@ -67,10 +67,10 @@ func (s *pickerScreen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: it.Label, Disabled: true}
+			rows[i] = catalog.PlaceholderRow(it, s.deps.Parent)
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Badge: badge(it.Job.Color), ShowBadge: true}
+		rows[i] = catalog.Row(it.Job, s.deps.Parent, badge(it.Job.Color))
 	}
 	s.list.SetItems(rows)
 	for k, v := range s.chosen {
@@ -115,8 +115,24 @@ func (s *pickerScreen) Keys() []key.Binding {
 	case !s.loaded:
 		return []key.Binding{core.KeyBack}
 	}
-	ks := append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.Keys()...)
-	return append(ks, catalog.KeyBranch, catalog.KeyEditor, keySave, core.KeyBack)
+	if s.list.Filtering() {
+		return s.list.FilterEditKeys()
+	}
+	return []key.Binding{widgets.KeySelect, core.KeyFilter, keySave, core.KeyBack}
+}
+
+// FullHelp groups every picker key for the help panel. It is nil while
+// loading, on an error, or while a text field has focus.
+func (s *pickerScreen) FullHelp() []core.HelpGroup {
+	if s.bp.Editing() || s.err != nil || !s.loaded || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: append(s.list.FilterKeys(), catalog.KeyBranch, catalog.KeyEditor)},
+		{Title: "General", Keys: []key.Binding{keySave, core.KeyBack}},
+	}
 }
 
 var keyRetry = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry"))
@@ -125,7 +141,7 @@ func (s *pickerScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-1, 1))
+		s.list.SetSize(s.w, max(s.h, 1))
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
 	case loadedMsg:
@@ -195,6 +211,15 @@ func (s *pickerScreen) View() string {
 		return s.bp.EditorView()
 	}
 	s.sync()
+	return s.list.View()
+}
+
+// Subtitle is the count and filter line shown next to the title.
+func (s *pickerScreen) Subtitle() string {
+	if s.err != nil || !s.loaded || s.bp.Editing() {
+		return ""
+	}
+	s.sync()
 	n := 0
 	for _, v := range s.chosen {
 		if v {
@@ -208,5 +233,5 @@ func (s *pickerScreen) View() string {
 	if s.notice != "" {
 		head += " · " + s.notice
 	}
-	return s.theme.MutedTxt.Render(head) + "\n" + s.list.View()
+	return head
 }

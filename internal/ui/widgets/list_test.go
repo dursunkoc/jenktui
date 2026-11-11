@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/muesli/termenv"
 )
@@ -99,13 +100,13 @@ func TestViewportScroll(t *testing.T) {
 		items = append(items, Item{Key: n})
 	}
 	l.SetItems(items)
-	l.SetSize(40, 4) // filter row + 3 items
+	l.SetSize(40, filterRows+3) // filter block + 3 items
 	if v := l.View(); !strings.Contains(v, "a1") || strings.Contains(v, "a4") {
 		t.Fatalf("initial view:\n%s", v)
 	}
 	run(l, "down", "down", "down", "down")
 	v := l.View()
-	if strings.Contains(v, "a1") || !strings.Contains(v, "a5") || strings.Count(v, "\n") != 3 {
+	if strings.Contains(v, "a1") || !strings.Contains(v, "a5") || strings.Count(v, "\n") != filterRows+2 {
 		t.Fatalf("scrolled view:\n%s", v)
 	}
 	run(l, "up", "up", "up", "up")
@@ -226,16 +227,166 @@ func TestCursorRowHighlighted(t *testing.T) {
 	defer lipgloss.SetColorProfile(prev)
 
 	l := newList(Options{})
+	cur := filterRows // the first item row
 	rows := strings.Split(l.View(), "\n")
-	if !strings.Contains(rows[1], "\x1b[7") && !strings.Contains(rows[1], ";7") {
-		t.Fatalf("cursor row not reversed: %q", rows[1])
+	if !strings.Contains(rows[cur], "\x1b[7") && !strings.Contains(rows[cur], ";7") {
+		t.Fatalf("cursor row not reversed: %q", rows[cur])
 	}
-	if strings.Contains(rows[2], "\x1b[7") || strings.Contains(rows[2], ";7m") {
-		t.Fatalf("non-cursor row should not be reversed: %q", rows[2])
+	if strings.Contains(rows[cur+1], "\x1b[7") || strings.Contains(rows[cur+1], ";7m") {
+		t.Fatalf("non-cursor row should not be reversed: %q", rows[cur+1])
 	}
 	run(l, "down")
 	rows = strings.Split(l.View(), "\n")
-	if strings.Contains(rows[1], "\x1b[7") || (!strings.Contains(rows[2], "\x1b[7") && !strings.Contains(rows[2], ";7")) {
-		t.Fatalf("highlight should follow the cursor: %q / %q", rows[1], rows[2])
+	if strings.Contains(rows[cur], "\x1b[7") || (!strings.Contains(rows[cur+1], "\x1b[7") && !strings.Contains(rows[cur+1], ";7")) {
+		t.Fatalf("highlight should follow the cursor: %q / %q", rows[cur], rows[cur+1])
+	}
+}
+
+// col is the column where sub starts in row (rune columns, ANSI stripped).
+func col(row, sub string) int {
+	i := strings.Index(row, sub)
+	if i < 0 {
+		return -1
+	}
+	return ansi.StringWidth(row[:i])
+}
+
+func rowsOf(l *List) []string {
+	return strings.Split(ansi.Strip(l.View()), "\n")[filterRows:]
+}
+
+// Name, branch and badge each sit in their own column on every row, wherever
+// the cursor is and whichever rows are selected; a placeholder's reason does
+// not widen the branch column.
+func TestColumnsAligned(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "lib", Label: "lib", Branch: "(no matching branches)", Disabled: true},
+		{Key: "ui/develop", Label: "ui", Branch: "develop", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "ui/feature%2Fx", Label: "ui", Branch: "feature/x", Badge: core.StatusFailed, ShowBadge: true},
+		{Key: "team/app/build", Label: "team/app/build", Badge: core.StatusRunning, ShowBadge: true},
+		{Key: "gone/job", Label: "gone/job", Missing: true},
+	})
+	l.Select("ui/develop")
+	for _, keys := range [][]string{nil, {"down"}, {"down"}, {"down"}, {"down"}} {
+		run(l, keys...)
+		rows := rowsOf(l)
+		box, branch, badge := col(rows[1], "["), col(rows[1], "develop"), col(rows[1], "●")
+		if box != 2 {
+			t.Fatalf("box at column %d, want 2: %q", box, rows[1])
+		}
+		for i, r := range rows {
+			if c := col(r, "["); c != box {
+				t.Errorf("cursor %d: row %d box at %d, want %d: %q", l.cursor, i, c, box, r)
+			}
+			if c := col(r, "●"); i > 0 && c != badge {
+				t.Errorf("cursor %d: row %d badge at %d, want %d: %q", l.cursor, i, c, badge, r)
+			}
+		}
+		if c := col(rows[2], "feature/x"); c != branch {
+			t.Errorf("cursor %d: branch column moved: %d vs %d", l.cursor, c, branch)
+		}
+		if c := col(rows[0], "(no matching"); c != branch {
+			t.Errorf("cursor %d: placeholder reason at %d, want the branch column %d", l.cursor, c, branch)
+		}
+		if !strings.HasPrefix(rows[l.cursor], ">") {
+			t.Errorf("cursor row lacks the > marker: %q", rows[l.cursor])
+		}
+	}
+	// the branch column is as wide as the longest real branch, not the reason.
+	if rows := rowsOf(l); col(rows[1], "●")-col(rows[1], "develop") != len("feature/x")+len(colGap) {
+		t.Errorf("branch column width: %q", rows[1])
+	}
+}
+
+// Without branches there is no branch column: the badge follows the name
+// column directly.
+func TestNoBranchColumn(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "a/b", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "a/longer", Badge: core.StatusFailed, ShowBadge: true},
+	})
+	rows := rowsOf(l)
+	if got, want := col(rows[0], "●"), 2+4+ansi.StringWidth("a › longer")+len(colGap); got != want || col(rows[1], "●") != want {
+		t.Fatalf("badge at %d, want %d:\n%s", got, want, strings.Join(rows, "\n"))
+	}
+}
+
+// On a narrow list the name column is cut with … first; the badge stays.
+func TestColumnsShrinkOnNarrowList(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	long := strings.Repeat("x", 60)
+	l.SetItems([]Item{{Key: long, Label: long, Branch: "main", Badge: core.StatusSuccess, ShowBadge: true}})
+	l.SetSize(50, 10)
+	row := rowsOf(l)[0]
+	if ansi.StringWidth(row) > 50 || !strings.Contains(row, "…") || !strings.Contains(row, "main") || !strings.Contains(row, "● SUCCESS") {
+		t.Fatalf("narrow row: %q (%d wide)", row, ansi.StringWidth(row))
+	}
+}
+
+// The column titles sit on the row under the filter row, each over its
+// column; with nothing to show the row stays blank.
+func TestColumnTitles(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "ui/develop", Label: "ui", Branch: "develop", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "team/app/build", Label: "team/app/build", Badge: core.StatusRunning, ShowBadge: true},
+	})
+	all := strings.Split(ansi.Strip(l.View()), "\n")
+	head, row := all[filterRows-1], all[filterRows]
+	if col(head, headName) != col(row, "ui") || col(head, headBranch) != col(row, "develop") || col(head, headStatus) != col(row, "●") {
+		t.Fatalf("titles not over their columns:\n%s\n%s", head, row)
+	}
+
+	// no branches: no Branch title; a column is never narrower than its title.
+	l.SetItems([]Item{{Key: "a", Badge: core.StatusSuccess, ShowBadge: true}})
+	all = strings.Split(ansi.Strip(l.View()), "\n")
+	head, row = all[filterRows-1], all[filterRows]
+	if strings.Contains(head, headBranch) || col(head, headStatus) != col(row, "●") {
+		t.Fatalf("without branches:\n%s\n%s", head, row)
+	}
+
+	l.Update(k("/"))
+	l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zzz")})
+	if all = strings.Split(ansi.Strip(l.View()), "\n"); strings.TrimSpace(all[filterRows-1]) != "" || !strings.Contains(all[filterRows], "no matches") {
+		t.Fatalf("no matches:\n%s", strings.Join(all, "\n"))
+	}
+}
+
+// Folders in the name column are separated by a muted " › " instead of "/";
+// only plain rows mute it, styled rows draw it in their own style. The key
+// and the branch column keep their slashes.
+func TestFolderSeparator(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(prev)
+
+	th := core.NewTheme()
+	l := NewList(th, Options{})
+	l.SetItems([]Item{
+		{Key: "team/api/build", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "team/api/deploy", Badge: core.StatusFailed, ShowBadge: true},
+		{Key: "team/ui/feature%2Fx", Label: "team/ui", Branch: "feature/x", Badge: core.StatusRunning, ShowBadge: true},
+	})
+	l.Select("team/api/deploy")
+	raw := strings.Split(l.View(), "\n")[filterRows:]
+	for i, want := range []string{"> [ ] team › api › build", "  [x] team › api › deploy", "  [ ] team › ui"} {
+		if got := ansi.Strip(raw[i]); !strings.HasPrefix(got, want+" ") {
+			t.Errorf("row %d = %q, want it to start with %q", i, got, want)
+		}
+	}
+	if !strings.Contains(ansi.Strip(raw[2]), " feature/x ") {
+		t.Errorf("branch column must keep its slash: %q", ansi.Strip(raw[2]))
+	}
+	muted := th.MutedTxt.Render(folderSep)
+	if !strings.Contains(raw[2], muted) {
+		t.Errorf("plain row should have a muted separator: %q", raw[2])
+	}
+	if strings.Contains(raw[0], muted) || strings.Contains(raw[1], muted) {
+		t.Errorf("cursor and selected rows must not embed a muted separator: %q / %q", raw[0], raw[1])
+	}
+	if got := l.Selected(); len(got) != 1 || got[0] != "team/api/deploy" {
+		t.Errorf("keys must keep their slashes: %v", got)
 	}
 }
