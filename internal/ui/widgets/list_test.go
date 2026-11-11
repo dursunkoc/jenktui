@@ -100,13 +100,13 @@ func TestViewportScroll(t *testing.T) {
 		items = append(items, Item{Key: n})
 	}
 	l.SetItems(items)
-	l.SetSize(40, 4) // filter row + 3 items
+	l.SetSize(40, filterRows+3) // filter block + 3 items
 	if v := l.View(); !strings.Contains(v, "a1") || strings.Contains(v, "a4") {
 		t.Fatalf("initial view:\n%s", v)
 	}
 	run(l, "down", "down", "down", "down")
 	v := l.View()
-	if strings.Contains(v, "a1") || !strings.Contains(v, "a5") || strings.Count(v, "\n") != 3 {
+	if strings.Contains(v, "a1") || !strings.Contains(v, "a5") || strings.Count(v, "\n") != filterRows+2 {
 		t.Fatalf("scrolled view:\n%s", v)
 	}
 	run(l, "up", "up", "up", "up")
@@ -227,17 +227,18 @@ func TestCursorRowHighlighted(t *testing.T) {
 	defer lipgloss.SetColorProfile(prev)
 
 	l := newList(Options{})
-	rows := strings.Split(l.View(), "\n") // blank, filter row, blank, items
-	if !strings.Contains(rows[3], "\x1b[7") && !strings.Contains(rows[3], ";7") {
-		t.Fatalf("cursor row not reversed: %q", rows[3])
+	cur := filterRows // the first item row
+	rows := strings.Split(l.View(), "\n")
+	if !strings.Contains(rows[cur], "\x1b[7") && !strings.Contains(rows[cur], ";7") {
+		t.Fatalf("cursor row not reversed: %q", rows[cur])
 	}
-	if strings.Contains(rows[4], "\x1b[7") || strings.Contains(rows[4], ";7m") {
-		t.Fatalf("non-cursor row should not be reversed: %q", rows[4])
+	if strings.Contains(rows[cur+1], "\x1b[7") || strings.Contains(rows[cur+1], ";7m") {
+		t.Fatalf("non-cursor row should not be reversed: %q", rows[cur+1])
 	}
 	run(l, "down")
 	rows = strings.Split(l.View(), "\n")
-	if strings.Contains(rows[3], "\x1b[7") || (!strings.Contains(rows[4], "\x1b[7") && !strings.Contains(rows[4], ";7")) {
-		t.Fatalf("highlight should follow the cursor: %q / %q", rows[3], rows[4])
+	if strings.Contains(rows[cur], "\x1b[7") || (!strings.Contains(rows[cur+1], "\x1b[7") && !strings.Contains(rows[cur+1], ";7")) {
+		t.Fatalf("highlight should follow the cursor: %q / %q", rows[cur], rows[cur+1])
 	}
 }
 

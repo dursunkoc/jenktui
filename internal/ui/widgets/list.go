@@ -264,8 +264,8 @@ func (l *List) cycleStatus() {
 }
 
 // filterRows is the height of the filter block: a blank line, the filter
-// row, and the column titles (a blank line when nothing matches).
-const filterRows = 3
+// row, a blank line and the column titles (blank when nothing matches).
+const filterRows = 4
 
 func (l *List) rows() int { return max(l.h-filterRows, 1) }
 
@@ -374,8 +374,8 @@ func (l *List) updateFilter(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// View renders a blank line, the filter row and the column titles,
-// followed by the visible window of items.
+// View renders a blank line, the filter row, a blank line and the column
+// titles, followed by the visible window of items.
 func (l *List) View() string {
 	var b strings.Builder
 	b.WriteString("\n")
@@ -400,12 +400,12 @@ func (l *List) View() string {
 	}
 	v := l.visible()
 	if len(v) == 0 {
-		b.WriteString("\n\n" + l.theme.MutedTxt.Render("no matches"))
+		b.WriteString("\n\n\n" + l.theme.MutedTxt.Render("no matches"))
 		return b.String()
 	}
 	end := min(l.offset+l.rows(), len(v))
 	nameW, branchW, branchCol := l.columns()
-	b.WriteString("\n" + l.header(nameW, branchW, branchCol))
+	b.WriteString("\n\n" + l.header(nameW, branchW, branchCol))
 	for r := l.offset; r < end; r++ {
 		it := l.items[v[r]]
 		box := "[ ]"
