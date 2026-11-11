@@ -70,7 +70,7 @@ func TestLoadSuccess(t *testing.T) {
 	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	v := shown(s)
 	// names are shown relative to the parent; one outside it stays whole.
-	for _, want := range []string{"3 jobs", "[ ] a ", "[ ] b ", "[ ] x/c ", "SUCCESS", "RUNNING", "FAILED"} {
+	for _, want := range []string{"3 jobs", "[ ] a ", "[ ] b ", "[ ] x › c ", "SUCCESS", "RUNNING", "FAILED"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q:\n%s", want, v)
 		}

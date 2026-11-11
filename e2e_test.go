@@ -488,7 +488,7 @@ func TestCatalogHeaderLayout(t *testing.T) {
 	if !strings.HasPrefix(rows[0], h.title()) || !strings.HasSuffix(rows[0], "8 jobs · branches: all") {
 		t.Fatalf("title row = %q", rows[0])
 	}
-	if rows[1] != "" || rows[2] != "press / to filter, s for status" || rows[3] != "" || strings.Fields(rows[4])[0] != "Pipeline" || !strings.Contains(rows[5], "team/api/build") {
+	if rows[1] != "" || rows[2] != "press / to filter, s for status" || rows[3] != "" || strings.Fields(rows[4])[0] != "Pipeline" || !strings.Contains(rows[5], "[ ] team › api › build ") {
 		t.Fatalf("body rows:\n%s", strings.Join(rows[:6], "\n"))
 	}
 	h.key("/")
@@ -558,7 +558,7 @@ func TestCollectionsLifecycle(t *testing.T) {
 	// open it: jobs and badges in order.
 	h.openCollection("Release")
 	h.expect("2 jobs")
-	b, tst := strings.Index(h.screenText(), "team/web/build"), strings.Index(h.screenText(), "team/web/test")
+	b, tst := strings.Index(h.screenText(), "team › web › build"), strings.Index(h.screenText(), "team › web › test")
 	if b < 0 || tst < 0 || b > tst {
 		t.Fatalf("members out of order:\n%s", h.screenText())
 	}

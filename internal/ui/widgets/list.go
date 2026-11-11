@@ -416,7 +416,8 @@ func (l *List) View() string {
 			box = "[x]"
 		}
 		// Columns: box, name, branch (only when some row has one), badge.
-		line := box + " " + cell(labelOf(it), nameW)
+		name := cell(nameOf(it), nameW)
+		line := box + " " + name
 		switch {
 		case branchCol && hasBadge(it):
 			line += colGap + cell(it.Branch, branchW)
@@ -440,12 +441,20 @@ func (l *List) View() string {
 		// column of the gap before the badge, so every column stays where it
 		// is on the other rows.
 		prefix, gap := "  ", colGap
+		plain := !it.Disabled && !(l.selected[it.Key] && !it.Missing) // no style of its own
 		if r == l.cursor {
 			style = style.Reverse(true).Bold(true)
 			line = " " + line + " "
-			prefix, gap = l.theme.Selected.Render(">"), colGap[1:]
+			prefix, gap, plain = l.theme.Selected.Render(">"), colGap[1:], false
 		}
-		line = style.Render(line)
+		if plain {
+			// Plain rows draw the folder separators muted. A styled row keeps
+			// them in its own style: a muted part inside it would reset, and
+			// so cut short, the row's highlight.
+			line = box + " " + strings.ReplaceAll(name, folderSep, l.theme.MutedTxt.Render(folderSep)) + line[len(box)+1+len(name):]
+		} else {
+			line = style.Render(line)
+		}
 		switch {
 		case it.Missing:
 			line += gap + l.theme.Badge(core.StatusMissing)
@@ -460,6 +469,14 @@ func (l *List) View() string {
 
 // colGap separates the columns of a row.
 const colGap = "  "
+
+// folderSep replaces "/" between the folders of a name in the name column:
+// "team/api/build" is shown as "team › api › build".
+const folderSep = " › "
+
+// nameOf is the name column's text for it: its label with the folders
+// separated by folderSep. Only the display changes; Key keeps the "/".
+func nameOf(it Item) string { return strings.ReplaceAll(labelOf(it), "/", folderSep) }
 
 // Narrowest the name and branch columns get on a narrow terminal.
 const (
@@ -506,7 +523,7 @@ func (l *List) header(nameW, branchW int, branchCol bool) string {
 func (l *List) columns() (nameW, branchW int, branchCol bool) {
 	badgeW := 0
 	for _, it := range l.items {
-		nameW = max(nameW, lipgloss.Width(labelOf(it)))
+		nameW = max(nameW, lipgloss.Width(nameOf(it)))
 		branchCol = branchCol || it.Branch != ""
 		if !hasBadge(it) {
 			continue

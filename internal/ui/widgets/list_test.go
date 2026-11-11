@@ -308,7 +308,7 @@ func TestNoBranchColumn(t *testing.T) {
 		{Key: "a/longer", Badge: core.StatusFailed, ShowBadge: true},
 	})
 	rows := rowsOf(l)
-	if got, want := col(rows[0], "●"), 2+4+len("a/longer")+len(colGap); got != want || col(rows[1], "●") != want {
+	if got, want := col(rows[0], "●"), 2+4+ansi.StringWidth("a › longer")+len(colGap); got != want || col(rows[1], "●") != want {
 		t.Fatalf("badge at %d, want %d:\n%s", got, want, strings.Join(rows, "\n"))
 	}
 }
@@ -351,5 +351,42 @@ func TestColumnTitles(t *testing.T) {
 	l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zzz")})
 	if all = strings.Split(ansi.Strip(l.View()), "\n"); strings.TrimSpace(all[filterRows-1]) != "" || !strings.Contains(all[filterRows], "no matches") {
 		t.Fatalf("no matches:\n%s", strings.Join(all, "\n"))
+	}
+}
+
+// Folders in the name column are separated by a muted " › " instead of "/";
+// only plain rows mute it, styled rows draw it in their own style. The key
+// and the branch column keep their slashes.
+func TestFolderSeparator(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(prev)
+
+	th := core.NewTheme()
+	l := NewList(th, Options{})
+	l.SetItems([]Item{
+		{Key: "team/api/build", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "team/api/deploy", Badge: core.StatusFailed, ShowBadge: true},
+		{Key: "team/ui/feature%2Fx", Label: "team/ui", Branch: "feature/x", Badge: core.StatusRunning, ShowBadge: true},
+	})
+	l.Select("team/api/deploy")
+	raw := strings.Split(l.View(), "\n")[filterRows:]
+	for i, want := range []string{"> [ ] team › api › build", "  [x] team › api › deploy", "  [ ] team › ui"} {
+		if got := ansi.Strip(raw[i]); !strings.HasPrefix(got, want+" ") {
+			t.Errorf("row %d = %q, want it to start with %q", i, got, want)
+		}
+	}
+	if !strings.Contains(ansi.Strip(raw[2]), " feature/x ") {
+		t.Errorf("branch column must keep its slash: %q", ansi.Strip(raw[2]))
+	}
+	muted := th.MutedTxt.Render(folderSep)
+	if !strings.Contains(raw[2], muted) {
+		t.Errorf("plain row should have a muted separator: %q", raw[2])
+	}
+	if strings.Contains(raw[0], muted) || strings.Contains(raw[1], muted) {
+		t.Errorf("cursor and selected rows must not embed a muted separator: %q / %q", raw[0], raw[1])
+	}
+	if got := l.Selected(); len(got) != 1 || got[0] != "team/api/deploy" {
+		t.Errorf("keys must keep their slashes: %v", got)
 	}
 }

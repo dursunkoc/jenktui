@@ -264,11 +264,23 @@ func (h *harness) title() string { return h.router.Top().Title() }
 
 func contains(text string, subs ...string) bool {
 	for _, s := range subs {
-		if !strings.Contains(text, s) {
+		if !has(text, s) {
 			return false
 		}
 	}
 	return true
+}
+
+// has reports whether text contains sub. A job path such as
+// "team/api/build" also matches its form in a list's name column, "team ›
+// api › build", so the same expectation works on lists and on screens that
+// print the path (Run Monitor, trigger). The list form itself is checked by
+// its own tests.
+func has(text, sub string) bool {
+	if strings.Contains(text, sub) {
+		return true
+	}
+	return strings.Contains(sub, "/") && strings.Contains(text, strings.ReplaceAll(sub, "/", " › "))
 }
 
 // expect fails unless every substring is on screen.
@@ -276,7 +288,7 @@ func (h *harness) expect(subs ...string) {
 	h.t.Helper()
 	text := h.screenText()
 	for _, s := range subs {
-		if !strings.Contains(text, s) {
+		if !has(text, s) {
 			h.t.Fatalf("screen does not contain %q\n--- screen (%s) ---\n%s", s, h.title(), text)
 		}
 	}
@@ -315,7 +327,7 @@ func (h *harness) expectNot(subs ...string) {
 	h.t.Helper()
 	text := h.screenText()
 	for _, s := range subs {
-		if strings.Contains(text, s) {
+		if has(text, s) {
 			h.t.Fatalf("screen unexpectedly contains %q\n--- screen (%s) ---\n%s", s, h.title(), text)
 		}
 	}
@@ -333,7 +345,7 @@ func (h *harness) expectTitle(want string) {
 func (h *harness) row(sub string) string {
 	h.t.Helper()
 	for _, l := range strings.Split(h.screenText(), "\n") {
-		if strings.Contains(l, sub) {
+		if has(l, sub) {
 			return l
 		}
 	}
@@ -355,7 +367,7 @@ func (h *harness) expectRow(sub string, want ...string) {
 // hasLine reports whether any screen line contains sub.
 func (h *harness) hasLine(sub string) bool {
 	for _, l := range strings.Split(h.screenText(), "\n") {
-		if strings.Contains(l, sub) {
+		if has(l, sub) {
 			return true
 		}
 	}
