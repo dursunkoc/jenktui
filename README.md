@@ -75,7 +75,9 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Where | Keys |
 |---|---|
 | Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit |
+| Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
+| Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
 | Catalog and picker | `b` Branch Filter on/off, `B` edit patterns |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |

@@ -140,6 +140,7 @@ var (
 	keyMonitor = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "monitor"))
 	keyConfirm = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
 	keyCancel  = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))
+	keyOpen    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open"))
 )
 
 type mode int
@@ -191,7 +192,20 @@ func (s *listScreen) Keys() []key.Binding {
 	case modeDelete:
 		return []key.Binding{keyYes, keyNo}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, core.KeyEnter, keyNew, keyMonitor, keyEdit, keyRename, keyDelete, core.KeyBack, core.KeyQuit}
+	return []key.Binding{keyOpen, keyNew, keyMonitor, core.KeyBack}
+}
+
+// FullHelp groups every key of the Collections list for the help panel. It
+// is nil while a name is typed, a delete is confirmed or a monitor waits.
+func (s *listScreen) FullHelp() []core.HelpGroup {
+	if s.monName != "" || s.mode != modeList {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Collections", Keys: []key.Binding{keyOpen, keyNew, keyEdit, keyRename, keyDelete, keyMonitor}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *listScreen) current() (config.Collection, bool) {

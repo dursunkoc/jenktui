@@ -16,6 +16,15 @@ type Screen interface {
 
 The Router draws the title bar (row 1) and help bar (last row); `View` renders only the body area.
 
+```go
+type HelpGroup struct { Title string; Keys []key.Binding }
+type FullHelper interface { FullHelp() []HelpGroup } // optional
+```
+
+A screen with more keys than fit on one line implements `FullHelper`. Its `Keys()` then returns only the 4 or 5 main keys; the Router ends the help bar with `? all keys`, and `?` opens a panel at the bottom of the body with every group from `FullHelp()` as columns (`esc` or `?` closes it). While the panel is open the Router takes every key, and it closes on any navigation. `FullHelp()` returns nil while a text field has focus (filter box, name input, editor), during a first load or on an error: then there is no `? all keys`, and `?` reaches the screen as typed text. While a list's filter box has focus, `Keys()` returns `list.FilterEditKeys()`.
+
+The help bar never runs past the terminal width: keys that do not fit are dropped from the end and marked `…`; `? all keys` is never dropped.
+
 ## Session
 
 ```go
@@ -55,7 +64,7 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 
 ## Keymap
 
-Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
+Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. `?` is reserved for the help panel (`KeyHelp`, `KeyCloseHelp`, handled by the Router) on `FullHelper` screens. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
 
 ## Loading indicators
 

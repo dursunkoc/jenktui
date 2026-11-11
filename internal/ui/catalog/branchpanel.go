@@ -21,7 +21,7 @@ type Settings struct {
 // Job Catalog.
 var (
 	KeyBranch = key.NewBinding(key.WithKeys("b"), key.WithHelp("b", "branches on/off"))
-	KeyEditor = key.NewBinding(key.WithKeys("B"), key.WithHelp("B", "branch filter"))
+	KeyEditor = key.NewBinding(key.WithKeys("B"), key.WithHelp("B", "edit branch filter"))
 
 	keyAdd  = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "add"))
 	keyDel  = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete"))

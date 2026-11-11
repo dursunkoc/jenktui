@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
@@ -432,6 +433,48 @@ func TestCatalogFilterBoxAndListFocus(t *testing.T) {
 	h.typeText("s")
 	h.expectNot("status:")
 	h.expect("of 8 jobs")
+}
+
+// The help bar shows a few keys and "? all keys"; ? opens a panel with every
+// key, grouped. While a text field has focus ? is typed instead.
+func TestHelpBarAndPanel(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	bar := func() string {
+		lines := strings.Split(h.screenText(), "\n")
+		return lines[len(lines)-1]
+	}
+	if got := bar(); !strings.HasPrefix(got, "t trigger") || !strings.HasSuffix(got, "? all keys") || strings.Contains(got, "x remove missing") {
+		t.Fatalf("help bar = %q", got)
+	}
+
+	h.key("?")
+	h.expect("Navigation", "Selection", "Filter", "Actions", "General", "x remove missing", "R refresh", "shift+↑", "esc/? close help")
+	h.expect("team/web/test") // the Collection stays visible above the panel
+	h.key("esc")              // closes the panel, does not leave the Collection
+	h.expectTitle("Collection · Ops")
+	h.expectNot("x remove missing")
+
+	// in the filter box ? is text and the bar shows the box's keys.
+	h.key("/")
+	if got := bar(); got != "enter/↓ go to list · esc clear filter" {
+		t.Fatalf("filter help bar = %q", got)
+	}
+	h.typeText("?")
+	h.expectNot("Actions")
+	h.expect("no matches")
+	h.key("esc")
+
+	// the bar never runs past the terminal edge (it used to overflow and wrap).
+	for _, w := range []int{60, 80, 100, 120} {
+		h.send(tea.WindowSizeMsg{Width: w, Height: 24})
+		if got := bar(); ansi.StringWidth(got) > w || !strings.HasSuffix(got, "? all keys") {
+			t.Fatalf("width %d: help bar %q (%d wide)", w, got, ansi.StringWidth(got))
+		}
+	}
 }
 
 // ---- 4. Collections lifecycle ----

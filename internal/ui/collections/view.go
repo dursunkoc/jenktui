@@ -80,9 +80,25 @@ func (s *viewScreen) Keys() []key.Binding {
 	if s.err != nil || s.loading && !s.loaded {
 		return []key.Binding{keyRefresh, core.KeyBack, core.KeyQuit}
 	}
-	ks := []key.Binding{core.KeyUp, core.KeyDown}
-	ks = append(ks, s.list.Keys()...)
-	return append(ks, keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh, core.KeyBack, core.KeyQuit)
+	if s.list.Filtering() {
+		return s.list.FilterEditKeys()
+	}
+	return []key.Binding{keyTrigger, keyMonitor, widgets.KeySelect, core.KeyFilter, core.KeyBack}
+}
+
+// FullHelp groups every key of an opened Collection for the help panel. It
+// is nil before the first load, on an error, or while the filter has focus.
+func (s *viewScreen) FullHelp() []core.HelpGroup {
+	if s.err != nil || s.loading && !s.loaded || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.MoveKeys()...)},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: s.list.FilterKeys()},
+		{Title: "Actions", Keys: []key.Binding{keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *viewScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {

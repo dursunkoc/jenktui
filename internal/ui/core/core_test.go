@@ -7,6 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type fake struct {
@@ -96,6 +98,138 @@ func TestBadgeAndErrorView(t *testing.T) {
 	for _, want := range []string{"Login failed", "401", "check your API token"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("error view missing %q", want)
+		}
+	}
+}
+
+// helpFake is a FullHelper; typing toggles whether a text field has focus.
+type helpFake struct {
+	fake
+	typing bool
+}
+
+func (f *helpFake) FullHelp() []HelpGroup {
+	if f.typing {
+		return nil
+	}
+	return []HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{KeyUp, KeyDown}},
+		{Title: "General", Keys: []key.Binding{KeyBack, KeyQuit}},
+	}
+}
+
+func (f *helpFake) Update(m tea.Msg) (Screen, tea.Cmd) { f.fake.Update(m); return f, nil }
+
+func keyRune(r rune) tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}} }
+
+func TestHelpPanelOpensAndCloses(t *testing.T) {
+	s := &helpFake{fake: fake{name: "a"}}
+	r := NewRouter(&Session{}, s)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	if v := ansi.Strip(r.View()); !strings.Contains(v, "? all keys") || strings.Contains(v, "Navigation") {
+		t.Fatalf("closed panel:\n%s", v)
+	}
+	r.Update(keyRune('?'))
+	v := ansi.Strip(r.View())
+	for _, want := range []string{"body-a", "Navigation", "General", "↑/k up", "esc back", "esc/? close help"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("open panel missing %q:\n%s", want, v)
+		}
+	}
+	if n := strings.Count(v, "\n") + 1; n != 24 {
+		t.Errorf("view rows = %d, want 24", n)
+	}
+	// the panel takes every key; esc closes it without reaching the screen.
+	r.Update(keyRune('x'))
+	r.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if len(s.got) != 0 {
+		t.Fatalf("keys reached the screen behind the panel: %v", s.got)
+	}
+	if strings.Contains(ansi.Strip(r.View()), "Navigation") {
+		t.Fatal("esc should close the panel")
+	}
+	r.Update(keyRune('?'))
+	r.Update(keyRune('?'))
+	if strings.Contains(ansi.Strip(r.View()), "Navigation") {
+		t.Fatal("? should close the panel")
+	}
+	// navigation closes it too, so it never shows over another screen.
+	r.Update(keyRune('?'))
+	r.Update(Push{&fake{name: "b"}})
+	r.Update(Pop{})
+	if strings.Contains(ansi.Strip(r.View()), "Navigation") {
+		t.Fatal("panel survived navigation")
+	}
+}
+
+func TestHelpKeyIsTypedWhileTextFieldHasFocus(t *testing.T) {
+	s := &helpFake{fake: fake{name: "a"}, typing: true}
+	r := NewRouter(&Session{}, s)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r.Update(keyRune('?'))
+	if len(s.got) != 1 {
+		t.Fatalf("? should reach the screen, got %v", s.got)
+	}
+	if v := ansi.Strip(r.View()); strings.Contains(v, "all keys") || strings.Contains(v, "Navigation") {
+		t.Fatalf("no panel while typing:\n%s", v)
+	}
+	// a screen that is not a FullHelper also gets ?.
+	f := &fake{name: "plain"}
+	r = NewRouter(&Session{}, f)
+	r.Update(keyRune('?'))
+	if len(f.got) != 1 {
+		t.Fatal("? should reach a plain screen")
+	}
+}
+
+func TestHelpBarFitsWidth(t *testing.T) {
+	keys := []key.Binding{KeyUp, KeyDown, KeyFilter, KeyEnter, KeyBack, KeyQuit}
+	h := NewHelp()
+	full := ansi.Strip(h.View(keys, true, 0))
+	if !strings.HasSuffix(full, "? all keys") || strings.Contains(full, "…") {
+		t.Fatalf("unlimited: %q", full)
+	}
+	for w := 20; w <= lipgloss.Width(full)+2; w++ {
+		v := ansi.Strip(h.View(keys, true, w))
+		if lipgloss.Width(v) > w {
+			t.Fatalf("width %d: %q is %d wide", w, v, lipgloss.Width(v))
+		}
+		if !strings.HasSuffix(v, "? all keys") {
+			t.Fatalf("width %d: ? all keys was cut: %q", w, v)
+		}
+		if lipgloss.Width(v) < lipgloss.Width(full) && !strings.Contains(v, "…") {
+			t.Fatalf("width %d: dropped keys without …: %q", w, v)
+		}
+	}
+	if v := ansi.Strip(h.View(keys, false, 30)); lipgloss.Width(v) > 30 || !strings.HasSuffix(v, "…") {
+		t.Fatalf("no tail: %q", v)
+	}
+}
+
+func TestHelpPanelColumnsFitWidth(t *testing.T) {
+	groups := []HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{KeyUp, KeyDown}},
+		{Title: "Filter", Keys: []key.Binding{KeyFilter}},
+		{Title: "Empty", Keys: []key.Binding{key.NewBinding(key.WithKeys("z"), key.WithHelp("z", "off"), key.WithDisabled())}},
+		{Title: "General", Keys: []key.Binding{KeyBack, KeyQuit}},
+	}
+	h := NewHelp()
+	wide := ansi.Strip(h.Panel(groups, 120))
+	if lipgloss.Height(wide) != 4 { // rule, title, two keys: all side by side
+		t.Fatalf("wide panel should be one row of columns:\n%s", wide)
+	}
+	if strings.Contains(wide, "Empty") {
+		t.Fatal("a group with only disabled keys must be skipped")
+	}
+	narrow := ansi.Strip(h.Panel(groups, 14))
+	for _, line := range strings.Split(narrow, "\n") {
+		if lipgloss.Width(line) > 14 {
+			t.Fatalf("line wider than 14: %q\n%s", line, narrow)
+		}
+	}
+	for _, want := range []string{"Navigation", "Filter", "General", "esc back", "q   quit"} {
+		if !strings.Contains(narrow, want) {
+			t.Fatalf("narrow panel missing %q:\n%s", want, narrow)
 		}
 	}
 }

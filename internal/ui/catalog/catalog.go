@@ -120,8 +120,24 @@ func (s *Screen) Keys() []key.Binding {
 		return []key.Binding{keyRetry, core.KeyBack, core.KeyQuit}
 	case s.loading:
 		return []key.Binding{core.KeyBack, core.KeyQuit}
+	case s.list.Filtering():
+		return s.list.FilterEditKeys()
 	}
-	return append(append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.Keys()...), KeyBranch, KeyEditor, core.KeyBack, core.KeyQuit)
+	return []key.Binding{core.KeyFilter, widgets.KeySelect, KeyBranch, core.KeyBack}
+}
+
+// FullHelp groups every catalog key for the help panel (? key). It is nil
+// while loading, on an error, or while a text field has focus.
+func (s *Screen) FullHelp() []core.HelpGroup {
+	if s.editing || s.err != nil || s.loading || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: append(s.list.FilterKeys(), KeyBranch, KeyEditor)},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *Screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {

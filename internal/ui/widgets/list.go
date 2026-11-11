@@ -29,12 +29,18 @@ type Options struct {
 }
 
 var (
-	keyToggle   = key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select"))
-	keyAll      = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all"))
-	keyNone     = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "none"))
+	// KeySelect toggles the row under the cursor; screens show it in their
+	// help bar.
+	KeySelect   = key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select"))
+	keyAll      = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "select all"))
+	keyNone     = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "clear selection"))
 	keyStatus   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "status filter"))
 	keyMoveUp   = key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("shift+↑", "move up"))
 	keyMoveDown = key.NewBinding(key.WithKeys("shift+down"), key.WithHelp("shift+↓", "move down"))
+
+	// shown while the filter box has focus
+	keyFilterDone  = key.NewBinding(key.WithKeys("enter", "down"), key.WithHelp("enter/↓", "go to list"))
+	keyFilterClear = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
 )
 
 // List is a filterable multi-select list. It is a sub-model, not a
@@ -131,11 +137,25 @@ func (l *List) Cursor() (Item, bool) {
 
 // Keys returns bindings for the help bar.
 func (l *List) Keys() []key.Binding {
-	ks := []key.Binding{core.KeyFilter, keyStatus, keyToggle, keyAll, keyNone}
-	if l.opts.Reorderable {
-		ks = append(ks, keyMoveUp, keyMoveDown)
+	ks := append(l.FilterKeys(), l.SelectKeys()...)
+	return append(ks, l.MoveKeys()...)
+}
+
+// SelectKeys, FilterKeys and MoveKeys are Keys split into groups for the
+// help panel. MoveKeys is empty unless the list is Reorderable.
+func (l *List) SelectKeys() []key.Binding { return []key.Binding{KeySelect, keyAll, keyNone} }
+func (l *List) FilterKeys() []key.Binding { return []key.Binding{core.KeyFilter, keyStatus} }
+func (l *List) MoveKeys() []key.Binding {
+	if !l.opts.Reorderable {
+		return nil
 	}
-	return ks
+	return []key.Binding{keyMoveUp, keyMoveDown}
+}
+
+// FilterEditKeys are the keys that work while the filter box has focus
+// (every other key is typed into it).
+func (l *List) FilterEditKeys() []key.Binding {
+	return []key.Binding{keyFilterDone, keyFilterClear}
 }
 
 // visible returns indices into items that match the filter.
@@ -278,7 +298,7 @@ func (l *List) Update(msg tea.Msg) tea.Cmd {
 		l.cursor--
 	case key.Matches(km, core.KeyDown):
 		l.cursor++
-	case key.Matches(km, keyToggle):
+	case key.Matches(km, KeySelect):
 		if it, ok := l.Cursor(); ok && !it.Missing && !it.Disabled {
 			l.selected[it.Key] = !l.selected[it.Key]
 			if !l.selected[it.Key] {

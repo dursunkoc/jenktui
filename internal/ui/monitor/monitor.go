@@ -331,9 +331,22 @@ func (m *model) Keys() []key.Binding {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown,
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details")),
-		keyShow, keyRefresh, core.KeyBack, core.KeyQuit}
+	return []key.Binding{keyDetails, keyShow, keyRefresh, core.KeyBack}
+}
+
+var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details"))
+
+// FullHelp groups every key of the runs list for the help panel. The
+// details view has few keys and shows them all in the help bar.
+func (m *model) FullHelp() []core.HelpGroup {
+	if m.details {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Run Monitor", Keys: []key.Binding{keyDetails, keyShow, keyRefresh}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 // Init starts the first poll cycle immediately and polls every row in it.

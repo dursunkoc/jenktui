@@ -115,8 +115,24 @@ func (s *pickerScreen) Keys() []key.Binding {
 	case !s.loaded:
 		return []key.Binding{core.KeyBack}
 	}
-	ks := append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.Keys()...)
-	return append(ks, catalog.KeyBranch, catalog.KeyEditor, keySave, core.KeyBack)
+	if s.list.Filtering() {
+		return s.list.FilterEditKeys()
+	}
+	return []key.Binding{widgets.KeySelect, core.KeyFilter, keySave, core.KeyBack}
+}
+
+// FullHelp groups every picker key for the help panel. It is nil while
+// loading, on an error, or while a text field has focus.
+func (s *pickerScreen) FullHelp() []core.HelpGroup {
+	if s.bp.Editing() || s.err != nil || !s.loaded || s.list.Filtering() {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Selection", Keys: s.list.SelectKeys()},
+		{Title: "Filter", Keys: append(s.list.FilterKeys(), catalog.KeyBranch, catalog.KeyEditor)},
+		{Title: "General", Keys: []key.Binding{keySave, core.KeyBack}},
+	}
 }
 
 var keyRetry = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "retry"))
