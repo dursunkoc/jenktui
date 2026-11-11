@@ -4,7 +4,7 @@ For whoever continues jenktui (a person or an agent). Read this first, then [TOD
 
 ## What it is
 
-A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete and unit-tested. It has not yet been run against a real Jenkins (see the checklist in TODO.md).
+A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenkins URL and an optional parent folder in a config file, logs in with a username and a password or API token, browses every job under that folder, curates named **Collections**, triggers builds from them, and watches each Collection's latest builds in a **Run Monitor**. The v1 feature set is complete and unit-tested. It has not yet been run against a real Jenkins (see the checklist in TODO.md).
 
 ## Layout
 
@@ -30,7 +30,7 @@ Screens receive their dependencies through constructors (listers, factories, fil
 
 These were agreed with the user. Change them only if the user asks.
 
-- **Credentials are never stored.** Username and API token are asked on every start and live in memory inside the client.
+- **Credentials are never stored.** Username and password or API token are asked on every start and live in memory inside the client.
 - **Go with Bubble Tea** (the user chose it over Python with Textual).
 - **Config:** TOML, `~/.config/jenktui/`, overridable with `JENKTUI_CONFIG_DIR`. Settings and Collections are separate files so the app never rewrites the hand-edited one except for Branch Filter patterns.
 - **Branch Filter** is one global list of case-sensitive globs on the decoded branch name. It only affects browsing and picking, never branches already in a Collection.

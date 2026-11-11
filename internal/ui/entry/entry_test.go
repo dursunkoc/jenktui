@@ -194,7 +194,7 @@ func TestLoginValidationAndPrefill(t *testing.T) {
 		t.Fatal("username should be prefilled and token focused")
 	}
 	_, cmd := enter(l)
-	if cmd != nil || l.msg != "API token is required" {
+	if cmd != nil || l.msg != "password or API token is required" {
 		t.Fatalf("msg=%q", l.msg)
 	}
 	l.user.SetValue("")
@@ -204,6 +204,11 @@ func TestLoginValidationAndPrefill(t *testing.T) {
 	}
 	if l.token.EchoMode != textinput.EchoPassword {
 		t.Fatal("token must be masked")
+	}
+	// a password works as well as an API token, and the label must say so.
+	l.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
+	if v := l.View(); !strings.Contains(v, "Password or API token (kept in memory only)") {
+		t.Fatalf("view:\n%s", v)
 	}
 }
 

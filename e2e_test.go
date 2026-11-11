@@ -226,7 +226,7 @@ func TestLoginWrongTokenThenCorrect(t *testing.T) {
 	h.boot()
 	h.submitLogin(f.User(), "not-the-token")
 	h.expectTitle("Login")
-	h.expect("Authentication failed", "Check your username and API token")
+	h.expect("Authentication failed", "Check your username and password or API token")
 	h.expectNot("not-the-token")
 	if h.sess.Client != nil {
 		t.Fatal("a client was stored after a failed login")
@@ -248,7 +248,7 @@ func TestLoginFieldValidation(t *testing.T) {
 	h.expect("username is required")
 	h.typeText("me")
 	h.key("enter", "enter") // empty token
-	h.expect("API token is required")
+	h.expect("password or API token is required")
 	h.expectTitle("Login")
 }
 

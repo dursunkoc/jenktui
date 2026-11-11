@@ -19,7 +19,7 @@ type loginResult struct {
 	err    error
 }
 
-// Login asks for username and API token (memory only) and verifies them.
+// Login asks for username and password or API token (memory only) and verifies them.
 type Login struct {
 	sess          *core.Session
 	deps          Deps
@@ -110,7 +110,7 @@ func (l *Login) submit() (core.Screen, tea.Cmd) {
 		l.setFocus(0)
 		return l, nil
 	case tok == "":
-		l.msg = "API token is required"
+		l.msg = "password or API token is required"
 		l.setFocus(1)
 		return l, nil
 	}
@@ -144,7 +144,7 @@ func (l *Login) View() string {
 		"Username",
 		l.user.View(),
 		"",
-		"API token (kept in memory only)",
+		"Password or API token (kept in memory only)",
 		l.token.View(),
 	}
 	switch {
