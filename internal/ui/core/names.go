@@ -17,3 +17,29 @@ func RelName(full, parent string) string {
 	}
 	return full
 }
+
+// BranchSep separates a Multibranch Project from its branch in a job name.
+const BranchSep = " › "
+
+// JobName is how a job is shown. For a branch of a Multibranch Project, Name
+// is the project and Branch the decoded branch name ("feature/x"); for any
+// other job Branch is empty.
+type JobName struct {
+	Name, Branch string
+}
+
+// String is the plain name, e.g. "digital-ui › develop".
+func (n JobName) String() string {
+	if n.Branch == "" {
+		return n.Name
+	}
+	return n.Name + BranchSep + n.Branch
+}
+
+// Render draws the name with the separator in the muted colour.
+func (n JobName) Render(th Theme) string {
+	if n.Branch == "" {
+		return n.Name
+	}
+	return n.Name + th.MutedTxt.Render(BranchSep) + n.Branch
+}

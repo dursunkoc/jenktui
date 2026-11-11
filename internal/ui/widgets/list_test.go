@@ -271,3 +271,33 @@ func TestCursorRowKeepsAlignment(t *testing.T) {
 		}
 	}
 }
+
+// A branch is shown after its project with the separator; only plain rows get
+// a muted separator, so styled rows are rendered in one piece.
+func TestBranchSeparator(t *testing.T) {
+	prev := lipgloss.ColorProfile()
+	lipgloss.SetColorProfile(termenv.ANSI)
+	defer lipgloss.SetColorProfile(prev)
+
+	th := core.NewTheme()
+	l := NewList(th, Options{})
+	l.SetItems([]Item{
+		{Key: "ui/develop", Label: "ui", Branch: "develop"},
+		{Key: "ui/main", Label: "ui", Branch: "main"},
+		{Key: "ui/next", Label: "ui", Branch: "next"},
+	})
+	l.Select("ui/main")
+	raw := strings.Split(l.View(), "\n")[filterRows:]
+	for i, want := range []string{"> [ ] ui › develop", "  [x] ui › main", "  [ ] ui › next"} {
+		if got := strings.TrimRight(ansi.Strip(raw[i]), " "); got != want {
+			t.Errorf("row %d = %q, want %q", i, got, want)
+		}
+	}
+	muted := th.MutedTxt.Render(core.BranchSep)
+	if !strings.Contains(raw[2], muted) {
+		t.Errorf("plain row should have a muted separator: %q", raw[2])
+	}
+	if strings.Contains(raw[0], muted) || strings.Contains(raw[1], muted) {
+		t.Errorf("cursor and selected rows must not embed a muted separator: %q / %q", raw[0], raw[1])
+	}
+}

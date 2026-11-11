@@ -70,7 +70,7 @@ func (s *pickerScreen) rebuild() {
 			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.deps.Parent), Disabled: true}
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Key(), s.deps.Parent), Badge: badge(it.Job.Color), ShowBadge: true}
+		rows[i] = catalog.Row(it.Job, s.deps.Parent, badge(it.Job.Color))
 	}
 	s.list.SetItems(rows)
 	for k, v := range s.chosen {

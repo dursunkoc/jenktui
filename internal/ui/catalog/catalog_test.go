@@ -169,12 +169,12 @@ func typeText(s *Screen, text string) {
 func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 	s := newBranchScreen(t, []string{"main", "release/*"}, nil)
 	v := shown(s)
-	for _, want := range []string{"branches: filtered (2 patterns)", "plain", "app/main", "lib (no matching branches)"} {
+	for _, want := range []string{"branches: filtered (2 patterns)", "plain", "app › main", "lib (no matching branches)"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("missing %q:\n%s", want, v)
 		}
 	}
-	if strings.Contains(v, "feature/x") || strings.Contains(v, "lib/dev") {
+	if strings.Contains(v, "feature/x") || strings.Contains(v, "lib › dev") {
 		t.Errorf("filtered branches visible:\n%s", v)
 	}
 	// Placeholder is not selectable ("a" selects all).
@@ -184,7 +184,7 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 	}
 	s.Update(kmsg("b"))
 	v = shown(s)
-	for _, want := range []string{"branches: all", "app/feature/x", "lib/dev"} {
+	for _, want := range []string{"branches: all", "app › feature/x", "lib › dev"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("filter off, missing %q:\n%s", want, v)
 		}
@@ -197,11 +197,11 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 func TestBranchFilterNoPatternsShowsAll(t *testing.T) {
 	s := newBranchScreen(t, nil, nil)
 	v := shown(s)
-	if !strings.Contains(v, "branches: all") || !strings.Contains(v, "lib/dev") {
+	if !strings.Contains(v, "branches: all") || !strings.Contains(v, "lib › dev") {
 		t.Errorf("view:\n%s", v)
 	}
 	s.Update(kmsg("b")) // turning "on" with no patterns must not hide anything
-	if !strings.Contains(shown(s), "lib/dev") {
+	if !strings.Contains(shown(s), "lib › dev") {
 		t.Errorf("empty filter hid rows:\n%s", shown(s))
 	}
 }
@@ -324,4 +324,26 @@ func shown(s core.Screen) string {
 		return st.Subtitle() + "\n" + s.View()
 	}
 	return s.View()
+}
+
+func TestJobName(t *testing.T) {
+	for _, tc := range []struct {
+		job    jenkins.Job
+		parent string
+		want   string
+	}{
+		{jenkins.Job{FullName: "team/app/build"}, "team", "app/build"},
+		{jenkins.Job{FullName: "team/ui/feature%2Fx", Multibranch: "team/ui", Branch: "feature/x"}, "team", "ui › feature/x"},
+		{jenkins.Job{FullName: "ui/PR-2454", Multibranch: "ui", Branch: "PR-2454"}, "", "ui › PR-2454"},
+		// the parent is the Multibranch Project itself: keep its name
+		{jenkins.Job{FullName: "ui/develop", Multibranch: "ui", Branch: "develop"}, "ui", "ui › develop"},
+	} {
+		if got := JobName(tc.job, tc.parent).String(); got != tc.want {
+			t.Errorf("JobName(%q, %q) = %q, want %q", tc.job.FullName, tc.parent, got, tc.want)
+		}
+	}
+	r := Row(jenkins.Job{FullName: "ui/feature%2Fx", Multibranch: "ui", Branch: "feature/x"}, "", core.StatusSuccess)
+	if r.Key != "ui/feature%2Fx" || r.Label != "ui" || r.Branch != "feature/x" {
+		t.Errorf("Row = %+v (the key must stay the full, encoded name)", r)
+	}
 }

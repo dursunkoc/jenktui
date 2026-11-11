@@ -83,7 +83,7 @@ func (s *Screen) rebuild() {
 			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.parent), Disabled: true}
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Key(), s.parent), Badge: statusFromColor(it.Job.Color), ShowBadge: true}
+		rows[i] = Row(it.Job, s.parent, statusFromColor(it.Job.Color))
 	}
 	s.list.SetItems(rows)
 }
@@ -235,6 +235,23 @@ func (s *Screen) Subtitle() string {
 		count += " · " + s.notice
 	}
 	return count
+}
+
+// JobName is how job j is shown under parent: relative to the parent, and
+// for a branch of a Multibranch Project as the project plus the decoded
+// branch name ("digital-ui › feature/x" rather than "digital-ui/feature%2Fx").
+func JobName(j jenkins.Job, parent string) core.JobName {
+	if j.Multibranch != "" && j.Branch != "" {
+		return core.JobName{Name: core.RelName(j.Multibranch, parent), Branch: j.Branch}
+	}
+	return core.JobName{Name: core.RelName(j.FullName, parent)}
+}
+
+// Row is the list row for job j: keyed by its full name, labelled with
+// JobName.
+func Row(j jenkins.Job, parent string, badge core.Status) widgets.Item {
+	n := JobName(j, parent)
+	return widgets.Item{Key: j.FullName, Label: n.Name, Branch: n.Branch, Badge: badge, ShowBadge: true}
 }
 
 // statusFromColor maps a Jenkins "color" hint to a badge status.

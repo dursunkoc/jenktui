@@ -117,6 +117,7 @@ type model struct {
 	deps        Deps
 	th          core.Theme
 	name        string
+	names       map[string]core.JobName // how known jobs are shown (SetNames)
 	runs        []runState
 	revs        int
 	triggered   time.Time
@@ -233,6 +234,17 @@ func SetJobs(s core.Screen, jobs []string, missing map[string]bool) bool {
 	m, ok := s.(*model)
 	if ok {
 		m.setJobs(jobs, missing)
+	}
+	return ok
+}
+
+// SetNames tells the monitor how jobs are shown, e.g. a Multibranch branch
+// as "project › branch". Jobs not in names are shown by their name relative
+// to Deps.Parent. Returns false if s is not a monitor.
+func SetNames(s core.Screen, names map[string]core.JobName) bool {
+	m, ok := s.(*model)
+	if ok {
+		m.names = names
 	}
 	return ok
 }

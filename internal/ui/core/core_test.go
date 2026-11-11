@@ -295,3 +295,18 @@ func TestRelName(t *testing.T) {
 		}
 	}
 }
+
+func TestJobName(t *testing.T) {
+	th := NewTheme()
+	plain := JobName{Name: "digital-pvc-syncer/releasable"}
+	if plain.String() != "digital-pvc-syncer/releasable" || plain.Render(th) != plain.Name {
+		t.Fatalf("plain job: %q / %q", plain.String(), plain.Render(th))
+	}
+	br := JobName{Name: "digital-ui", Branch: "feature/x"}
+	if br.String() != "digital-ui › feature/x" {
+		t.Fatalf("String = %q", br.String())
+	}
+	if got := ansi.Strip(br.Render(th)); got != "digital-ui › feature/x" {
+		t.Fatalf("Render = %q", got)
+	}
+}

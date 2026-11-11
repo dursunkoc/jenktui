@@ -107,7 +107,7 @@ func (m *model) block(vi, i int) []string {
 	if vi == m.cursor {
 		cur = m.th.Selected.Render("▸ ")
 	}
-	parts := []string{m.badge(st), core.RelName(st.run.Job, m.deps.Parent)}
+	parts := []string{m.badge(st), m.jobName(st.run.Job)}
 	if st.num > 0 {
 		parts = append(parts, fmt.Sprintf("#%d", st.num))
 	}
@@ -273,7 +273,7 @@ func (m *model) stageRow(stages []jenkins.Stage) string {
 
 func (m *model) detailView() string {
 	st := m.runs[m.selected()]
-	head := []string{m.fit(m.badge(st) + "  " + core.RelName(st.run.Job, m.deps.Parent) + numSuffix(st))}
+	head := []string{m.fit(m.badge(st) + "  " + m.jobName(st.run.Job) + numSuffix(st))}
 	if t := m.note(st); t != "" {
 		head = append(head, m.fit(m.th.MutedTxt.Render(t)))
 	}
@@ -312,4 +312,13 @@ func (m *model) detailLine(s jenkins.Stage, indent string) string {
 		d = "  " + m.th.MutedTxt.Render(fmtDur(s.Duration))
 	}
 	return "  " + indent + m.stageText(jenkins.Stage{Name: s.Name, Status: s.Status}) + d
+}
+
+// jobName is how job is shown: from SetNames when known, otherwise relative
+// to the Parent Job.
+func (m *model) jobName(job string) string {
+	if n, ok := m.names[job]; ok {
+		return n.Render(m.th)
+	}
+	return core.RelName(job, m.deps.Parent)
 }

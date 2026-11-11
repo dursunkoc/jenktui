@@ -68,6 +68,10 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 - `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing)` returns a colored label.
 - `th.ErrorView(title, err, hint)` boxed error with a hint line; `th.NoticeView(title, hint)` neutral box. Map domain errors to a `hint` in your own screen; core does not import `internal/jenkins`.
 
+## Job names
+
+`core.RelName(full, parent)` drops the Parent Job's prefix for display. `core.JobName{Name, Branch}` is how a job is shown; `String()` joins a Multibranch project and its branch with `core.BranchSep` (" › "), `Render(th)` draws the separator muted. Do not put a muted separator inside a row that has its own style (cursor, selected): the inner reset would cut that row's highlight short.
+
 ## Keymap
 
 Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. `?` is reserved for the help panel (`KeyHelp`, `KeyCloseHelp`, handled by the Router) on `FullHelper` screens. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.

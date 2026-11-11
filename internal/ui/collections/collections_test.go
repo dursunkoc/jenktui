@@ -52,12 +52,12 @@ func newRig(t *testing.T, cat jenkins.Catalog, cols ...config.Collection) *rig {
 		}
 	}
 	r.deps = Deps{Lister: &fakeLister{cat}, Path: r.path,
-		Trigger: func(name string, keys []string) core.Screen {
+		Trigger: func(name string, keys []string, _ map[string]core.JobName) core.Screen {
 			r.trigNames = append(r.trigNames, name)
 			r.triggered = append(r.triggered, keys)
 			return stubScreen{}
 		},
-		Monitor: func(name string, jobs []string, missing map[string]bool) core.Screen {
+		Monitor: func(name string, jobs []string, missing map[string]bool, _ map[string]core.JobName) core.Screen {
 			r.monitored = append(r.monitored, monCall{name, jobs, missing})
 			return stubScreen{}
 		},
@@ -292,7 +292,7 @@ func TestPickerBranchFilterKeepsHiddenMembers(t *testing.T) {
 	s := New(r.deps)
 	s, navs := send(s, "e")
 	p := open(pushed(t, navs))
-	if v := shown(p); strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: filtered") {
+	if v := shown(p); strings.Contains(v, "feature/x") || !strings.Contains(v, "branches: filtered") {
 		t.Fatalf("filter not applied: %q", v)
 	}
 	// rows: app/main, zzz. Select main, then save: hidden member must remain.
@@ -307,7 +307,7 @@ func TestPickerBranchFilterKeepsHiddenMembers(t *testing.T) {
 	s, navs = send(s, "e")
 	p = open(pushed(t, navs))
 	p, _ = send(p, "b")
-	if v := shown(p); !strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: all") {
+	if v := shown(p); !strings.Contains(v, "app › feature/x") || !strings.Contains(v, "branches: all") {
 		t.Fatalf("toggle off: %q", v)
 	}
 	// rows sorted: app/feature%2Fx, app/feature%2Fy, app/main, zzz

@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/ui/catalog"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/widgets"
 )
@@ -57,14 +58,18 @@ func (s *viewScreen) readMembers() {
 }
 
 func (s *viewScreen) rebuild() {
-	color := map[string]string{}
+	jobs := map[string]jenkins.Job{}
 	for _, j := range s.cat.Jobs {
-		color[j.FullName] = j.Color
+		jobs[j.FullName] = j
 	}
 	items := make([]widgets.Item, len(s.members))
 	for i, k := range s.members {
-		c, ok := color[k]
-		items[i] = widgets.Item{Key: k, Label: core.RelName(k, s.deps.Parent), Badge: badge(c), ShowBadge: true, Missing: s.loaded && !ok}
+		j, ok := jobs[k]
+		if !ok {
+			j = jenkins.Job{FullName: k} // missing: no branch info, shown by name
+		}
+		items[i] = catalog.Row(j, s.deps.Parent, badge(j.Color))
+		items[i].Missing = s.loaded && !ok
 	}
 	s.list.SetItems(items)
 }
@@ -186,7 +191,7 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		for _, k := range s.missing() {
 			missing[k] = true
 		}
-		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing)})
+		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing, namesOf(s.members, s.cat, s.deps.Parent))})
 	case key.Matches(m, keyRemove):
 		if it, ok := s.list.Cursor(); ok && it.Missing {
 			keys := slices.DeleteFunc(slices.Clone(s.members), func(k string) bool { return k == it.Key })
@@ -243,7 +248,7 @@ func (s *viewScreen) trigger() (core.Screen, tea.Cmd) {
 	if len(skipped) > 0 {
 		s.notice = "skipped missing: " + strings.Join(skipped, ", ")
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys)})
+	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys, namesOf(s.members, s.cat, s.deps.Parent))})
 }
 
 func (s *viewScreen) View() string {

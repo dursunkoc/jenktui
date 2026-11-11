@@ -16,6 +16,7 @@ import (
 type Item struct {
 	Key       string      // unique id, e.g. the job full path; also what the filter matches
 	Label     string      // text shown; defaults to Key when empty
+	Branch    string      // when set, shown after Label with core.BranchSep (Label is the Multibranch Project)
 	Badge     core.Status // shown after the label when ShowBadge is set
 	ShowBadge bool
 	Missing   bool // renders a MISSING warning badge; the item cannot be selected
@@ -417,6 +418,10 @@ func (l *List) View() string {
 			label = it.Key
 		}
 		line := fmt.Sprintf("%s %s", box, label)
+		branch := "" // the separator and branch, kept apart so plain rows can mute the separator
+		if it.Branch != "" {
+			branch = core.BranchSep + it.Branch
+		}
 		// Style the text once, so nested ANSI resets cannot cut a highlight short.
 		style := lipgloss.NewStyle()
 		switch {
@@ -434,12 +439,21 @@ func (l *List) View() string {
 		// the badge, so text and badges stay in the same columns as on the
 		// other rows.
 		prefix, gap := "  ", " "
+		plain := !it.Disabled && !(l.selected[it.Key] && !it.Missing)
 		if r == l.cursor {
 			style = style.Reverse(true).Bold(true)
-			line = " " + line + " "
-			prefix, gap = l.theme.Selected.Render(">"), ""
+			line = " " + line + branch + " "
+			prefix, gap, plain = l.theme.Selected.Render(">"), "", false
+		} else if !plain {
+			line += branch
 		}
-		line = style.Render(line)
+		if plain && branch != "" {
+			// A muted separator inside a styled row would cut its highlight
+			// short, so only plain rows get one.
+			line = style.Render(line) + l.theme.MutedTxt.Render(core.BranchSep) + style.Render(it.Branch)
+		} else {
+			line = style.Render(line)
+		}
 		switch {
 		case it.Missing:
 			line += gap + l.theme.Badge(core.StatusMissing)

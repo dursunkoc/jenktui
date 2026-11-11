@@ -32,14 +32,17 @@ type Deps struct {
 	// Trigger builds the screen that triggers builds of the given Job keys
 	// (jenkins.Job.FullName, branch names stay URL-encoded). It is pushed by
 	// the Collection view's `t`. collection is the Collection's name, so the
-	// started builds can be added to that Collection's Run Monitor. May be nil
-	// (triggering is then unavailable).
-	Trigger func(collection string, jobKeys []string) core.Screen
+	// started builds can be added to that Collection's Run Monitor; names
+	// says how the Collection's members are shown there (see Monitor). May be
+	// nil (triggering is then unavailable).
+	Trigger func(collection string, jobKeys []string, names map[string]core.JobName) core.Screen
 	// Monitor returns the Run Monitor screen of a Collection (get-or-create),
 	// synced to jobKeys and with the missing members flagged, ready to push
 	// with successful rows hidden. Pushed by `m` in the Collections list and
-	// in an opened Collection. May be nil (the monitor is then unavailable).
-	Monitor func(name string, jobKeys []string, missing map[string]bool) core.Screen
+	// in an opened Collection. names says how each known job is shown (it
+	// may be nil or lack a job: the monitor then shows the plain name). May
+	// be nil (the monitor is then unavailable).
+	Monitor func(name string, jobKeys []string, missing map[string]bool, names map[string]core.JobName) core.Screen
 	// Renamed, when set, is told after a Collection was renamed so per-name
 	// state (such as its Run Monitor) can follow it.
 	Renamed func(oldName, newName string)
@@ -327,7 +330,22 @@ func (s *listScreen) monitorLoaded(m loadedMsg) (core.Screen, tea.Cmd) {
 	} else {
 		missing = missingOf(jobs, m.cat)
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing)})
+	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing, namesOf(jobs, m.cat, s.deps.Parent))})
+}
+
+// namesOf says how each member found in the catalog is shown.
+func namesOf(members []string, cat jenkins.Catalog, parent string) map[string]core.JobName {
+	in := map[string]bool{}
+	for _, k := range members {
+		in[k] = true
+	}
+	names := map[string]core.JobName{}
+	for _, j := range cat.Jobs {
+		if in[j.FullName] {
+			names[j.FullName] = catalog.JobName(j, parent)
+		}
+	}
+	return names
 }
 
 // missingOf flags the members that are not in the catalog.
