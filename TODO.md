@@ -4,7 +4,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.1.1` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew cask is published in the tap. `v0.1.0` was tagged before the cask config existed, so it has no cask; nothing else differs.
+`v0.1.1` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew cask is published in the tap (replaced by a formula from `v0.1.3`). `v0.1.0` was tagged before the cask config existed, so it has no cask; nothing else differs.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
@@ -12,7 +12,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] `install.sh` tested against the real release: latest-release lookup, a pinned version, a strict POSIX shell.
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
-- [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The generated cask could not be run through `brew audit` here, so this is its first real use.
+- [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The tap now holds a formula (from `v0.1.3`); the cask upgrade to `v0.1.2` worked on the owner's Mac, the formula is untried.
 - [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
 ### Real-Jenkins checklist

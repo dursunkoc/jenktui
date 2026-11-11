@@ -46,20 +46,20 @@ release:
   # Tags with a suffix such as v0.2.0-rc1 are marked as pre-releases; v0.1.0 is not.
   prerelease: auto
 
-# Publishes a Homebrew cask to github.com/dursunkoc/homebrew-tap on each release:
+# Publishes a Homebrew formula (prebuilt binaries, macOS and Linux) to
+# github.com/dursunkoc/homebrew-tap on each release:
 #   brew install dursunkoc/tap/jenktui
-homebrew_casks:
+# goreleaser marks `brews` deprecated in favour of casks, but a formula also
+# works on Linux and needs no quarantine workaround.
+brews:
   - name: jenktui
     repository:
       owner: dursunkoc
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
     homepage: https://github.com/dursunkoc/jenktui
     description: Terminal UI for Jenkins
-    # The binaries are not signed or notarized, so clear macOS's quarantine flag.
-    hooks:
-      post:
-        install_steps: |
-          on_macos do
-            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/jenktui"]
-          end
+    license: MIT
+    test: |
+      assert_match "jenktui", shell_output("#{bin}/jenktui --version")

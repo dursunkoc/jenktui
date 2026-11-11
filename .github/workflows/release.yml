@@ -26,6 +26,6 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Lets goreleaser update the Homebrew cask in dursunkoc/homebrew-tap.
+          # Lets goreleaser update the Homebrew formula in dursunkoc/homebrew-tap.
           # Create it as a repository secret before pushing the first tag.
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
