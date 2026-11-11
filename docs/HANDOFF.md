@@ -17,7 +17,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/branchfilter` | Pure glob matcher and filter for Multibranch branch names. |
 | `internal/paramsmerge` | Pure logic that finds Common Parameters across jobs and resolves final values per job. |
 | `internal/ui/core` | `Screen` interface, `Router`, theme, keymap, `Loading` spinner. Frozen contract, documented in `docs/ui-contract.md`. |
-| `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. Its filter row has a blank line above and below. |
+| `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. A blank line, the filter row and the column titles (Pipeline, Branch, Status) sit above the rows. |
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
 | `internal/ui/collections` | Collections list, opened Collection view, picker. |

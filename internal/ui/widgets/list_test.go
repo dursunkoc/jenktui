@@ -323,3 +323,32 @@ func TestColumnsShrinkOnNarrowList(t *testing.T) {
 		t.Fatalf("narrow row: %q (%d wide)", row, ansi.StringWidth(row))
 	}
 }
+
+// The column titles sit on the row under the filter row, each over its
+// column; with nothing to show the row stays blank.
+func TestColumnTitles(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "ui/develop", Label: "ui", Branch: "develop", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "team/app/build", Label: "team/app/build", Badge: core.StatusRunning, ShowBadge: true},
+	})
+	all := strings.Split(ansi.Strip(l.View()), "\n")
+	head, row := all[filterRows-1], all[filterRows]
+	if col(head, headName) != col(row, "ui") || col(head, headBranch) != col(row, "develop") || col(head, headStatus) != col(row, "●") {
+		t.Fatalf("titles not over their columns:\n%s\n%s", head, row)
+	}
+
+	// no branches: no Branch title; a column is never narrower than its title.
+	l.SetItems([]Item{{Key: "a", Badge: core.StatusSuccess, ShowBadge: true}})
+	all = strings.Split(ansi.Strip(l.View()), "\n")
+	head, row = all[filterRows-1], all[filterRows]
+	if strings.Contains(head, headBranch) || col(head, headStatus) != col(row, "●") {
+		t.Fatalf("without branches:\n%s\n%s", head, row)
+	}
+
+	l.Update(k("/"))
+	l.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("zzz")})
+	if all = strings.Split(ansi.Strip(l.View()), "\n"); strings.TrimSpace(all[filterRows-1]) != "" || !strings.Contains(all[filterRows], "no matches") {
+		t.Fatalf("no matches:\n%s", strings.Join(all, "\n"))
+	}
+}

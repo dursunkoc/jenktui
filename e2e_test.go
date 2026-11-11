@@ -478,8 +478,8 @@ func TestHelpBarAndPanel(t *testing.T) {
 	}
 }
 
-// The count line sits on the title row, and the filter hint has a blank line
-// above and below it.
+// The count line sits on the title row, the filter hint has a blank line
+// above it and the column titles below it.
 func TestCatalogHeaderLayout(t *testing.T) {
 	h := newApp(t, newFixture(t))
 	h.loginOK()
@@ -488,7 +488,7 @@ func TestCatalogHeaderLayout(t *testing.T) {
 	if !strings.HasPrefix(rows[0], h.title()) || !strings.HasSuffix(rows[0], "8 jobs · branches: all") {
 		t.Fatalf("title row = %q", rows[0])
 	}
-	if rows[1] != "" || rows[2] != "press / to filter, s for status" || rows[3] != "" || !strings.Contains(rows[4], "team/api/build") {
+	if rows[1] != "" || rows[2] != "press / to filter, s for status" || strings.Fields(rows[3])[0] != "Pipeline" || !strings.Contains(rows[4], "team/api/build") {
 		t.Fatalf("body rows:\n%s", strings.Join(rows[:6], "\n"))
 	}
 	h.key("/")

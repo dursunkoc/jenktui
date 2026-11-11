@@ -3,6 +3,7 @@ package widgets
 
 import (
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -262,8 +263,8 @@ func (l *List) cycleStatus() {
 	l.cursor, l.offset = 0, 0
 }
 
-// filterRows is the height of the filter block: the filter row with a blank
-// line above and below it.
+// filterRows is the height of the filter block: a blank line, the filter
+// row, and the column titles (a blank line when nothing matches).
 const filterRows = 3
 
 func (l *List) rows() int { return max(l.h-filterRows, 1) }
@@ -373,8 +374,8 @@ func (l *List) updateFilter(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// View renders the filter row, between blank lines, followed by the visible
-// window of items.
+// View renders a blank line, the filter row and the column titles,
+// followed by the visible window of items.
 func (l *List) View() string {
 	var b strings.Builder
 	b.WriteString("\n")
@@ -397,14 +398,14 @@ func (l *List) View() string {
 	if l.statusOn {
 		b.WriteString("  " + l.theme.Selected.Render("status: "+StatusName(l.status)) + l.theme.MutedTxt.Render(" (s to change)"))
 	}
-	b.WriteString("\n")
 	v := l.visible()
 	if len(v) == 0 {
-		b.WriteString("\n" + l.theme.MutedTxt.Render("no matches"))
+		b.WriteString("\n\n" + l.theme.MutedTxt.Render("no matches"))
 		return b.String()
 	}
 	end := min(l.offset+l.rows(), len(v))
 	nameW, branchW, branchCol := l.columns()
+	b.WriteString("\n" + l.header(nameW, branchW, branchCol))
 	for r := l.offset; r < end; r++ {
 		it := l.items[v[r]]
 		box := "[ ]"
@@ -475,6 +476,26 @@ func labelOf(it Item) string {
 
 func hasBadge(it Item) bool { return it.Missing || it.ShowBadge }
 
+// Column titles, shown muted on the row under the filter row.
+const (
+	headName   = "Pipeline"
+	headBranch = "Branch"
+	headStatus = "Status"
+)
+
+// header is the column titles, each over its column (the gutter and the
+// box take the first 6 columns).
+func (l *List) header(nameW, branchW int, branchCol bool) string {
+	h := strings.Repeat(" ", 6) + cell(headName, nameW)
+	if branchCol {
+		h += colGap + cell(headBranch, branchW)
+	}
+	if slices.ContainsFunc(l.items, hasBadge) {
+		h += colGap + headStatus
+	}
+	return l.theme.MutedTxt.Render(strings.TrimRight(h, " "))
+}
+
 // columns returns the widths of the name and branch columns, and whether
 // there is a branch column at all (some item has a Branch). Widths fit the
 // longest of all items, not only the visible ones, so columns do not move
@@ -499,10 +520,15 @@ func (l *List) columns() (nameW, branchW int, branchCol bool) {
 	}
 	fixed := 2 + 4 // gutter, box and its space
 	if badgeW > 0 {
-		fixed += len(colGap) + badgeW
+		fixed += len(colGap) + max(badgeW, len(headStatus))
 	}
 	if branchCol {
 		fixed += len(colGap)
+	}
+	// Columns are at least as wide as their titles.
+	nameW = max(nameW, len(headName))
+	if branchCol {
+		branchW = max(branchW, len(headBranch))
 	}
 	avail := l.w - fixed
 	if nameW+branchW > avail {
