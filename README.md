@@ -41,7 +41,7 @@ branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch
 
 Collections are stored in `~/.config/jenktui/collections.toml` (managed by the app).
 
-**Credentials are never stored.** Log in with your Jenkins username and your password or an API token. An API token is recommended: it can be revoked on its own and does not expose your password. Both are asked on every start and kept in memory only.
+**Credentials are never stored.** Log in with your Jenkins username and your password or an API token. An API token is recommended: it can be revoked on its own and does not expose your password. Both are asked on every start and kept in memory only, as a note at the bottom of the login screen says.
 
 TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
 

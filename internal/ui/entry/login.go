@@ -137,6 +137,9 @@ func (l *Login) submit() (core.Screen, tea.Cmd) {
 	}
 }
 
+// memoryNote closes the login box: where the secret goes.
+const memoryNote = "Your password or API token is kept in memory only and never written to disk."
+
 func (l *Login) View() string {
 	lines := []string{
 		l.th.Title.Render("Log in to " + l.sess.Config.JenkinsURL),
@@ -144,7 +147,7 @@ func (l *Login) View() string {
 		"Username",
 		l.user.View(),
 		"",
-		"Password or API token (kept in memory only)",
+		"Password or API token",
 		l.token.View(),
 	}
 	switch {
@@ -153,6 +156,15 @@ func (l *Login) View() string {
 	case l.msg != "":
 		lines = append(lines, "", lipgloss.NewStyle().Foreground(l.th.Warn).Render(l.msg))
 	}
+	// The note sits at the bottom, under a thin rule as wide as the form,
+	// muted and wrapped to that width.
+	w := 0
+	for _, line := range lines {
+		w = max(w, lipgloss.Width(line))
+	}
+	lines = append(lines, "",
+		lipgloss.NewStyle().Foreground(l.th.Border).Render(strings.Repeat("─", w)),
+		l.th.MutedTxt.Width(w).Render(memoryNote))
 	body := l.th.Box.Render(strings.Join(lines, "\n"))
 	if l.err != nil {
 		body = lipgloss.JoinVertical(lipgloss.Left, body, "", l.th.ErrorView(errTitle(l.err), l.err, errHint(l.err)))

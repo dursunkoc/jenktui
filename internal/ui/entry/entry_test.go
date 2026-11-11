@@ -207,10 +207,38 @@ func TestLoginValidationAndPrefill(t *testing.T) {
 	if l.token.EchoMode != textinput.EchoPassword {
 		t.Fatal("token must be masked")
 	}
-	// a password works as well as an API token, and the label must say so.
+	// a password works as well as an API token, and the label must say so;
+	// where the secret goes is told in a note at the bottom of the box.
 	l.Update(tea.WindowSizeMsg{Width: 100, Height: 40})
-	if v := l.View(); !strings.Contains(v, "Password or API token (kept in memory only)") {
-		t.Fatalf("view:\n%s", v)
+	rows := strings.Split(ansi.Strip(l.View()), "\n")
+	text := strings.Join(rows, "\n")
+	if !strings.Contains(text, "│ Password or API token ") || strings.Contains(text, "(kept in memory") {
+		t.Fatalf("label:\n%s", text)
+	}
+	// the note is the last thing in the box, under a rule, after the fields.
+	label, rule, note := -1, -1, -1
+	for i, r := range rows {
+		switch {
+		case strings.Contains(r, "Password or API token"):
+			label = i
+		case strings.Contains(r, "│ ───"):
+			rule = i
+		case strings.Contains(r, "Your password"):
+			note = i
+		}
+	}
+	if !(label >= 0 && label < rule && rule+1 == note) {
+		t.Fatalf("note should come right under a rule, after the fields:\n%s", text)
+	}
+	var words []string
+	for _, r := range rows[note:] {
+		if strings.Contains(r, "╰") {
+			break // the box ends right after the note
+		}
+		words = append(words, strings.Fields(strings.Trim(r, " │"))...)
+	}
+	if got := strings.Join(words, " "); got != memoryNote {
+		t.Fatalf("note text = %q", got)
 	}
 }
 
