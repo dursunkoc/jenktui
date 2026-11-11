@@ -393,6 +393,7 @@ func (s *listScreen) View() string {
 		return s.load.Modal("Loading jobs for "+s.monName+"…", s.w, s.h)
 	}
 	var b strings.Builder
+	b.WriteString("\n") // a blank line under the title
 	switch s.mode {
 	case modeNew:
 		b.WriteString(s.theme.Title.Render("New collection") + "\n" + s.input.View() + "\n")

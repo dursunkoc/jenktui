@@ -604,6 +604,18 @@ func TestCollectionsLifecycle(t *testing.T) {
 	}
 }
 
+// The Collections list starts one blank line under the title.
+func TestCollectionsListBlankLineUnderTitle(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
+	h.loginOK()
+	h.openCollections()
+	rows := strings.Split(h.screenText(), "\n")
+	if rows[0] != "Collections" || rows[1] != "" || !strings.HasPrefix(rows[2], "> Ops") {
+		t.Fatalf("collections rows:\n%s", strings.Join(rows[:4], "\n"))
+	}
+}
+
 func TestCollectionEditMembers(t *testing.T) {
 	f := newFixture(t)
 	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
