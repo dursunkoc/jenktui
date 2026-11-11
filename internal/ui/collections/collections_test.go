@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -307,7 +308,7 @@ func TestPickerBranchFilterKeepsHiddenMembers(t *testing.T) {
 	s, navs = send(s, "e")
 	p = open(pushed(t, navs))
 	p, _ = send(p, "b")
-	if v := shown(p); !strings.Contains(v, "app › feature/x") || !strings.Contains(v, "branches: all") {
+	if v := shown(p); !regexp.MustCompile(`\[.\] app\s+feature/x\s`).MatchString(v) || !strings.Contains(v, "branches: all") {
 		t.Fatalf("toggle off: %q", v)
 	}
 	// rows sorted: app/feature%2Fx, app/feature%2Fy, app/main, zzz

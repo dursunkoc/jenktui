@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -282,6 +283,34 @@ func (h *harness) expect(subs ...string) {
 }
 
 // expectNot fails if any substring is on screen.
+// branchRow matches a list row that shows name and branch in their own
+// columns: "[ ] proj      main     ● SUCCESS".
+func branchRow(name, branch string) *regexp.Regexp {
+	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
+}
+
+// expectBranch takes name, branch pairs; each must be a list row.
+func (h *harness) expectBranch(pairs ...string) {
+	h.t.Helper()
+	text := h.screenText()
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if !branchRow(pairs[i], pairs[i+1]).MatchString(text) {
+			h.t.Fatalf("no row with %q and branch %q\n--- screen (%s) ---\n%s", pairs[i], pairs[i+1], h.title(), text)
+		}
+	}
+}
+
+// expectNoBranch takes name, branch pairs; none may be a list row.
+func (h *harness) expectNoBranch(pairs ...string) {
+	h.t.Helper()
+	text := h.screenText()
+	for i := 0; i+1 < len(pairs); i += 2 {
+		if branchRow(pairs[i], pairs[i+1]).MatchString(text) {
+			h.t.Fatalf("unexpected row with %q and branch %q\n--- screen (%s) ---\n%s", pairs[i], pairs[i+1], h.title(), text)
+		}
+	}
+}
+
 func (h *harness) expectNot(subs ...string) {
 	h.t.Helper()
 	text := h.screenText()

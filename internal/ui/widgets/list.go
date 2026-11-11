@@ -2,13 +2,13 @@
 package widgets
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
@@ -16,7 +16,7 @@ import (
 type Item struct {
 	Key       string      // unique id, e.g. the job full path; also what the filter matches
 	Label     string      // text shown; defaults to Key when empty
-	Branch    string      // when set, shown after Label with core.BranchSep (Label is the Multibranch Project)
+	Branch    string      // shown in the branch column (Label is then the Multibranch Project)
 	Badge     core.Status // shown after the label when ShowBadge is set
 	ShowBadge bool
 	Missing   bool // renders a MISSING warning badge; the item cannot be selected
@@ -404,6 +404,7 @@ func (l *List) View() string {
 		return b.String()
 	}
 	end := min(l.offset+l.rows(), len(v))
+	nameW, branchW, branchCol := l.columns()
 	for r := l.offset; r < end; r++ {
 		it := l.items[v[r]]
 		box := "[ ]"
@@ -413,14 +414,13 @@ func (l *List) View() string {
 		case l.selected[it.Key]:
 			box = "[x]"
 		}
-		label := it.Label
-		if label == "" {
-			label = it.Key
-		}
-		line := fmt.Sprintf("%s %s", box, label)
-		branch := "" // the separator and branch, kept apart so plain rows can mute the separator
-		if it.Branch != "" {
-			branch = core.BranchSep + it.Branch
+		// Columns: box, name, branch (only when some row has one), badge.
+		line := box + " " + cell(labelOf(it), nameW)
+		switch {
+		case branchCol && hasBadge(it):
+			line += colGap + cell(it.Branch, branchW)
+		case branchCol && it.Branch != "":
+			line += colGap + it.Branch // nothing after it: no need to cut or pad
 		}
 		// Style the text once, so nested ANSI resets cannot cut a highlight short.
 		style := lipgloss.NewStyle()
@@ -432,28 +432,19 @@ func (l *List) View() string {
 			// returns them to the plain style.
 			style = l.theme.Selected
 		}
-		// Every row is a 2-column gutter, the text, then " " and the badge.
-		// The cursor row is drawn in reverse video (readable on any terminal
-		// theme) with one column of padding on each side; the padding takes
-		// the place of the gutter's second column and of the space before
-		// the badge, so text and badges stay in the same columns as on the
-		// other rows.
-		prefix, gap := "  ", " "
-		plain := !it.Disabled && !(l.selected[it.Key] && !it.Missing)
+		// Every row is a 2-column gutter, the columns, then colGap and the
+		// badge. The cursor row is drawn in reverse video (readable on any
+		// terminal theme) with one column of padding on each side; the
+		// padding takes the place of the gutter's second column and of one
+		// column of the gap before the badge, so every column stays where it
+		// is on the other rows.
+		prefix, gap := "  ", colGap
 		if r == l.cursor {
 			style = style.Reverse(true).Bold(true)
-			line = " " + line + branch + " "
-			prefix, gap, plain = l.theme.Selected.Render(">"), "", false
-		} else if !plain {
-			line += branch
+			line = " " + line + " "
+			prefix, gap = l.theme.Selected.Render(">"), colGap[1:]
 		}
-		if plain && branch != "" {
-			// A muted separator inside a styled row would cut its highlight
-			// short, so only plain rows get one.
-			line = style.Render(line) + l.theme.MutedTxt.Render(core.BranchSep) + style.Render(it.Branch)
-		} else {
-			line = style.Render(line)
-		}
+		line = style.Render(line)
 		switch {
 		case it.Missing:
 			line += gap + l.theme.Badge(core.StatusMissing)
@@ -464,4 +455,67 @@ func (l *List) View() string {
 		b.WriteString("\n" + prefix + line)
 	}
 	return b.String()
+}
+
+// colGap separates the columns of a row.
+const colGap = "  "
+
+// Narrowest the name and branch columns get on a narrow terminal.
+const (
+	minNameW   = 12
+	minBranchW = 8
+)
+
+func labelOf(it Item) string {
+	if it.Label != "" {
+		return it.Label
+	}
+	return it.Key
+}
+
+func hasBadge(it Item) bool { return it.Missing || it.ShowBadge }
+
+// columns returns the widths of the name and branch columns, and whether
+// there is a branch column at all (some item has a Branch). Widths fit the
+// longest of all items, not only the visible ones, so columns do not move
+// while scrolling or filtering. A branch with no badge after it (such as a
+// placeholder's "(no branches)") does not widen its column. When a row would
+// be wider than the list the name column shrinks first, then the branch
+// column; the badge column never does.
+func (l *List) columns() (nameW, branchW int, branchCol bool) {
+	badgeW := 0
+	for _, it := range l.items {
+		nameW = max(nameW, lipgloss.Width(labelOf(it)))
+		branchCol = branchCol || it.Branch != ""
+		if !hasBadge(it) {
+			continue
+		}
+		branchW = max(branchW, lipgloss.Width(it.Branch))
+		st := it.Badge
+		if it.Missing {
+			st = core.StatusMissing
+		}
+		badgeW = max(badgeW, lipgloss.Width(l.theme.Badge(st)))
+	}
+	fixed := 2 + 4 // gutter, box and its space
+	if badgeW > 0 {
+		fixed += len(colGap) + badgeW
+	}
+	if branchCol {
+		fixed += len(colGap)
+	}
+	avail := l.w - fixed
+	if nameW+branchW > avail {
+		nameW = max(avail-branchW, min(nameW, minNameW))
+	}
+	if nameW+branchW > avail && branchW > 0 {
+		branchW = max(avail-nameW, min(branchW, minBranchW))
+	}
+	return nameW, branchW, branchCol
+}
+
+// cell is s cut with "…" or padded with spaces to exactly w columns.
+func cell(s string, w int) string {
+	s = ansi.Truncate(s, w, "…")
+	return s + strings.Repeat(" ", max(w-lipgloss.Width(s), 0))
 }

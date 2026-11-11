@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -755,15 +756,16 @@ func newBranchFixture(t *testing.T) *jenkinstest.Server {
 
 const branchFilterConfig = `branch_filter = ["main", "feature/*"]`
 
-// A branch of a Multibranch Project is shown as "project › branch" (decoded)
-// in a Collection and in its Run Monitor, opened with m.
+// A branch of a Multibranch Project is shown with the project and the decoded
+// branch in their own columns in a Collection, and as "project › branch" in
+// its Run Monitor, opened with m.
 func TestBranchNamesInCollectionAndMonitor(t *testing.T) {
 	f := newBranchFixture(t)
 	h := newApp(t, f, withCollections(collectionsTOML("Branches", "proj/main", "proj/feature%2Fx")))
 	h.loginOK()
 	h.openCollections()
 	h.openCollection("Branches")
-	h.expect("[ ] proj › main", "[ ] proj › feature/x")
+	h.expectBranch("proj", "main", "proj", "feature/x")
 	h.expectNot("proj/main", "feature%2Fx")
 	h.key("m")
 	h.expectTitle("Run Monitor: Branches")
@@ -780,11 +782,12 @@ func TestBranchFilterCatalog(t *testing.T) {
 	h.openCatalog()
 	h.expect("branches: filtered (2 patterns)")
 	// only matching branches, names stay URL-encoded in keys; other jobs untouched.
-	h.expect("proj › main", "proj › feature/x", "team/api/build", "tools/cleanup")
-	h.expectNot("proj › develop", "proj › release/1.0", "legacy › old")
+	h.expect("team/api/build", "tools/cleanup")
+	h.expectBranch("proj", "main", "proj", "feature/x")
+	h.expectNoBranch("proj", "develop", "proj", "release/1.0", "legacy", "old")
 	// projects with no matching branch get a placeholder row; the project itself is never a Job.
-	h.expect("legacy (no matching branches)", "empty (no matching branches)")
-	if h.hasLine("[ ] proj ●") {
+	h.expectBranch("legacy", "(no matching branches)", "empty", "(no matching branches)")
+	if regexp.MustCompile(`\[ \] proj\s+●`).MatchString(h.screenText()) { // a row with no branch
 		t.Fatal("the Multibranch Project itself is listed as a job")
 	}
 	// placeholders cannot be selected.
@@ -797,12 +800,13 @@ func TestBranchFilterCatalog(t *testing.T) {
 
 	// b switches the filter off: every branch, "(no branches)" only for the empty project.
 	h.key("b")
-	h.expect("branches: all", "proj › develop", "proj › release/1.0", "legacy › old", "empty (no branches)")
+	h.expect("branches: all")
+	h.expectBranch("proj", "develop", "proj", "release/1.0", "legacy", "old", "empty", "(no branches)")
 	h.expectNot("(no matching branches)")
 	// b again turns it back on.
 	h.key("b")
 	h.expect("branches: filtered (2 patterns)")
-	h.expectNot("proj › develop")
+	h.expectNoBranch("proj", "develop")
 }
 
 func TestBranchFilterEditorSavesToConfig(t *testing.T) {
@@ -821,8 +825,9 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 	h.expect("develop")
 	h.key("enter") // close: saves
 	h.expectTitle("Job Catalog")
-	h.expect("proj › develop", "proj › main", "proj › feature/x", "branches: filtered (3 patterns)")
-	h.expectNot("proj › release/1.0")
+	h.expect("branches: filtered (3 patterns)")
+	h.expectBranch("proj", "develop", "proj", "main", "proj", "feature/x")
+	h.expectNoBranch("proj", "release/1.0")
 	cfg, err := config.Load(h.path("config.toml"))
 	if err != nil {
 		t.Fatal(err)
@@ -836,8 +841,9 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 
 	// delete the first pattern (main); esc closes and saves too.
 	h.key("B", "d", "esc")
-	h.expectNot("proj › main")
-	h.expect("proj › develop", "proj › feature/x", "branches: filtered (2 patterns)")
+	h.expectNoBranch("proj", "main")
+	h.expect("branches: filtered (2 patterns)")
+	h.expectBranch("proj", "develop", "proj", "feature/x")
 	cfg, _ = config.Load(h.path("config.toml"))
 	if want := []string{"feature/*", "develop"}; !reflect.DeepEqual(cfg.BranchFilter, want) {
 		t.Fatalf("branch_filter = %v, want %v", cfg.BranchFilter, want)
@@ -848,7 +854,8 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 
 	// deleting every pattern shows all branches and drops the key.
 	h.key("B", "d", "d", "enter")
-	h.expect("branches: all", "proj › main", "proj › release/1.0")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main", "proj", "release/1.0")
 	cfg, _ = config.Load(h.path("config.toml"))
 	if len(cfg.BranchFilter) != 0 || strings.Contains(readFile(t, h.path("config.toml")), "branch_filter") {
 		t.Fatalf("branch_filter not cleared: %q", readFile(t, h.path("config.toml")))
@@ -860,14 +867,17 @@ func TestBranchFilterIsCaseSensitiveAndFromScratch(t *testing.T) {
 	h := newApp(t, f) // no branch_filter in config
 	h.loginOK()
 	h.openCatalog()
-	h.expect("branches: all", "proj › main", "proj › develop", "proj › release/1.0", "legacy › old")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main", "proj", "develop", "proj", "release/1.0", "legacy", "old")
 	h.key("B", "a")
 	h.typeText("Main") // wrong case: matches nothing
 	h.key("enter", "enter")
-	h.expect("branches: filtered (1 pattern)", "proj (no matching branches)")
-	h.expectNot("proj › main")
+	h.expect("branches: filtered (1 pattern)")
+	h.expectBranch("proj", "(no matching branches)")
+	h.expectNoBranch("proj", "main")
 	h.key("B", "d", "esc") // remove it again
-	h.expect("proj › main", "branches: all")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main")
 }
 
 func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
@@ -878,14 +888,15 @@ func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
 	h.openCollections()
 	h.openCollection("Branches")
 	// the filter hides release/1.0 when browsing, but the member stays and exists.
-	h.expect("2 jobs", "proj › release/1.0", "proj › main")
+	h.expect("2 jobs")
+	h.expectBranch("proj", "release/1.0", "proj", "main")
 	h.expectNot("MISSING")
 
 	// the picker applies the filter but does not drop hidden members on save.
 	h.key("e")
 	h.expectTitle("Edit Branches")
 	h.expect("2 selected", "branches: filtered (2 patterns)")
-	h.expectNot("proj › release/1.0", "proj › develop")
+	h.expectNoBranch("proj", "release/1.0", "proj", "develop")
 	h.key("enter")
 	h.expectTitle("Collection · Branches")
 	if want := []string{"proj/release%2F1.0", "proj/main"}; !reflect.DeepEqual(loadCollections(t, h).Items[0].Jobs, want) {
@@ -923,7 +934,7 @@ func TestBranchFilterEditedInPickerPersists(t *testing.T) {
 	h.key("B", "a")
 	h.typeText("release/*")
 	h.key("enter", "enter")
-	h.expect("proj › release/1.0")
+	h.expectBranch("proj", "release/1.0")
 	cfg, _ := config.Load(h.path("config.toml"))
 	if want := []string{"main", "feature/*", "release/*"}; !reflect.DeepEqual(cfg.BranchFilter, want) {
 		t.Fatalf("branch_filter = %v", cfg.BranchFilter)
@@ -931,7 +942,8 @@ func TestBranchFilterEditedInPickerPersists(t *testing.T) {
 	h.key("esc")
 	// a picker opened afterwards, and the catalog, see the saved patterns.
 	h.key("e")
-	h.expect("branches: filtered (3 patterns)", "proj › release/1.0")
+	h.expect("branches: filtered (3 patterns)")
+	h.expectBranch("proj", "release/1.0")
 	h.key("esc", "esc", "down")
 	h.key("enter")
 	h.expect("branches: filtered (3 patterns)")

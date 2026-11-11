@@ -67,7 +67,7 @@ func (s *pickerScreen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.deps.Parent), Disabled: true}
+			rows[i] = catalog.PlaceholderRow(it, s.deps.Parent)
 			continue
 		}
 		rows[i] = catalog.Row(it.Job, s.deps.Parent, badge(it.Job.Color))

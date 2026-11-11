@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/dursunkoc/jenktui/internal/branchfilter"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/widgets"
@@ -80,7 +81,7 @@ func (s *Screen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.parent), Disabled: true}
+			rows[i] = PlaceholderRow(it, s.parent)
 			continue
 		}
 		rows[i] = Row(it.Job, s.parent, statusFromColor(it.Job.Color))
@@ -252,6 +253,14 @@ func JobName(j jenkins.Job, parent string) core.JobName {
 func Row(j jenkins.Job, parent string, badge core.Status) widgets.Item {
 	n := JobName(j, parent)
 	return widgets.Item{Key: j.FullName, Label: n.Name, Branch: n.Branch, Badge: badge, ShowBadge: true}
+}
+
+// PlaceholderRow is the disabled row of a Multibranch Project with no
+// (matching) branches: the project in the name column, the reason, e.g.
+// "(no matching branches)", in the branch column.
+func PlaceholderRow(it branchfilter.Item, parent string) widgets.Item {
+	why := strings.TrimSpace(strings.TrimPrefix(it.Label, it.Project))
+	return widgets.Item{Key: it.Key(), Label: core.RelName(it.Project, parent), Branch: why, Disabled: true}
 }
 
 // statusFromColor maps a Jenkins "color" hint to a badge status.

@@ -241,63 +241,85 @@ func TestCursorRowHighlighted(t *testing.T) {
 	}
 }
 
-// The cursor row must not shift its text or badge: on every row the box
-// starts in the same column and the badge is one column after the label.
-func TestCursorRowKeepsAlignment(t *testing.T) {
+// col is the column where sub starts in row (rune columns, ANSI stripped).
+func col(row, sub string) int {
+	i := strings.Index(row, sub)
+	if i < 0 {
+		return -1
+	}
+	return ansi.StringWidth(row[:i])
+}
+
+func rowsOf(l *List) []string {
+	return strings.Split(ansi.Strip(l.View()), "\n")[filterRows:]
+}
+
+// Name, branch and badge each sit in their own column on every row, wherever
+// the cursor is and whichever rows are selected; a placeholder's reason does
+// not widen the branch column.
+func TestColumnsAligned(t *testing.T) {
 	l := NewList(core.NewTheme(), Options{})
 	l.SetItems([]Item{
-		{Key: "team/app/build", Badge: core.StatusSuccess, ShowBadge: true},
-		{Key: "team/app/deploy", Badge: core.StatusFailed, ShowBadge: true},
-		{Key: "gone/job", Missing: true},
+		{Key: "lib", Label: "lib", Branch: "(no matching branches)", Disabled: true},
+		{Key: "ui/develop", Label: "ui", Branch: "develop", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "ui/feature%2Fx", Label: "ui", Branch: "feature/x", Badge: core.StatusFailed, ShowBadge: true},
+		{Key: "team/app/build", Label: "team/app/build", Badge: core.StatusRunning, ShowBadge: true},
+		{Key: "gone/job", Label: "gone/job", Missing: true},
 	})
-	for _, keys := range [][]string{nil, {"down"}, {"down", "down"}} {
+	l.Select("ui/develop")
+	for _, keys := range [][]string{nil, {"down"}, {"down"}, {"down"}, {"down"}} {
 		run(l, keys...)
-		rows := strings.Split(ansi.Strip(l.View()), "\n")[filterRows:]
-		for i, row := range rows {
-			if c := strings.Index(row, "["); c != 2 {
-				t.Fatalf("after %v: row %d box at column %d, want 2: %q", keys, i, c, row)
+		rows := rowsOf(l)
+		box, branch, badge := col(rows[1], "["), col(rows[1], "develop"), col(rows[1], "●")
+		if box != 2 {
+			t.Fatalf("box at column %d, want 2: %q", box, rows[1])
+		}
+		for i, r := range rows {
+			if c := col(r, "["); c != box {
+				t.Errorf("cursor %d: row %d box at %d, want %d: %q", l.cursor, i, c, box, r)
 			}
-			label := strings.Fields(row[strings.Index(row, "]")+1:])[0]
-			end := strings.Index(row, label) + len(label)
-			if !strings.HasPrefix(row[end:], " ● ") && !strings.HasPrefix(row[end:], " ") {
-				t.Fatalf("after %v: row %d badge not one column after the label: %q", keys, i, row)
+			if c := col(r, "●"); i > 0 && c != badge {
+				t.Errorf("cursor %d: row %d badge at %d, want %d: %q", l.cursor, i, c, badge, r)
 			}
-			if strings.HasPrefix(row[end:], "  ") {
-				t.Fatalf("after %v: row %d has two spaces before the badge: %q", keys, i, row)
-			}
+		}
+		if c := col(rows[2], "feature/x"); c != branch {
+			t.Errorf("cursor %d: branch column moved: %d vs %d", l.cursor, c, branch)
+		}
+		if c := col(rows[0], "(no matching"); c != branch {
+			t.Errorf("cursor %d: placeholder reason at %d, want the branch column %d", l.cursor, c, branch)
 		}
 		if !strings.HasPrefix(rows[l.cursor], ">") {
-			t.Fatalf("after %v: cursor row lacks the > marker: %q", keys, rows[l.cursor])
+			t.Errorf("cursor row lacks the > marker: %q", rows[l.cursor])
 		}
+	}
+	// the branch column is as wide as the longest real branch, not the reason.
+	if rows := rowsOf(l); col(rows[1], "●")-col(rows[1], "develop") != len("feature/x")+len(colGap) {
+		t.Errorf("branch column width: %q", rows[1])
 	}
 }
 
-// A branch is shown after its project with the separator; only plain rows get
-// a muted separator, so styled rows are rendered in one piece.
-func TestBranchSeparator(t *testing.T) {
-	prev := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.ANSI)
-	defer lipgloss.SetColorProfile(prev)
-
-	th := core.NewTheme()
-	l := NewList(th, Options{})
+// Without branches there is no branch column: the badge follows the name
+// column directly.
+func TestNoBranchColumn(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
 	l.SetItems([]Item{
-		{Key: "ui/develop", Label: "ui", Branch: "develop"},
-		{Key: "ui/main", Label: "ui", Branch: "main"},
-		{Key: "ui/next", Label: "ui", Branch: "next"},
+		{Key: "a/b", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "a/longer", Badge: core.StatusFailed, ShowBadge: true},
 	})
-	l.Select("ui/main")
-	raw := strings.Split(l.View(), "\n")[filterRows:]
-	for i, want := range []string{"> [ ] ui › develop", "  [x] ui › main", "  [ ] ui › next"} {
-		if got := strings.TrimRight(ansi.Strip(raw[i]), " "); got != want {
-			t.Errorf("row %d = %q, want %q", i, got, want)
-		}
+	rows := rowsOf(l)
+	if got, want := col(rows[0], "●"), 2+4+len("a/longer")+len(colGap); got != want || col(rows[1], "●") != want {
+		t.Fatalf("badge at %d, want %d:\n%s", got, want, strings.Join(rows, "\n"))
 	}
-	muted := th.MutedTxt.Render(core.BranchSep)
-	if !strings.Contains(raw[2], muted) {
-		t.Errorf("plain row should have a muted separator: %q", raw[2])
-	}
-	if strings.Contains(raw[0], muted) || strings.Contains(raw[1], muted) {
-		t.Errorf("cursor and selected rows must not embed a muted separator: %q / %q", raw[0], raw[1])
+}
+
+// On a narrow list the name column is cut with … first; the badge stays.
+func TestColumnsShrinkOnNarrowList(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	long := strings.Repeat("x", 60)
+	l.SetItems([]Item{{Key: long, Label: long, Branch: "main", Badge: core.StatusSuccess, ShowBadge: true}})
+	l.SetSize(50, 10)
+	row := rowsOf(l)[0]
+	if ansi.StringWidth(row) > 50 || !strings.Contains(row, "…") || !strings.Contains(row, "main") || !strings.Contains(row, "● SUCCESS") {
+		t.Fatalf("narrow row: %q (%d wide)", row, ansi.StringWidth(row))
 	}
 }

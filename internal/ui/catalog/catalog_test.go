@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -169,12 +170,17 @@ func typeText(s *Screen, text string) {
 func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 	s := newBranchScreen(t, []string{"main", "release/*"}, nil)
 	v := shown(s)
-	for _, want := range []string{"branches: filtered (2 patterns)", "plain", "app › main", "lib (no matching branches)"} {
+	for _, want := range []string{"branches: filtered (2 patterns)", "plain"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("missing %q:\n%s", want, v)
 		}
 	}
-	if strings.Contains(v, "feature/x") || strings.Contains(v, "lib › dev") {
+	for _, want := range [][2]string{{"app", "main"}, {"lib", "(no matching branches)"}} {
+		if !branchRow(want[0], want[1]).MatchString(v) {
+			t.Errorf("missing row %q / %q:\n%s", want[0], want[1], v)
+		}
+	}
+	if strings.Contains(v, "feature/x") || branchRow("lib", "dev").MatchString(v) {
 		t.Errorf("filtered branches visible:\n%s", v)
 	}
 	// Placeholder is not selectable ("a" selects all).
@@ -184,10 +190,8 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 	}
 	s.Update(kmsg("b"))
 	v = shown(s)
-	for _, want := range []string{"branches: all", "app › feature/x", "lib › dev"} {
-		if !strings.Contains(v, want) {
-			t.Errorf("filter off, missing %q:\n%s", want, v)
-		}
+	if !strings.Contains(v, "branches: all") || !branchRow("app", "feature/x").MatchString(v) || !branchRow("lib", "dev").MatchString(v) {
+		t.Errorf("filter off, missing rows:\n%s", v)
 	}
 	if strings.Contains(v, "no matching") {
 		t.Errorf("no placeholder expected when off:\n%s", v)
@@ -197,11 +201,11 @@ func TestBranchFilterToggleAndPlaceholder(t *testing.T) {
 func TestBranchFilterNoPatternsShowsAll(t *testing.T) {
 	s := newBranchScreen(t, nil, nil)
 	v := shown(s)
-	if !strings.Contains(v, "branches: all") || !strings.Contains(v, "lib › dev") {
+	if !strings.Contains(v, "branches: all") || !branchRow("lib", "dev").MatchString(v) {
 		t.Errorf("view:\n%s", v)
 	}
 	s.Update(kmsg("b")) // turning "on" with no patterns must not hide anything
-	if !strings.Contains(shown(s), "lib › dev") {
+	if !branchRow("lib", "dev").MatchString(shown(s)) {
 		t.Errorf("empty filter hid rows:\n%s", shown(s))
 	}
 }
@@ -261,7 +265,7 @@ func TestBranchFilterEditor(t *testing.T) {
 		t.Fatalf("editing=%v saved=%v", s.editing, saved)
 	}
 	v := shown(s)
-	if !strings.Contains(v, "branches: filtered (1 pattern)") || strings.Contains(v, "lib/dev") || !strings.Contains(v, "lib (no matching branches)") {
+	if !strings.Contains(v, "branches: filtered (1 pattern)") || branchRow("lib", "dev").MatchString(v) || !branchRow("lib", "(no matching branches)").MatchString(v) {
 		t.Errorf("filter not applied after edit:\n%s", v)
 	}
 }
@@ -346,4 +350,9 @@ func TestJobName(t *testing.T) {
 	if r.Key != "ui/feature%2Fx" || r.Label != "ui" || r.Branch != "feature/x" {
 		t.Errorf("Row = %+v (the key must stay the full, encoded name)", r)
 	}
+}
+
+// branchRow matches a row showing name and branch in their own columns.
+func branchRow(name, branch string) *regexp.Regexp {
+	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
 }
