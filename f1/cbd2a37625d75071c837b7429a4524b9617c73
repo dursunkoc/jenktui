@@ -1,0 +1,24 @@
+README.md
+  s_26ac0d5c200416::t_79abab8134d5d9 44
+internal/ui/entry/entry_test.go
+  s_26ac0d5c200416::t_105cfc63873223 226,230-231,234-238
+  s_26ac0d5c200416::t_79abab8134d5d9 210-211,213-225,227-229,232-233,239-241
+internal/ui/entry/login.go
+  s_26ac0d5c200416::t_79abab8134d5d9 140-142,150,159-167
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "f1cbd2a37625d75071c837b7429a4524b9617c73",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
