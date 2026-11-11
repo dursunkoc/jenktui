@@ -1,0 +1,22 @@
+e2e_test.go
+  s_26ac0d5c200416::t_360a585bb9c7ad 1334-1347
+  s_26ac0d5c200416::t_c95f109d3c8081 1348-1349
+internal/ui/monitor/render.go
+  s_26ac0d5c200416::t_5ca58ba306f34d 37-39,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "290435c78352723de4b1ce5bb8c0ae281d432bce",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
