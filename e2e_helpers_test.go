@@ -408,7 +408,15 @@ func (h *harness) menuTo(index int) {
 	h.key("enter")
 }
 
-func (h *harness) openCollections() { h.t.Helper(); h.menuTo(0); h.expectTitle("Collections") }
+// openCollections opens the Collections list (titled "Collections", plus
+// " · parent" when a parent job is set).
+func (h *harness) openCollections() {
+	h.t.Helper()
+	h.menuTo(0)
+	if t := h.title(); t != "Collections" && !strings.HasPrefix(t, "Collections · ") {
+		h.t.Fatalf("not on the Collections list: %q", t)
+	}
+}
 
 func (h *harness) openCatalog() {
 	h.t.Helper()
@@ -422,7 +430,9 @@ func (h *harness) openCatalog() {
 func (h *harness) openCollection(name string) {
 	h.t.Helper()
 	h.key("enter")
-	h.expectTitle("Collection · " + name)
+	if t := h.title(); t != "Collection · "+name && !(strings.HasPrefix(t, "Collection · ") && strings.HasSuffix(t, " · "+name)) {
+		h.t.Fatalf("title = %q, want Collection · [parent · ]%s", t, name)
+	}
 }
 
 // ---- files ----

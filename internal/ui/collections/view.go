@@ -79,7 +79,7 @@ func (s *viewScreen) Init() tea.Cmd {
 	return tea.Batch(s.load.Start(), s.loadCatalog(s.seq))
 }
 
-func (s *viewScreen) Title() string { return "Collection · " + s.name }
+func (s *viewScreen) Title() string { return s.titled("Collection") + " · " + s.name }
 
 func (s *viewScreen) Keys() []key.Binding {
 	if s.err != nil || s.loading && !s.loaded {

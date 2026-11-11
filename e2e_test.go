@@ -626,7 +626,9 @@ func TestJobNamesRelativeToParent(t *testing.T) {
 		withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build", "tools/cleanup")))
 	h.loginOK()
 	h.openCollections()
+	h.expectTitle("Collections · team")
 	h.openCollection("Ops")
+	h.expectTitle("Collection · team · Ops")
 	h.expect("[ ] web/test", "[ ] api/build", "tools/cleanup")
 	h.expectNot("team/web/test", "team/api/build")
 

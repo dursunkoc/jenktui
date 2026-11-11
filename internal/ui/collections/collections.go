@@ -66,6 +66,16 @@ type env struct {
 	patterns []string // latest Branch Filter patterns, so later pickers see saved edits
 }
 
+// titled appends the Parent Job to a title, "Collections · team", so the
+// screen says which project its Collections belong to. Under the Jenkins
+// root the title is unchanged.
+func (e *env) titled(title string) string {
+	if p := strings.Trim(e.deps.Parent, "/"); p != "" {
+		return title + " · " + p
+	}
+	return title
+}
+
 func (e *env) branchSettings() catalog.Settings {
 	return catalog.Settings{
 		Patterns: append([]string(nil), e.patterns...),
@@ -183,7 +193,7 @@ func (s *listScreen) reload() {
 
 func (s *listScreen) Init() tea.Cmd { return nil }
 
-func (s *listScreen) Title() string { return "Collections" }
+func (s *listScreen) Title() string { return s.titled("Collections") }
 
 func (s *listScreen) Keys() []key.Binding {
 	if s.monName != "" {
