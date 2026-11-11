@@ -299,7 +299,7 @@ func TestRouterIntegration(t *testing.T) {
 	sess := &core.Session{}
 	r := core.NewRouter(sess, NewSplash(sess, Deps{ConfigDir: t.TempDir()}))
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	if v := r.View(); !strings.Contains(v, "checking") {
+	if v := r.View(); !strings.Contains(v, "checking") || !strings.Contains(v, "Jenkins Terminal User Interface") {
 		t.Fatalf("splash view:\n%s", v)
 	}
 }

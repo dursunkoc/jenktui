@@ -23,6 +23,9 @@ var logo = []string{
 	` |__/                              `,
 }
 
+// tagline sits under the logo and says what the name stands for.
+const tagline = "Jenkins Terminal User Interface"
+
 var spinner = []string{"|", "/", "-", "\\"}
 
 type splashPhase int
@@ -156,7 +159,7 @@ func (s *Splash) View() string {
 	case phaseUnreachable:
 		body = s.th.ErrorView(errTitle(s.err), s.err, errHint(s.err)+"\n\nPress r to retry, q to quit.")
 	default:
-		body = s.logoView() + "\n\n" + s.th.MutedTxt.Render(spinner[s.frame%len(spinner)]+" checking configuration...")
+		body = s.logoView() + "\n\n" + s.taglineView() + "\n\n" + s.th.MutedTxt.Render(spinner[s.frame%len(spinner)]+" checking configuration...")
 	}
 	return lipgloss.Place(s.width, s.height, lipgloss.Center, lipgloss.Center, body)
 }
@@ -172,6 +175,16 @@ func (s *Splash) logoView() string {
 		sb.WriteString("\n")
 	}
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// taglineView centres the tagline on the logo's width, so it stays under the
+// logo whatever the terminal width.
+func (s *Splash) taglineView() string {
+	w := 0
+	for _, line := range logo {
+		w = max(w, lipgloss.Width(line))
+	}
+	return s.th.Title.Width(w).Align(lipgloss.Center).Render(tagline)
 }
 
 func (s *Splash) Title() string { return "jenktui" }
