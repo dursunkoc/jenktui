@@ -8,7 +8,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 
 ## Current state
 
-- **Released:** `v0.1.1` (six archives, macOS/Linux/Windows on amd64 and arm64, plus `checksums.txt`). `v0.1.0` exists too but predates the Homebrew cask.
+- **Released:** `v0.1.2` (six archives, macOS/Linux/Windows on amd64 and arm64, plus `checksums.txt`), which adds the UI improvements (aligned list columns with titles, relative job names, help panel, password login). The Homebrew cask was updated by the release job. `v0.1.1` and `v0.1.0` exist too; `v0.1.0` predates the cask.
 - **Install channels:** Homebrew cask in `dursunkoc/homebrew-tap` (`brew install dursunkoc/tap/jenktui`), `install.sh` (checked against the real release), release archives, `go install`. The Homebrew install itself has not been tried by anyone yet.
 - **Verified:** CI is green (vet, gofmt, `go test -race`); there are unit tests per package and an end-to-end suite (`e2e_test.go`) against the fake Jenkins. The owner ran the app against their real Jenkins and reported it works. They did not itemise the checklist in TODO.md, so a server that behaves differently (parallel pipeline stages, Multibranch layouts, crumb settings) may still surprise.
 - **Not covered by tests:** the monitor's automatic 3s/30s polling schedule, spinner animation, and a job deleted from Jenkins between loading and triggering.
@@ -88,7 +88,7 @@ Releases are built by goreleaser from a pushed tag. The version comes from the t
 Homebrew and the install script:
 
 - Each release also updates the cask `jenktui` in the tap repo `github.com/dursunkoc/homebrew-tap` (users run `brew install dursunkoc/tap/jenktui`). This needs, once: an initialised public repo `dursunkoc/homebrew-tap`, and a fine-grained token with Contents read and write on that repo, saved as the secret `HOMEBREW_TAP_TOKEN` in the `jenktui` repo. Without the secret the release job fails after the GitHub release has been created.
-- goreleaser's `brews` option is deprecated; the config uses `homebrew_casks`. Its generated cask has not been run through `brew audit` (the check could not run on the author's network), so run `brew install dursunkoc/tap/jenktui` on a Mac after a release. The cask was published by `v0.1.1` and its checksums match the release files.
+- goreleaser's `brews` option is deprecated; the config uses `homebrew_casks`. Its generated cask has not been run through `brew audit` (the check could not run on the author's network), so run `brew install dursunkoc/tap/jenktui` on a Mac after a release. The cask was published by `v0.1.1` and updated by `v0.1.2`; the checksums match the release files. After a release, `brew update` (not `brew update <name>`) then `brew upgrade --cask dursunkoc/tap/jenktui` picks it up.
 - `install.sh` (macOS and Linux, no Go needed) downloads the latest release archive, verifies it against `checksums.txt`, and installs to `/usr/local/bin` or `~/.local/bin`. `JENKTUI_VERSION`, `INSTALL_DIR` and `JENKTUI_BASE_URL` override its defaults (the last one is for testing against a local server). It has been run against the real `v0.1.0` and `v0.1.1` releases, including the latest-release lookup and a pinned version.
 
 To try the build without publishing anything, run `goreleaser release --snapshot --clean` (output goes to the git-ignored `dist/`). `goreleaser check` validates the config.
