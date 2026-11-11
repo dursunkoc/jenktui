@@ -1,0 +1,25 @@
+.goreleaser.yaml
+  s_a7dde8a5844683::t_e3d7628d6ca2f7 49-50,52-54,60,63-65
+.github/workflows/release.yml
+  s_a7dde8a5844683::t_4ba0e9f6039a79 29
+TODO.md
+  s_a7dde8a5844683::t_4ba0e9f6039a79 7,15
+docs/HANDOFF.md
+  s_a7dde8a5844683::t_4ba0e9f6039a79 11-12,90-91
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "dc13dbf57a4e86f4010e82f45d5f66b139dff6a0",
+  "prompts": {},
+  "sessions": {
+    "s_a7dde8a5844683": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "621ff411-7f27-413e-b145-0bacea984770",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
