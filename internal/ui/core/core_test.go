@@ -278,3 +278,20 @@ func TestHeaderShowsSubtitleOnTitleRow(t *testing.T) {
 		t.Fatalf("empty subtitle: %q", rows[0])
 	}
 }
+
+func TestRelName(t *testing.T) {
+	for _, tc := range []struct{ full, parent, want string }{
+		{"team/app/build", "team", "app/build"},
+		{"team/app/build", "team/", "app/build"},
+		{"team/app/build", "team/app", "build"},
+		{"team/app/build", "", "team/app/build"}, // Jenkins root
+		{"other/job", "team", "other/job"},       // outside the parent
+		{"teamwork/job", "team", "teamwork/job"}, // a prefix, not a folder
+		{"team", "team", "team"},                 // the parent itself
+		{"team/app (no matching branches)", "team", "app (no matching branches)"},
+	} {
+		if got := RelName(tc.full, tc.parent); got != tc.want {
+			t.Errorf("RelName(%q, %q) = %q, want %q", tc.full, tc.parent, got, tc.want)
+		}
+	}
+}

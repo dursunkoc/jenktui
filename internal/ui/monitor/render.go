@@ -107,7 +107,7 @@ func (m *model) block(vi, i int) []string {
 	if vi == m.cursor {
 		cur = m.th.Selected.Render("▸ ")
 	}
-	parts := []string{m.badge(st), st.run.Job}
+	parts := []string{m.badge(st), core.RelName(st.run.Job, m.deps.Parent)}
 	if st.num > 0 {
 		parts = append(parts, fmt.Sprintf("#%d", st.num))
 	}
@@ -273,7 +273,7 @@ func (m *model) stageRow(stages []jenkins.Stage) string {
 
 func (m *model) detailView() string {
 	st := m.runs[m.selected()]
-	head := []string{m.fit(m.badge(st) + "  " + st.run.Job + numSuffix(st))}
+	head := []string{m.fit(m.badge(st) + "  " + core.RelName(st.run.Job, m.deps.Parent) + numSuffix(st))}
 	if t := m.note(st); t != "" {
 		head = append(head, m.fit(m.th.MutedTxt.Render(t)))
 	}

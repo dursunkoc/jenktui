@@ -50,13 +50,15 @@ TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_veri
 Splash → Login → Menu (Collections, Job Catalog, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
+
+Job names are shown relative to the parent job: under `parent_job = "team"`, `team/app/build` is shown as `app/build` (in the catalog, Collections and the Run Monitor). A job outside the parent keeps its full name.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them.
 - **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
 
 ## Filtering
 
-Press `/` in any list and type. Matching is case-insensitive, anywhere in the job's full path:
+Press `/` in any list and type. Matching is case-insensitive, anywhere in the job's full path (including the parent job's part, even though it is not shown):
 
 | Type | Matches |
 |---|---|

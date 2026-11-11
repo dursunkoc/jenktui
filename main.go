@@ -80,7 +80,7 @@ func newDeps(dir string) entry.Deps {
 		if m, ok := monitors[k]; ok {
 			return m
 		}
-		m := monitor.NewCollection(monitor.Deps{Client: client(s)}, name, nil, nil)
+		m := monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob}, name, nil, nil)
 		monitors[k] = m
 		return m
 	}

@@ -64,7 +64,7 @@ func (s *viewScreen) rebuild() {
 	items := make([]widgets.Item, len(s.members))
 	for i, k := range s.members {
 		c, ok := color[k]
-		items[i] = widgets.Item{Key: k, Badge: badge(c), ShowBadge: true, Missing: s.loaded && !ok}
+		items[i] = widgets.Item{Key: k, Label: core.RelName(k, s.deps.Parent), Badge: badge(c), ShowBadge: true, Missing: s.loaded && !ok}
 	}
 	s.list.SetItems(items)
 }

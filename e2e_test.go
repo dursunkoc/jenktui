@@ -172,8 +172,8 @@ func TestFirstRunSetupLoginMenu(t *testing.T) {
 	// The configured parent job reaches the Job Catalog.
 	h.openCatalog()
 	h.expectTitle("Job Catalog · team")
-	h.expect("team/api/build")
-	h.expectNot("tools/cleanup")
+	h.expect("[ ] api/build") // shown relative to the parent job
+	h.expectNot("team/api/build", "tools/cleanup")
 }
 
 func TestSetupErrorsStayOnSetup(t *testing.T) {
@@ -614,6 +614,38 @@ func TestCollectionsListBlankLineUnderTitle(t *testing.T) {
 	if rows[0] != "Collections" || rows[1] != "" || !strings.HasPrefix(rows[2], "> Ops") {
 		t.Fatalf("collections rows:\n%s", strings.Join(rows[:4], "\n"))
 	}
+}
+
+// With a parent job set, job names are shown relative to it in a Collection,
+// the member picker and the Run Monitor; a member outside the parent keeps
+// its full name, and the filter still matches the full name.
+func TestJobNamesRelativeToParent(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withConfigExtra(`parent_job = "team"`),
+		withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build", "tools/cleanup")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.expect("[ ] web/test", "[ ] api/build", "tools/cleanup")
+	h.expectNot("team/web/test", "team/api/build")
+
+	h.key("/")
+	h.typeText("team/web") // matches the full name, though "team/" is not shown
+	h.expect("[ ] web/test")
+	h.expectNot("api/build")
+	h.key("esc")
+
+	h.key("m")
+	h.expectTitle("Run Monitor: Ops")
+	h.key("s") // show successful jobs too
+	h.expect("web/test", "api/build")
+	h.expectNot("team/web/test", "team/api/build")
+	h.key("esc")
+
+	h.key("e")
+	h.expectTitle("Edit Ops")
+	h.expect("[ ] api/deploy", "[x] web/test")
+	h.expectNot("team/")
 }
 
 func TestCollectionEditMembers(t *testing.T) {

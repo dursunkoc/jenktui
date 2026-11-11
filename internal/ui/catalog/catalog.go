@@ -80,10 +80,10 @@ func (s *Screen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: it.Label, Disabled: true}
+			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.parent), Disabled: true}
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Badge: statusFromColor(it.Job.Color), ShowBadge: true}
+		rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Key(), s.parent), Badge: statusFromColor(it.Job.Color), ShowBadge: true}
 	}
 	s.list.SetItems(rows)
 }

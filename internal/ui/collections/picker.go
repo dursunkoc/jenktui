@@ -67,10 +67,10 @@ func (s *pickerScreen) rebuild() {
 	rows := make([]widgets.Item, len(items))
 	for i, it := range items {
 		if it.Placeholder {
-			rows[i] = widgets.Item{Key: it.Key(), Label: it.Label, Disabled: true}
+			rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Label, s.deps.Parent), Disabled: true}
 			continue
 		}
-		rows[i] = widgets.Item{Key: it.Key(), Badge: badge(it.Job.Color), ShowBadge: true}
+		rows[i] = widgets.Item{Key: it.Key(), Label: core.RelName(it.Key(), s.deps.Parent), Badge: badge(it.Job.Color), ShowBadge: true}
 	}
 	s.list.SetItems(rows)
 	for k, v := range s.chosen {

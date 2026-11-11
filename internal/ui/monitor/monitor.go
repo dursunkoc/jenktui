@@ -36,6 +36,7 @@ type Client interface {
 // Deps are the monitor's dependencies. Zero durations get defaults.
 type Deps struct {
 	Client       Client
+	Parent       string        // Parent Job; job names are shown relative to it
 	FastInterval time.Duration // rows that are running or queued (default 3s)
 	SlowInterval time.Duration // every other row (default 30s)
 	PollTimeout  time.Duration // per-request context timeout (default 10s)

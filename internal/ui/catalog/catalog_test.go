@@ -68,10 +68,14 @@ func TestLoadSuccess(t *testing.T) {
 	feed(t, s, s.Init())
 	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	v := shown(s)
-	for _, want := range []string{"3 jobs", "team/a", "SUCCESS", "RUNNING", "FAILED"} {
+	// names are shown relative to the parent; one outside it stays whole.
+	for _, want := range []string{"3 jobs", "[ ] a ", "[ ] b ", "[ ] x/c ", "SUCCESS", "RUNNING", "FAILED"} {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q:\n%s", want, v)
 		}
+	}
+	if strings.Contains(v, "team/") {
+		t.Errorf("parent prefix shown:\n%s", v)
 	}
 	if f.got != "team" {
 		t.Errorf("parent = %q", f.got)
