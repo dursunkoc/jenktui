@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -327,11 +328,19 @@ func (m *model) restoreCursor(job string) {
 	}
 }
 
+// Title is "Run Monitor: Ops", or with a Parent Job "Run Monitor · team ·
+// Ops", like the Collection screens.
 func (m *model) Title() string {
-	if m.name == "" {
+	p := strings.Trim(m.deps.Parent, "/")
+	switch {
+	case m.name == "" && p == "":
 		return "Run Monitor"
+	case m.name == "":
+		return "Run Monitor · " + p
+	case p == "":
+		return "Run Monitor: " + m.name
 	}
-	return "Run Monitor: " + m.name
+	return "Run Monitor · " + p + " · " + m.name
 }
 
 var keyRefresh = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh"))

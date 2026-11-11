@@ -639,14 +639,14 @@ func TestJobNamesRelativeToParent(t *testing.T) {
 	h.key("esc")
 
 	h.key("m")
-	h.expectTitle("Run Monitor: Ops")
+	h.expectTitle("Run Monitor · team · Ops")
 	h.key("s") // show successful jobs too
 	h.expect("web/test", "api/build")
 	h.expectNot("team/web/test", "team/api/build")
 	h.key("esc")
 
 	h.key("e")
-	h.expectTitle("Edit Ops")
+	h.expectTitle("Edit · team · Ops")
 	h.expect("[ ] api/deploy", "[x] web/test")
 	h.expectNot("team/")
 }

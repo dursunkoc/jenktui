@@ -854,3 +854,17 @@ func shown(s core.Screen) string {
 	}
 	return s.View()
 }
+
+func TestTitleNamesParent(t *testing.T) {
+	for _, tc := range []struct{ parent, name, want string }{
+		{"", "", "Run Monitor"},
+		{"", "Ops", "Run Monitor: Ops"},
+		{"team", "Ops", "Run Monitor · team · Ops"},
+		{"team/", "", "Run Monitor · team"},
+	} {
+		m := NewCollection(Deps{Parent: tc.parent}, tc.name, nil, nil)
+		if got := m.Title(); got != tc.want {
+			t.Errorf("Title(parent %q, name %q) = %q, want %q", tc.parent, tc.name, got, tc.want)
+		}
+	}
+}

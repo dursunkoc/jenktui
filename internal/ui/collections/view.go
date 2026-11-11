@@ -172,7 +172,7 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 	case !s.loaded:
 		return s, nil
 	case key.Matches(m, keyEdit):
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "Edit "+s.name, s.members, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("Edit", s.name), s.members, func(keys []string) error {
 			if !s.persist(keys) {
 				return fmt.Errorf("%s", s.notice)
 			}

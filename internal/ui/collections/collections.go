@@ -76,6 +76,15 @@ func (e *env) titled(title string) string {
 	return title
 }
 
+// pickerTitle is the member picker's title: "Edit Ops", or with a Parent Job
+// "Edit · team · Ops", like the Collection screens.
+func (e *env) pickerTitle(verb, name string) string {
+	if p := strings.Trim(e.deps.Parent, "/"); p != "" {
+		return verb + " · " + p + " · " + name
+	}
+	return verb + " " + name
+}
+
 func (e *env) branchSettings() catalog.Settings {
 	return catalog.Settings{
 		Patterns: append([]string(nil), e.patterns...),
@@ -299,7 +308,7 @@ func (s *listScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		return s.openMonitor(c)
 	case key.Matches(m, keyEdit):
 		s.notice = ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "Edit "+c.Name, c.Jobs, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("Edit", c.Name), c.Jobs, func(keys []string) error {
 			err := s.mutate(func(cs *config.Collections) error { return cs.SetJobs(c.Name, keys) })
 			s.reload()
 			return err
@@ -402,7 +411,7 @@ func (s *listScreen) inputKey(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 			return s, nil
 		}
 		s.mode, s.notice = modeList, ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "New "+name, nil, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("New", name), nil, func(keys []string) error {
 			err := s.mutate(func(cs *config.Collections) error { return cs.Add(name, keys) })
 			s.reload()
 			return err
