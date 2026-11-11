@@ -37,6 +37,10 @@ type Client interface {
 // Deps are the screen's dependencies.
 type Deps struct {
 	Client Client
+	// Names says how jobs are shown ("project › branch" for a Multibranch
+	// branch). A job not in Names is shown relative to Parent.
+	Names  map[string]core.JobName
+	Parent string
 	// Next builds the screen shown after triggering (Replace). When nil a
 	// simple result list is shown.
 	Next func(started []Started) core.Screen
@@ -104,6 +108,15 @@ func New(deps Deps, jobKeys []string) core.Screen {
 }
 
 func (s *screen) Title() string { return "Trigger" }
+
+// name is how job is shown: from Deps.Names, otherwise relative to the
+// Parent Job. Plain text, so it can sit inside a styled title.
+func (s *screen) name(job string) string {
+	if n, ok := s.deps.Names[job]; ok {
+		return n.String()
+	}
+	return core.RelName(job, s.deps.Parent)
+}
 
 func (s *screen) Init() tea.Cmd {
 	keys, c := s.keys, s.deps.Client
@@ -188,7 +201,7 @@ func (s *screen) activeForm() *params.Form {
 }
 
 func (s *screen) resizeForms() {
-	hh := max(s.h-len(s.notes)-1, 5)
+	hh := max(s.h-len(s.notes)-2, 5) // notes, blank top row, slack
 	for _, f := range s.allForms() {
 		f.SetSize(s.w, hh)
 	}
@@ -211,7 +224,7 @@ func (s *screen) allForms() []*params.Form {
 func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 	for _, r := range res {
 		if r.err != nil {
-			s.notes = append(s.notes, fmt.Sprintf("%s excluded: %v", r.job, r.err))
+			s.notes = append(s.notes, fmt.Sprintf("%s excluded: %v", s.name(r.job), r.err))
 			continue
 		}
 		s.jobs = append(s.jobs, r.job)
@@ -227,7 +240,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 			s.st = stConfirm
 			return s, nil
 		}
-		s.form = params.NewForm(s.jobs[0], d, params.Options{})
+		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{})
 		s.st = stForm
 		s.resizeForms()
 		return s, nil
@@ -320,8 +333,8 @@ func (s *screen) buildJobForm(job string) *params.Form {
 		}
 	}
 	idx := slicesIndex(s.jobSeq, job) + 1
-	f := params.NewForm(fmt.Sprintf("%s (%d/%d)", job, idx, len(s.jobSeq)), defs, params.Options{Prefill: pre})
-	f.SetSize(s.w, max(s.h-len(s.notes)-1, 5))
+	f := params.NewForm(fmt.Sprintf("%s (%d/%d)", s.name(job), idx, len(s.jobSeq)), defs, params.Options{Prefill: pre})
+	f.SetSize(s.w, max(s.h-len(s.notes)-2, 5))
 	return f
 }
 
@@ -381,7 +394,7 @@ func (s *screen) enterSummary() {
 	}
 	s.summary = nil
 	for _, j := range s.jobs {
-		s.summary = append(s.summary, s.th.Title.Render(j))
+		s.summary = append(s.summary, s.th.Title.Render(s.name(j)))
 		vals := s.final[j]
 		if len(vals) == 0 {
 			s.summary = append(s.summary, s.th.MutedTxt.Render("  (no parameters)"))
@@ -498,7 +511,7 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *screen) summaryRows() int { return max(s.h-len(s.notes)-4, 3) }
+func (s *screen) summaryRows() int { return max(s.h-len(s.notes)-5, 3) }
 
 // fire triggers every job concurrently, collecting per-job errors.
 func (s *screen) fire() (core.Screen, tea.Cmd) {
@@ -558,7 +571,10 @@ func (s *screen) banner() string {
 	return b.String()
 }
 
-func (s *screen) View() string {
+// View draws the current step one blank line under the title.
+func (s *screen) View() string { return "\n" + s.view() }
+
+func (s *screen) view() string {
 	switch s.st {
 	case stLoading:
 		return s.spin.View() + fmt.Sprintf(" Loading parameters for %d job(s)...", len(s.keys))
@@ -567,7 +583,7 @@ func (s *screen) View() string {
 	case stFailed:
 		return s.th.ErrorView("Cannot trigger", errors.New(strings.Join(s.notes, "\n")), "esc to go back")
 	case stConfirm:
-		return s.banner() + s.th.NoticeView("Trigger "+s.jobs[0]+"?", "y trigger, n cancel (no parameters)")
+		return s.banner() + s.th.NoticeView("Trigger "+s.name(s.jobs[0])+"?", "y trigger, n cancel (no parameters)")
 	case stForm, stCommon, stJob:
 		return s.banner() + s.activeForm().View()
 	case stSummary:
@@ -584,9 +600,9 @@ func (s *screen) View() string {
 		b.WriteString(s.banner() + s.th.Title.Render("Trigger results") + "\n\n")
 		for _, r := range s.started {
 			if r.Err != nil {
-				b.WriteString(fmt.Sprintf("  FAILED  %s: %v\n", r.Job, r.Err))
+				b.WriteString(fmt.Sprintf("  FAILED  %s: %v\n", s.name(r.Job), r.Err))
 			} else {
-				b.WriteString(fmt.Sprintf("  queued  %s (queue item %d)\n", r.Job, r.Ref.ID))
+				b.WriteString(fmt.Sprintf("  queued  %s (queue item %d)\n", s.name(r.Job), r.Ref.ID))
 			}
 		}
 		b.WriteString("\n" + s.th.MutedTxt.Render("esc to go back"))

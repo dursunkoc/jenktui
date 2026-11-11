@@ -904,7 +904,7 @@ func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
 	}
 	// and the branch can be triggered through its encoded URL.
 	h.key("down", "down", "t")
-	h.expect("Trigger proj/feature%2Fx?")
+	h.expect("Trigger proj › feature/x?")
 	h.key("y")
 	tr := triggerFor(t, f, "proj/feature%2Fx")
 	if tr.Endpoint != "build" {
@@ -938,6 +938,28 @@ func TestBranchFilterEditedInPickerPersists(t *testing.T) {
 }
 
 // ---- 6. Trigger a single job without parameters ----
+
+// The trigger screen shows job names like the lists: relative to the parent
+// job, and a step starts one blank line under the title.
+func TestTriggerShowsShortNames(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withConfigExtra(`parent_job = "team"`),
+		withCollections(collectionsTOML("Ops", "team/api/build", "team/web/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("a", "t") // both jobs
+	h.expectTitle("Trigger")
+	rows := strings.Split(h.screenText(), "\n")
+	if rows[1] != "" || rows[2] == "" {
+		t.Fatalf("trigger step should start one blank line under the title:\n%s", strings.Join(rows[:4], "\n"))
+	}
+	for i := 0; i < 6 && !contains(h.screenText(), "Ready to trigger"); i++ {
+		h.key("enter") // through any parameter forms, keeping the defaults
+	}
+	h.expect("Ready to trigger 2 job(s)", "api/build", "web/build")
+	h.expectNot("team/")
+}
 
 func TestTriggerSingleJobNoParamsThroughMonitor(t *testing.T) {
 	stages := func(second string) []jenkinstest.Stage {

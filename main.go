@@ -108,6 +108,8 @@ func newDeps(dir string) entry.Deps {
 		return func(collection string, jobKeys []string, names map[string]core.JobName) core.Screen {
 			return trigger.New(trigger.Deps{
 				Client: client(s),
+				Names:  names,
+				Parent: s.Config.ParentJob,
 				Next: func(started []trigger.Started) core.Screen {
 					runs := make([]monitor.Run, len(started))
 					for i, st := range started {
