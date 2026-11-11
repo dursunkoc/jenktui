@@ -477,6 +477,26 @@ func TestHelpBarAndPanel(t *testing.T) {
 	}
 }
 
+// The count line sits on the title row, and the filter hint has a blank line
+// above and below it.
+func TestCatalogHeaderLayout(t *testing.T) {
+	h := newApp(t, newFixture(t))
+	h.loginOK()
+	h.openCatalog()
+	rows := strings.Split(h.screenText(), "\n")
+	if !strings.HasPrefix(rows[0], h.title()) || !strings.HasSuffix(rows[0], "8 jobs · branches: all") {
+		t.Fatalf("title row = %q", rows[0])
+	}
+	if rows[1] != "" || rows[2] != "press / to filter, s for status" || rows[3] != "" || !strings.Contains(rows[4], "team/api/build") {
+		t.Fatalf("body rows:\n%s", strings.Join(rows[:6], "\n"))
+	}
+	h.key("/")
+	h.typeText("web")
+	if rows = strings.Split(h.screenText(), "\n"); !strings.HasSuffix(rows[0], "2 of 8 jobs · branches: all") {
+		t.Fatalf("filtered title row = %q", rows[0])
+	}
+}
+
 // ---- 4. Collections lifecycle ----
 
 func TestCollectionsLifecycle(t *testing.T) {

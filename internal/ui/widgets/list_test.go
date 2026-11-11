@@ -226,16 +226,16 @@ func TestCursorRowHighlighted(t *testing.T) {
 	defer lipgloss.SetColorProfile(prev)
 
 	l := newList(Options{})
-	rows := strings.Split(l.View(), "\n")
-	if !strings.Contains(rows[1], "\x1b[7") && !strings.Contains(rows[1], ";7") {
-		t.Fatalf("cursor row not reversed: %q", rows[1])
+	rows := strings.Split(l.View(), "\n") // blank, filter row, blank, items
+	if !strings.Contains(rows[3], "\x1b[7") && !strings.Contains(rows[3], ";7") {
+		t.Fatalf("cursor row not reversed: %q", rows[3])
 	}
-	if strings.Contains(rows[2], "\x1b[7") || strings.Contains(rows[2], ";7m") {
-		t.Fatalf("non-cursor row should not be reversed: %q", rows[2])
+	if strings.Contains(rows[4], "\x1b[7") || strings.Contains(rows[4], ";7m") {
+		t.Fatalf("non-cursor row should not be reversed: %q", rows[4])
 	}
 	run(l, "down")
 	rows = strings.Split(l.View(), "\n")
-	if strings.Contains(rows[1], "\x1b[7") || (!strings.Contains(rows[2], "\x1b[7") && !strings.Contains(rows[2], ";7")) {
-		t.Fatalf("highlight should follow the cursor: %q / %q", rows[1], rows[2])
+	if strings.Contains(rows[3], "\x1b[7") || (!strings.Contains(rows[4], "\x1b[7") && !strings.Contains(rows[4], ";7")) {
+		t.Fatalf("highlight should follow the cursor: %q / %q", rows[3], rows[4])
 	}
 }

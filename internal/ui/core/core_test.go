@@ -233,3 +233,42 @@ func TestHelpPanelColumnsFitWidth(t *testing.T) {
 		}
 	}
 }
+
+type subFake struct {
+	fake
+	sub string
+}
+
+func (f *subFake) Subtitle() string                   { return f.sub }
+func (f *subFake) Update(m tea.Msg) (Screen, tea.Cmd) { f.fake.Update(m); return f, nil }
+
+func TestHeaderShowsSubtitleOnTitleRow(t *testing.T) {
+	s := &subFake{fake: fake{name: "Job Catalog · team"}, sub: "149 jobs · branches: all"}
+	r := NewRouter(&Session{}, s)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	rows := strings.Split(ansi.Strip(r.View()), "\n")
+	if rows[0] != "Job Catalog · team   149 jobs · branches: all" {
+		t.Fatalf("title row = %q", rows[0])
+	}
+	if n := len(rows); n != 24 {
+		t.Fatalf("rows = %d, want 24", n)
+	}
+
+	// too long: the subtitle is cut with …, the title stays whole.
+	s.sub = strings.Repeat("x", 100)
+	rows = strings.Split(ansi.Strip(r.View()), "\n")
+	if lipgloss.Width(rows[0]) > 80 || !strings.HasPrefix(rows[0], "Job Catalog · team   x") || !strings.HasSuffix(rows[0], "…") {
+		t.Fatalf("long subtitle: %q", rows[0])
+	}
+	// no room at all: only the (cut) title.
+	s.name = strings.Repeat("T", 90)
+	rows = strings.Split(ansi.Strip(r.View()), "\n")
+	if lipgloss.Width(rows[0]) > 80 || strings.Contains(rows[0], "x") {
+		t.Fatalf("long title: %q", rows[0])
+	}
+	// empty subtitle: the title alone.
+	s.name, s.sub = "Job Catalog", ""
+	if rows = strings.Split(ansi.Strip(r.View()), "\n"); rows[0] != "Job Catalog" {
+		t.Fatalf("empty subtitle: %q", rows[0])
+	}
+}

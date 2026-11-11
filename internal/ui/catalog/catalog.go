@@ -144,7 +144,7 @@ func (s *Screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-1, 1)) // 1 row for the count line
+		s.list.SetSize(s.w, max(s.h, 1))
 		return s, nil
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
@@ -212,6 +212,14 @@ func (s *Screen) View() string {
 	if s.editing {
 		return s.EditorView()
 	}
+	return s.list.View()
+}
+
+// Subtitle is the count and filter line shown next to the title.
+func (s *Screen) Subtitle() string {
+	if s.err != nil || s.loading && !s.loaded || s.editing {
+		return ""
+	}
 	count := fmt.Sprintf("%d jobs", s.list.Total())
 	if s.list.Filter() != "" {
 		count = fmt.Sprintf("%d of %d jobs", s.list.Len(), s.list.Total())
@@ -226,7 +234,7 @@ func (s *Screen) View() string {
 	if s.notice != "" {
 		count += " · " + s.notice
 	}
-	return s.theme.MutedTxt.Render(count) + "\n" + s.list.View()
+	return count
 }
 
 // statusFromColor maps a Jenkins "color" hint to a badge status.

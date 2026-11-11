@@ -165,8 +165,8 @@ func TestCreateCollectionFlow(t *testing.T) {
 	s, _ = send(s, "n")
 	s = typeText(s, "existing")
 	s, navs := send(s, "enter")
-	if len(navs) != 0 || !strings.Contains(s.View(), "already exists") {
-		t.Fatalf("duplicate name (case-insensitive) must be rejected; view=%q", s.View())
+	if len(navs) != 0 || !strings.Contains(shown(s), "already exists") {
+		t.Fatalf("duplicate name (case-insensitive) must be rejected; view=%q", shown(s))
 	}
 	for range "existing" {
 		s, _ = s.Update(tea.KeyMsg{Type: tea.KeyBackspace})
@@ -183,8 +183,8 @@ func TestCreateCollectionFlow(t *testing.T) {
 	if i := cs.Find("Mine"); i < 0 || !slices.Equal(cs.Items[i].Jobs, []string{"a", "c"}) {
 		t.Fatalf("saved: %+v", cs)
 	}
-	if !strings.Contains(s.View(), "Mine") || !strings.Contains(s.View(), "2 jobs") {
-		t.Fatalf("list not refreshed: %q", s.View())
+	if !strings.Contains(shown(s), "Mine") || !strings.Contains(shown(s), "2 jobs") {
+		t.Fatalf("list not refreshed: %q", shown(s))
 	}
 }
 
@@ -198,7 +198,7 @@ func TestRenameAndDelete(t *testing.T) {
 		t.Fatalf("rename failed: %+v", r.file())
 	}
 	s, _ = send(s, "d")
-	if !strings.Contains(s.View(), "Delete") {
+	if !strings.Contains(shown(s), "Delete") {
 		t.Fatal("no confirmation")
 	}
 	s, _ = send(s, "n")
@@ -218,7 +218,7 @@ func TestViewStatusMissingReorderTrigger(t *testing.T) {
 	s := New(r.deps)
 	s, navs := send(s, "enter")
 	v := open(pushed(t, navs))
-	out := v.View()
+	out := shown(v)
 	if !strings.Contains(out, "MISSING") || !strings.Contains(out, "1 missing") {
 		t.Fatalf("missing badge absent: %q", out)
 	}
@@ -228,8 +228,8 @@ func TestViewStatusMissingReorderTrigger(t *testing.T) {
 	if len(r.triggered) != 1 || !slices.Equal(r.triggered[0], []string{"a"}) {
 		t.Fatalf("triggered %v", r.triggered)
 	}
-	if _, ok := navs[0].(core.Push); !ok || !strings.Contains(v.View(), "skipped missing: gone") {
-		t.Fatalf("navs=%v view=%q", navs, v.View())
+	if _, ok := navs[0].(core.Push); !ok || !strings.Contains(shown(v), "skipped missing: gone") {
+		t.Fatalf("navs=%v view=%q", navs, shown(v))
 	}
 
 	// Select b and c via 'a' (all skips missing); triggers b, c in order; a too.
@@ -242,8 +242,8 @@ func TestViewStatusMissingReorderTrigger(t *testing.T) {
 	// Cursor on missing: nothing to trigger, no push.
 	v, _ = send(v, "down")
 	v, navs = send(v, "t")
-	if len(navs) != 0 || len(r.triggered) != 2 || !strings.Contains(v.View(), "nothing to trigger") {
-		t.Fatalf("navs=%v view=%q", navs, v.View())
+	if len(navs) != 0 || len(r.triggered) != 2 || !strings.Contains(shown(v), "nothing to trigger") {
+		t.Fatalf("navs=%v view=%q", navs, shown(v))
 	}
 
 	// Remove missing explicitly.
@@ -257,8 +257,8 @@ func TestViewStatusMissingReorderTrigger(t *testing.T) {
 	if got := r.file().Items[0].Jobs; !slices.Equal(got, []string{"b", "a", "c"}) {
 		t.Fatalf("after reorder: %v", got)
 	}
-	if !strings.Contains(s.View(), "3 jobs") {
-		t.Fatalf("list count not refreshed: %q", s.View())
+	if !strings.Contains(shown(s), "3 jobs") {
+		t.Fatalf("list count not refreshed: %q", shown(s))
 	}
 	_, navs = send(v, "esc")
 	if _, ok := navs[0].(core.Pop); !ok {
@@ -292,7 +292,7 @@ func TestPickerBranchFilterKeepsHiddenMembers(t *testing.T) {
 	s := New(r.deps)
 	s, navs := send(s, "e")
 	p := open(pushed(t, navs))
-	if v := p.View(); strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: filtered") {
+	if v := shown(p); strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: filtered") {
 		t.Fatalf("filter not applied: %q", v)
 	}
 	// rows: app/main, zzz. Select main, then save: hidden member must remain.
@@ -307,7 +307,7 @@ func TestPickerBranchFilterKeepsHiddenMembers(t *testing.T) {
 	s, navs = send(s, "e")
 	p = open(pushed(t, navs))
 	p, _ = send(p, "b")
-	if v := p.View(); !strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: all") {
+	if v := shown(p); !strings.Contains(v, "feature%2Fx") || !strings.Contains(v, "branches: all") {
 		t.Fatalf("toggle off: %q", v)
 	}
 	// rows sorted: app/feature%2Fx, app/feature%2Fy, app/main, zzz
@@ -358,8 +358,8 @@ func TestPickerCancelAndBranchEditorSave(t *testing.T) {
 	// A later picker sees the saved patterns.
 	_, navs = send(s, "e")
 	p2 := open(pushed(t, navs))
-	if !strings.Contains(p2.View(), "filtered (1 pattern)") {
-		t.Fatalf("patterns not shared: %q", p2.View())
+	if !strings.Contains(shown(p2), "filtered (1 pattern)") {
+		t.Fatalf("patterns not shared: %q", shown(p2))
 	}
 }
 
@@ -405,14 +405,14 @@ func TestMonitorUnavailableAndRenameHook(t *testing.T) {
 	r.deps.Monitor = nil
 	s := New(r.deps)
 	s, navs := send(s, "m")
-	if len(navs) != 0 || !strings.Contains(s.View(), "monitor unavailable") {
-		t.Fatalf("list: %v %q", navs, s.View())
+	if len(navs) != 0 || !strings.Contains(shown(s), "monitor unavailable") {
+		t.Fatalf("list: %v %q", navs, shown(s))
 	}
 	s, navs = send(s, "enter")
 	v := open(pushed(t, navs))
 	v, navs = send(v, "m")
-	if len(navs) != 0 || !strings.Contains(v.View(), "monitor unavailable") {
-		t.Fatalf("view: %v %q", navs, v.View())
+	if len(navs) != 0 || !strings.Contains(shown(v), "monitor unavailable") {
+		t.Fatalf("view: %v %q", navs, shown(v))
 	}
 	s, _ = send(s, "r")
 	s = typeText(s, "2")
@@ -430,34 +430,34 @@ func TestViewLoadingModalNamesCollection(t *testing.T) {
 	v := pushed(t, navs)
 	v.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	cmd := v.Init()
-	if out := v.View(); !strings.Contains(out, "Loading Nightly") || !strings.Contains(out, "╭") {
+	if out := shown(v); !strings.Contains(out, "Loading Nightly") || !strings.Contains(out, "╭") {
 		t.Fatalf("first load: %q", out)
 	}
 	v, _ = run(v, cmd)
-	if out := v.View(); strings.Contains(out, "Loading") || strings.Contains(out, "refreshing") {
+	if out := shown(v); strings.Contains(out, "Loading") || strings.Contains(out, "refreshing") {
 		t.Fatalf("loaded: %q", out)
 	}
 	// R over existing data: rows stay, header shows the spinner.
 	now := time.Unix(1000, 0)
 	v.(*viewScreen).load.SetNow(func() time.Time { return now })
 	v, cmd = v.Update(kmsg("R"))
-	if out := v.View(); !strings.Contains(out, "refreshing…") || !strings.Contains(out, "a") || strings.Contains(out, "Refreshing") {
+	if out := shown(v); !strings.Contains(out, "refreshing…") || !strings.Contains(out, "a") || strings.Contains(out, "Refreshing") {
 		t.Fatalf("refresh with data: %q", out)
 	}
 	v, _ = run(v, cmd)
-	if !strings.Contains(v.View(), "refreshing") {
+	if !strings.Contains(shown(v), "refreshing") {
 		t.Fatal("fast refresh must keep the spinner until the minimum elapsed")
 	}
 	now = now.Add(time.Second)
 	v.Update(spinner.TickMsg{})
-	if strings.Contains(v.View(), "refreshing") || v.(*viewScreen).load.Active() {
+	if strings.Contains(shown(v), "refreshing") || v.(*viewScreen).load.Active() {
 		t.Fatal("spinner must stop")
 	}
 	// R with no data (after a failed load): blocking modal with the name.
 	vs := v.(*viewScreen)
 	vs.loaded, vs.err = false, fmt.Errorf("boom")
 	v, _ = v.Update(kmsg("R"))
-	if out := v.View(); !strings.Contains(out, "Refreshing Nightly…") {
+	if out := shown(v); !strings.Contains(out, "Refreshing Nightly…") {
 		t.Fatalf("R without data: %q", out)
 	}
 	_ = s
@@ -478,21 +478,21 @@ func TestMonitorFromListShowsModalUntilLoaded(t *testing.T) {
 		config.Collection{Name: "One", Jobs: []string{"a"}})
 	s := New(r.deps)
 	s, cmd := s.Update(kmsg("m"))
-	if out := s.View(); !strings.Contains(out, "Loading jobs for One…") {
+	if out := shown(s); !strings.Contains(out, "Loading jobs for One…") {
 		t.Fatalf("modal expected: %q", out)
 	}
 	if !s.(*listScreen).load.Active() {
 		t.Fatal("spinner must run")
 	}
 	s, navs := run(s, cmd)
-	if len(navs) != 1 || s.(*listScreen).load.Active() || strings.Contains(s.View(), "Loading") {
-		t.Fatalf("navs=%v view=%q", navs, s.View())
+	if len(navs) != 1 || s.(*listScreen).load.Active() || strings.Contains(shown(s), "Loading") {
+		t.Fatalf("navs=%v view=%q", navs, shown(s))
 	}
 	// esc cancels a pending load and drops its result.
 	s, cmd = s.Update(kmsg("m"))
 	s, _ = s.Update(kmsg("esc"))
 	_, navs = run(s, cmd)
-	if len(navs) != 0 || strings.Contains(s.View(), "Loading") {
+	if len(navs) != 0 || strings.Contains(shown(s), "Loading") {
 		t.Fatalf("cancel failed: navs=%v", navs)
 	}
 }
@@ -500,11 +500,20 @@ func TestMonitorFromListShowsModalUntilLoaded(t *testing.T) {
 func TestPickerShowsModalWhileLoading(t *testing.T) {
 	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}})
 	p := newPicker(&env{deps: r.deps, theme: core.NewTheme()}, "New x", nil, nil)
-	if out := p.View(); !strings.Contains(out, "Loading jobs…") {
+	if out := shown(p); !strings.Contains(out, "Loading jobs…") {
 		t.Fatalf("%q", out)
 	}
 	p2 := open(p)
-	if strings.Contains(p2.View(), "Loading") || p.load.Active() {
+	if strings.Contains(shown(p2), "Loading") || p.load.Active() {
 		t.Fatal("picker still loading")
 	}
+}
+
+// shown is what the screen puts on the terminal: the subtitle on the title
+// row (if any), then the body.
+func shown(s core.Screen) string {
+	if st, ok := s.(core.Subtitler); ok {
+		return st.Subtitle() + "\n" + s.View()
+	}
+	return s.View()
 }

@@ -105,7 +105,7 @@ func (s *viewScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-2, 1))
+		s.list.SetSize(s.w, max(s.h-1, 1))
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
 	case loadedMsg:
@@ -257,6 +257,17 @@ func (s *viewScreen) View() string {
 		}
 		return s.load.Modal(text, s.w, s.h)
 	}
+	if len(s.members) == 0 {
+		return "\n" + s.theme.MutedTxt.Render("Empty collection. Press e to add jobs.")
+	}
+	return s.list.View()
+}
+
+// Subtitle is the count line shown next to the title.
+func (s *viewScreen) Subtitle() string {
+	if s.err != nil || !s.loaded {
+		return ""
+	}
 	head := plural(len(s.members), "job")
 	if n := len(s.list.Selected()); n > 0 {
 		head += fmt.Sprintf(" · %d selected", n)
@@ -270,8 +281,5 @@ func (s *viewScreen) View() string {
 	if s.loading || s.load.Active() {
 		head += " · " + s.load.View("refreshing…")
 	}
-	if len(s.members) == 0 {
-		return s.theme.MutedTxt.Render(head) + "\n" + s.theme.MutedTxt.Render("Empty collection. Press e to add jobs.")
-	}
-	return s.theme.MutedTxt.Render(head) + "\n" + s.list.View()
+	return head
 }

@@ -141,7 +141,7 @@ func (s *pickerScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
-		s.list.SetSize(s.w, max(s.h-1, 1))
+		s.list.SetSize(s.w, max(s.h, 1))
 	case spinner.TickMsg:
 		return s, s.load.Update(m)
 	case loadedMsg:
@@ -211,6 +211,15 @@ func (s *pickerScreen) View() string {
 		return s.bp.EditorView()
 	}
 	s.sync()
+	return s.list.View()
+}
+
+// Subtitle is the count and filter line shown next to the title.
+func (s *pickerScreen) Subtitle() string {
+	if s.err != nil || !s.loaded || s.bp.Editing() {
+		return ""
+	}
+	s.sync()
 	n := 0
 	for _, v := range s.chosen {
 		if v {
@@ -224,5 +233,5 @@ func (s *pickerScreen) View() string {
 	if s.notice != "" {
 		head += " · " + s.notice
 	}
-	return s.theme.MutedTxt.Render(head) + "\n" + s.list.View()
+	return head
 }

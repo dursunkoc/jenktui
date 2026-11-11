@@ -17,6 +17,12 @@ type Screen interface {
 The Router draws the title bar (row 1) and help bar (last row); `View` renders only the body area.
 
 ```go
+type Subtitler interface { Subtitle() string } // optional
+```
+
+A screen with a status line (counts, filter state, notices) implements `Subtitler` instead of drawing that line in its body. The Router shows it on the title row after the title, in muted text, cut with `…` to fit the width (dropped when there is no room). Return `""` while there is nothing to count (first load, error, an editor open).
+
+```go
 type HelpGroup struct { Title string; Keys []key.Binding }
 type FullHelper interface { FullHelp() []HelpGroup } // optional
 ```

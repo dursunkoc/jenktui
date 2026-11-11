@@ -261,7 +261,11 @@ func (l *List) cycleStatus() {
 	l.cursor, l.offset = 0, 0
 }
 
-func (l *List) rows() int { return max(l.h-1, 1) }
+// filterRows is the height of the filter block: the filter row with a blank
+// line above and below it.
+const filterRows = 3
+
+func (l *List) rows() int { return max(l.h-filterRows, 1) }
 
 func (l *List) clamp() {
 	n := len(l.visible())
@@ -368,9 +372,11 @@ func (l *List) updateFilter(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// View renders the filter row followed by the visible window of items.
+// View renders the filter row, between blank lines, followed by the visible
+// window of items.
 func (l *List) View() string {
 	var b strings.Builder
+	b.WriteString("\n")
 	switch {
 	case l.editing || l.filter != "":
 		cur := ""
@@ -390,6 +396,7 @@ func (l *List) View() string {
 	if l.statusOn {
 		b.WriteString("  " + l.theme.Selected.Render("status: "+StatusName(l.status)) + l.theme.MutedTxt.Render(" (s to change)"))
 	}
+	b.WriteString("\n")
 	v := l.visible()
 	if len(v) == 0 {
 		b.WriteString("\n" + l.theme.MutedTxt.Render("no matches"))

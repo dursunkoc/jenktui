@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // chromeHeight is the rows the Router reserves: title bar and help bar.
@@ -108,12 +109,32 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return r, c
 }
 
+// header renders the title row: the title, then the screen's Subtitle in
+// muted text, on one line. The subtitle is cut with "…" to fit the width,
+// and dropped when there is no room for it.
+func (r *Router) header(top Screen) string {
+	title := r.Theme.Title.Render(ansi.Truncate(top.Title(), r.width, "…"))
+	st, ok := top.(Subtitler)
+	if !ok {
+		return title
+	}
+	sub := st.Subtitle()
+	room := r.width - lipgloss.Width(title) - lipgloss.Width(subtitleGap)
+	if sub == "" || room < 4 {
+		return title
+	}
+	return title + subtitleGap + r.Theme.MutedTxt.Render(ansi.Truncate(sub, room, "…"))
+}
+
+// subtitleGap separates the title from the subtitle.
+const subtitleGap = "   "
+
 func (r *Router) View() string {
 	if v, small := TooSmall(r.width, r.height); small {
 		return v
 	}
 	top := r.Top()
-	header := r.Theme.Title.Render(top.Title())
+	header := r.header(top)
 	groups := r.fullHelp()
 	bh := r.bodySize().Height
 	content := top.View()
