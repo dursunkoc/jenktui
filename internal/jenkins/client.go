@@ -21,7 +21,7 @@ import (
 
 // Classified failure kinds, for readable UI errors.
 var (
-	ErrAuth = errors.New("authentication failed (check username and API token)")
+	ErrAuth = errors.New("authentication failed (check username and password or API token)")
 	// ErrForbidden means Jenkins understood the credentials but refused the
 	// action (HTTP 403): missing permission or a rejected CSRF crumb. The
 	// wrapped message carries Jenkins' own explanation.

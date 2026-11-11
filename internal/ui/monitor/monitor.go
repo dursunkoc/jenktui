@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -36,6 +37,7 @@ type Client interface {
 // Deps are the monitor's dependencies. Zero durations get defaults.
 type Deps struct {
 	Client       Client
+	Parent       string        // Parent Job; job names are shown relative to it
 	FastInterval time.Duration // rows that are running or queued (default 3s)
 	SlowInterval time.Duration // every other row (default 30s)
 	PollTimeout  time.Duration // per-request context timeout (default 10s)
@@ -116,6 +118,7 @@ type model struct {
 	deps        Deps
 	th          core.Theme
 	name        string
+	names       map[string]core.JobName // how known jobs are shown (SetNames)
 	runs        []runState
 	revs        int
 	triggered   time.Time
@@ -236,6 +239,17 @@ func SetJobs(s core.Screen, jobs []string, missing map[string]bool) bool {
 	return ok
 }
 
+// SetNames tells the monitor how jobs are shown, e.g. a Multibranch branch
+// as "project › branch". Jobs not in names are shown by their name relative
+// to Deps.Parent. Returns false if s is not a monitor.
+func SetNames(s core.Screen, names map[string]core.JobName) bool {
+	m, ok := s.(*model)
+	if ok {
+		m.names = names
+	}
+	return ok
+}
+
 // Add puts triggered runs into the monitor: each replaces its job's row with a
 // fresh queued row (or is appended when the job has none). Returns false if s
 // is not a monitor. Push or replace the same screen again to show it.
@@ -314,11 +328,19 @@ func (m *model) restoreCursor(job string) {
 	}
 }
 
+// Title is "Run Monitor: Ops", or with a Parent Job "Run Monitor · team ·
+// Ops", like the Collection screens.
 func (m *model) Title() string {
-	if m.name == "" {
+	p := strings.Trim(m.deps.Parent, "/")
+	switch {
+	case m.name == "" && p == "":
 		return "Run Monitor"
+	case m.name == "":
+		return "Run Monitor · " + p
+	case p == "":
+		return "Run Monitor: " + m.name
 	}
-	return "Run Monitor: " + m.name
+	return "Run Monitor · " + p + " · " + m.name
 }
 
 var keyRefresh = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh"))
@@ -331,9 +353,22 @@ func (m *model) Keys() []key.Binding {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown,
-		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details")),
-		keyShow, keyRefresh, core.KeyBack, core.KeyQuit}
+	return []key.Binding{keyDetails, keyShow, keyRefresh, core.KeyBack}
+}
+
+var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details"))
+
+// FullHelp groups every key of the runs list for the help panel. The
+// details view has few keys and shows them all in the help bar.
+func (m *model) FullHelp() []core.HelpGroup {
+	if m.details {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Run Monitor", Keys: []key.Binding{keyDetails, keyShow, keyRefresh}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 // Init starts the first poll cycle immediately and polls every row in it.

@@ -41,7 +41,7 @@ branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch
 
 Collections are stored in `~/.config/jenktui/collections.toml` (managed by the app).
 
-**Credentials are never stored.** Log in with your Jenkins username and an API token (not your password). They are asked on every start and kept in memory only.
+**Credentials are never stored.** Log in with your Jenkins username and your password or an API token. An API token is recommended: it can be revoked on its own and does not expose your password. Both are asked on every start and kept in memory only, as a note at the bottom of the login screen says.
 
 TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
 
@@ -50,13 +50,15 @@ TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_veri
 Splash → Login → Menu (Collections, Job Catalog, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
+
+Job names are shown relative to the parent job: under `parent_job = "team"`, `team/app/build` is shown as `app/build` (in the catalog, Collections and the Run Monitor). A job outside the parent keeps its full name. Job lists have three aligned columns, titled Pipeline, Branch and Status: the job (for a Multibranch Project, the project) with its folders separated by a grey `›` (`team › api › build`), the branch, decoded (`feature/login` rather than `feature%2Flogin`), and the status. The Run Monitor and the trigger screen show a branch as `digital-ui › feature/login`.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them.
 - **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
 
 ## Filtering
 
-Press `/` in any list and type. Matching is case-insensitive, anywhere in the job's full path:
+Press `/` in any list and type. Matching is case-insensitive, anywhere in the job's full path (including the parent job's part, even though it is not shown):
 
 | Type | Matches |
 |---|---|
@@ -75,7 +77,9 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Where | Keys |
 |---|---|
 | Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit |
+| Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
+| Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
 | Catalog and picker | `b` Branch Filter on/off, `B` edit patterns |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |

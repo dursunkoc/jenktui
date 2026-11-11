@@ -32,14 +32,17 @@ type Deps struct {
 	// Trigger builds the screen that triggers builds of the given Job keys
 	// (jenkins.Job.FullName, branch names stay URL-encoded). It is pushed by
 	// the Collection view's `t`. collection is the Collection's name, so the
-	// started builds can be added to that Collection's Run Monitor. May be nil
-	// (triggering is then unavailable).
-	Trigger func(collection string, jobKeys []string) core.Screen
+	// started builds can be added to that Collection's Run Monitor; names
+	// says how the Collection's members are shown there (see Monitor). May be
+	// nil (triggering is then unavailable).
+	Trigger func(collection string, jobKeys []string, names map[string]core.JobName) core.Screen
 	// Monitor returns the Run Monitor screen of a Collection (get-or-create),
 	// synced to jobKeys and with the missing members flagged, ready to push
 	// with successful rows hidden. Pushed by `m` in the Collections list and
-	// in an opened Collection. May be nil (the monitor is then unavailable).
-	Monitor func(name string, jobKeys []string, missing map[string]bool) core.Screen
+	// in an opened Collection. names says how each known job is shown (it
+	// may be nil or lack a job: the monitor then shows the plain name). May
+	// be nil (the monitor is then unavailable).
+	Monitor func(name string, jobKeys []string, missing map[string]bool, names map[string]core.JobName) core.Screen
 	// Renamed, when set, is told after a Collection was renamed so per-name
 	// state (such as its Run Monitor) can follow it.
 	Renamed func(oldName, newName string)
@@ -61,6 +64,25 @@ type env struct {
 	deps     Deps
 	theme    core.Theme
 	patterns []string // latest Branch Filter patterns, so later pickers see saved edits
+}
+
+// titled appends the Parent Job to a title, "Collections · team", so the
+// screen says which project its Collections belong to. Under the Jenkins
+// root the title is unchanged.
+func (e *env) titled(title string) string {
+	if p := strings.Trim(e.deps.Parent, "/"); p != "" {
+		return title + " · " + p
+	}
+	return title
+}
+
+// pickerTitle is the member picker's title: "Edit Ops", or with a Parent Job
+// "Edit · team · Ops", like the Collection screens.
+func (e *env) pickerTitle(verb, name string) string {
+	if p := strings.Trim(e.deps.Parent, "/"); p != "" {
+		return verb + " · " + p + " · " + name
+	}
+	return verb + " " + name
 }
 
 func (e *env) branchSettings() catalog.Settings {
@@ -140,6 +162,7 @@ var (
 	keyMonitor = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "monitor"))
 	keyConfirm = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
 	keyCancel  = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))
+	keyOpen    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open"))
 )
 
 type mode int
@@ -179,7 +202,7 @@ func (s *listScreen) reload() {
 
 func (s *listScreen) Init() tea.Cmd { return nil }
 
-func (s *listScreen) Title() string { return "Collections" }
+func (s *listScreen) Title() string { return s.titled("Collections") }
 
 func (s *listScreen) Keys() []key.Binding {
 	if s.monName != "" {
@@ -191,7 +214,20 @@ func (s *listScreen) Keys() []key.Binding {
 	case modeDelete:
 		return []key.Binding{keyYes, keyNo}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, core.KeyEnter, keyNew, keyMonitor, keyEdit, keyRename, keyDelete, core.KeyBack, core.KeyQuit}
+	return []key.Binding{keyOpen, keyNew, keyMonitor, core.KeyBack}
+}
+
+// FullHelp groups every key of the Collections list for the help panel. It
+// is nil while a name is typed, a delete is confirmed or a monitor waits.
+func (s *listScreen) FullHelp() []core.HelpGroup {
+	if s.monName != "" || s.mode != modeList {
+		return nil
+	}
+	return []core.HelpGroup{
+		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
+		{Title: "Collections", Keys: []key.Binding{keyOpen, keyNew, keyEdit, keyRename, keyDelete, keyMonitor}},
+		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+	}
 }
 
 func (s *listScreen) current() (config.Collection, bool) {
@@ -272,7 +308,7 @@ func (s *listScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		return s.openMonitor(c)
 	case key.Matches(m, keyEdit):
 		s.notice = ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "Edit "+c.Name, c.Jobs, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("Edit", c.Name), c.Jobs, func(keys []string) error {
 			err := s.mutate(func(cs *config.Collections) error { return cs.SetJobs(c.Name, keys) })
 			s.reload()
 			return err
@@ -313,7 +349,22 @@ func (s *listScreen) monitorLoaded(m loadedMsg) (core.Screen, tea.Cmd) {
 	} else {
 		missing = missingOf(jobs, m.cat)
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing)})
+	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing, namesOf(jobs, m.cat, s.deps.Parent))})
+}
+
+// namesOf says how each member found in the catalog is shown.
+func namesOf(members []string, cat jenkins.Catalog, parent string) map[string]core.JobName {
+	in := map[string]bool{}
+	for _, k := range members {
+		in[k] = true
+	}
+	names := map[string]core.JobName{}
+	for _, j := range cat.Jobs {
+		if in[j.FullName] {
+			names[j.FullName] = catalog.JobName(j, parent)
+		}
+	}
+	return names
 }
 
 // missingOf flags the members that are not in the catalog.
@@ -360,7 +411,7 @@ func (s *listScreen) inputKey(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 			return s, nil
 		}
 		s.mode, s.notice = modeList, ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, "New "+name, nil, func(keys []string) error {
+		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("New", name), nil, func(keys []string) error {
 			err := s.mutate(func(cs *config.Collections) error { return cs.Add(name, keys) })
 			s.reload()
 			return err
@@ -379,6 +430,7 @@ func (s *listScreen) View() string {
 		return s.load.Modal("Loading jobs for "+s.monName+"…", s.w, s.h)
 	}
 	var b strings.Builder
+	b.WriteString("\n") // a blank line under the title
 	switch s.mode {
 	case modeNew:
 		b.WriteString(s.theme.Title.Render("New collection") + "\n" + s.input.View() + "\n")

@@ -14,14 +14,19 @@ import (
 
 const tickInterval = 80 * time.Millisecond
 
+// logo is the splash art. Every line has the same width, so the lines stay
+// aligned when the block is centred.
 var logo = []string{
-	`    _            _    _             _ `,
-	`   (_) ___ _ __ | | _| |_ _   _ (_)`,
-	`   | |/ _ \ '_ \| |/ / __| | | || |`,
-	`   | |  __/ | | |   <| |_| |_| || |`,
-	`  _/ |\___|_| |_|_|\_\\__|\__,_||_|`,
-	` |__/                              `,
+	`   _            _    _          _ `,
+	`  (_) ___ _ __ | | _| |_ _   _ (_)`,
+	`  | |/ _ \ '_ \| |/ / __| | | || |`,
+	`  | |  __/ | | |   <| |_| |_| || |`,
+	` _/ |\___|_| |_|_|\_\\__|\__,_||_|`,
+	`|__/                              `,
 }
+
+// tagline sits under the logo and says what the name stands for.
+const tagline = "Jenkins Terminal User Interface"
 
 var spinner = []string{"|", "/", "-", "\\"}
 
@@ -156,7 +161,7 @@ func (s *Splash) View() string {
 	case phaseUnreachable:
 		body = s.th.ErrorView(errTitle(s.err), s.err, errHint(s.err)+"\n\nPress r to retry, q to quit.")
 	default:
-		body = s.logoView() + "\n\n" + s.th.MutedTxt.Render(spinner[s.frame%len(spinner)]+" checking configuration...")
+		body = s.logoView() + "\n\n" + s.taglineView() + "\n\n" + s.th.MutedTxt.Render(spinner[s.frame%len(spinner)]+" checking configuration...")
 	}
 	return lipgloss.Place(s.width, s.height, lipgloss.Center, lipgloss.Center, body)
 }
@@ -172,6 +177,19 @@ func (s *Splash) logoView() string {
 		sb.WriteString("\n")
 	}
 	return strings.TrimRight(sb.String(), "\n")
+}
+
+// taglineView centres the tagline under the logo, so both share one centre
+// whatever the terminal width. When the leftover is odd the extra column
+// goes on the left: the j's tail sticks out on the left of the logo, so its
+// body sits a little to the right.
+func (s *Splash) taglineView() string {
+	w := 0
+	for _, line := range logo {
+		w = max(w, lipgloss.Width(line))
+	}
+	left := max(w-lipgloss.Width(tagline)+1, 0) / 2
+	return s.th.Title.PaddingLeft(left).Width(w).Render(tagline)
 }
 
 func (s *Splash) Title() string { return "jenktui" }

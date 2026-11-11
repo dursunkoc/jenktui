@@ -34,7 +34,8 @@ func (m *model) View() string {
 	for vi, i := range vis {
 		blocks = append(blocks, m.block(vi, i))
 	}
-	// Window the blocks so the cursor stays visible (one line is the header).
+	// Window the blocks so the cursor stays visible (one line is the blank
+	// line under the title; the status line is the Subtitle).
 	avail := m.h - 1
 	start := 0
 	if m.h > 0 {
@@ -42,7 +43,7 @@ func (m *model) View() string {
 			start++
 		}
 	}
-	out := []string{m.fit(m.th.MutedTxt.Render(m.header()))}
+	out := []string{""}
 	for _, b := range blocks[start:] {
 		out = append(out, b...)
 	}
@@ -53,6 +54,15 @@ func (m *model) View() string {
 }
 
 // header is the filter line above the list.
+// Subtitle is the status line shown on the title row while the runs list is
+// on screen (not over the details view, a notice or the first-load modal).
+func (m *model) Subtitle() string {
+	if len(m.runs) == 0 || m.details || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
+		return ""
+	}
+	return m.header()
+}
+
 func (m *model) header() string {
 	h := m.baseHeader()
 	if m.load.Active() {
@@ -106,7 +116,7 @@ func (m *model) block(vi, i int) []string {
 	if vi == m.cursor {
 		cur = m.th.Selected.Render("▸ ")
 	}
-	parts := []string{m.badge(st), st.run.Job}
+	parts := []string{m.badge(st), m.jobName(st.run.Job)}
 	if st.num > 0 {
 		parts = append(parts, fmt.Sprintf("#%d", st.num))
 	}
@@ -272,7 +282,7 @@ func (m *model) stageRow(stages []jenkins.Stage) string {
 
 func (m *model) detailView() string {
 	st := m.runs[m.selected()]
-	head := []string{m.fit(m.badge(st) + "  " + st.run.Job + numSuffix(st))}
+	head := []string{m.fit(m.badge(st) + "  " + m.jobName(st.run.Job) + numSuffix(st))}
 	if t := m.note(st); t != "" {
 		head = append(head, m.fit(m.th.MutedTxt.Render(t)))
 	}
@@ -311,4 +321,13 @@ func (m *model) detailLine(s jenkins.Stage, indent string) string {
 		d = "  " + m.th.MutedTxt.Render(fmtDur(s.Duration))
 	}
 	return "  " + indent + m.stageText(jenkins.Stage{Name: s.Name, Status: s.Status}) + d
+}
+
+// jobName is how job is shown: from SetNames when known, otherwise relative
+// to the Parent Job.
+func (m *model) jobName(job string) string {
+	if n, ok := m.names[job]; ok {
+		return n.Render(m.th)
+	}
+	return core.RelName(job, m.deps.Parent)
 }

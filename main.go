@@ -80,7 +80,7 @@ func newDeps(dir string) entry.Deps {
 		if m, ok := monitors[k]; ok {
 			return m
 		}
-		m := monitor.NewCollection(monitor.Deps{Client: client(s)}, name, nil, nil)
+		m := monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob}, name, nil, nil)
 		monitors[k] = m
 		return m
 	}
@@ -94,19 +94,22 @@ func newDeps(dir string) entry.Deps {
 			monitor.Rename(m, newName)
 		}
 	}
-	openMonitor := func(s *core.Session) func(string, []string, map[string]bool) core.Screen {
-		return func(name string, jobKeys []string, missing map[string]bool) core.Screen {
+	openMonitor := func(s *core.Session) func(string, []string, map[string]bool, map[string]core.JobName) core.Screen {
+		return func(name string, jobKeys []string, missing map[string]bool, names map[string]core.JobName) core.Screen {
 			m := monitorFor(s, name)
 			monitor.SetJobs(m, jobKeys, missing)
+			monitor.SetNames(m, names)
 			monitor.HideSuccess(m, true)
 			return m
 		}
 	}
 
-	triggerFor := func(s *core.Session) func(string, []string) core.Screen {
-		return func(collection string, jobKeys []string) core.Screen {
+	triggerFor := func(s *core.Session) func(string, []string, map[string]core.JobName) core.Screen {
+		return func(collection string, jobKeys []string, names map[string]core.JobName) core.Screen {
 			return trigger.New(trigger.Deps{
 				Client: client(s),
+				Names:  names,
+				Parent: s.Config.ParentJob,
 				Next: func(started []trigger.Started) core.Screen {
 					runs := make([]monitor.Run, len(started))
 					for i, st := range started {
@@ -118,6 +121,7 @@ func newDeps(dir string) entry.Deps {
 							monitor.SetJobs(m, cs.Items[i].Jobs, nil)
 						}
 					}
+					monitor.SetNames(m, names)
 					monitor.Add(m, runs)
 					// Hide successful jobs, as `m` does. The new builds are queued or
 					// running, so they stay visible until they finish successfully.

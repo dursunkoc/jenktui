@@ -6,11 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
@@ -171,8 +173,8 @@ func TestFirstRunSetupLoginMenu(t *testing.T) {
 	// The configured parent job reaches the Job Catalog.
 	h.openCatalog()
 	h.expectTitle("Job Catalog · team")
-	h.expect("team/api/build")
-	h.expectNot("tools/cleanup")
+	h.expect("[ ] api/build") // shown relative to the parent job
+	h.expectNot("team/api/build", "tools/cleanup")
 }
 
 func TestSetupErrorsStayOnSetup(t *testing.T) {
@@ -226,7 +228,7 @@ func TestLoginWrongTokenThenCorrect(t *testing.T) {
 	h.boot()
 	h.submitLogin(f.User(), "not-the-token")
 	h.expectTitle("Login")
-	h.expect("Authentication failed", "Check your username and API token")
+	h.expect("Authentication failed", "Check your username and password or API token")
 	h.expectNot("not-the-token")
 	if h.sess.Client != nil {
 		t.Fatal("a client was stored after a failed login")
@@ -248,7 +250,7 @@ func TestLoginFieldValidation(t *testing.T) {
 	h.expect("username is required")
 	h.typeText("me")
 	h.key("enter", "enter") // empty token
-	h.expect("API token is required")
+	h.expect("password or API token is required")
 	h.expectTitle("Login")
 }
 
@@ -434,6 +436,68 @@ func TestCatalogFilterBoxAndListFocus(t *testing.T) {
 	h.expect("of 8 jobs")
 }
 
+// The help bar shows a few keys and "? all keys"; ? opens a panel with every
+// key, grouped. While a text field has focus ? is typed instead.
+func TestHelpBarAndPanel(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	bar := func() string {
+		lines := strings.Split(h.screenText(), "\n")
+		return lines[len(lines)-1]
+	}
+	if got := bar(); !strings.HasPrefix(got, "t trigger") || !strings.HasSuffix(got, "? all keys") || strings.Contains(got, "x remove missing") {
+		t.Fatalf("help bar = %q", got)
+	}
+
+	h.key("?")
+	h.expect("Navigation", "Selection", "Filter", "Actions", "General", "x remove missing", "R refresh", "shift+↑", "esc/? close help")
+	h.expect("team/web/test") // the Collection stays visible above the panel
+	h.key("esc")              // closes the panel, does not leave the Collection
+	h.expectTitle("Collection · Ops")
+	h.expectNot("x remove missing")
+
+	// in the filter box ? is text and the bar shows the box's keys.
+	h.key("/")
+	if got := bar(); got != "enter/↓ go to list · esc clear filter" {
+		t.Fatalf("filter help bar = %q", got)
+	}
+	h.typeText("?")
+	h.expectNot("Actions")
+	h.expect("no matches")
+	h.key("esc")
+
+	// the bar never runs past the terminal edge (it used to overflow and wrap).
+	for _, w := range []int{60, 80, 100, 120} {
+		h.send(tea.WindowSizeMsg{Width: w, Height: 24})
+		if got := bar(); ansi.StringWidth(got) > w || !strings.HasSuffix(got, "? all keys") {
+			t.Fatalf("width %d: help bar %q (%d wide)", w, got, ansi.StringWidth(got))
+		}
+	}
+}
+
+// The count line sits on the title row, the filter hint has a blank line
+// above and below it, then come the column titles.
+func TestCatalogHeaderLayout(t *testing.T) {
+	h := newApp(t, newFixture(t))
+	h.loginOK()
+	h.openCatalog()
+	rows := strings.Split(h.screenText(), "\n")
+	if !strings.HasPrefix(rows[0], h.title()) || !strings.HasSuffix(rows[0], "8 jobs · branches: all") {
+		t.Fatalf("title row = %q", rows[0])
+	}
+	if rows[1] != "" || rows[2] != "press / to filter, s for status" || rows[3] != "" || strings.Fields(rows[4])[0] != "Pipeline" || !strings.Contains(rows[5], "[ ] team › api › build ") {
+		t.Fatalf("body rows:\n%s", strings.Join(rows[:6], "\n"))
+	}
+	h.key("/")
+	h.typeText("web")
+	if rows = strings.Split(h.screenText(), "\n"); !strings.HasSuffix(rows[0], "2 of 8 jobs · branches: all") {
+		t.Fatalf("filtered title row = %q", rows[0])
+	}
+}
+
 // ---- 4. Collections lifecycle ----
 
 func TestCollectionsLifecycle(t *testing.T) {
@@ -494,7 +558,7 @@ func TestCollectionsLifecycle(t *testing.T) {
 	// open it: jobs and badges in order.
 	h.openCollection("Release")
 	h.expect("2 jobs")
-	b, tst := strings.Index(h.screenText(), "team/web/build"), strings.Index(h.screenText(), "team/web/test")
+	b, tst := strings.Index(h.screenText(), "team › web › build"), strings.Index(h.screenText(), "team › web › test")
 	if b < 0 || tst < 0 || b > tst {
 		t.Fatalf("members out of order:\n%s", h.screenText())
 	}
@@ -539,6 +603,52 @@ func TestCollectionsLifecycle(t *testing.T) {
 	if len(loadCollections(t, h).Items) != 0 {
 		t.Fatal("collection still on disk")
 	}
+}
+
+// The Collections list starts one blank line under the title.
+func TestCollectionsListBlankLineUnderTitle(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
+	h.loginOK()
+	h.openCollections()
+	rows := strings.Split(h.screenText(), "\n")
+	if rows[0] != "Collections" || rows[1] != "" || !strings.HasPrefix(rows[2], "> Ops") {
+		t.Fatalf("collections rows:\n%s", strings.Join(rows[:4], "\n"))
+	}
+}
+
+// With a parent job set, job names are shown relative to it in a Collection,
+// the member picker and the Run Monitor; a member outside the parent keeps
+// its full name, and the filter still matches the full name.
+func TestJobNamesRelativeToParent(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withConfigExtra(`parent_job = "team"`),
+		withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build", "tools/cleanup")))
+	h.loginOK()
+	h.openCollections()
+	h.expectTitle("Collections · team")
+	h.openCollection("Ops")
+	h.expectTitle("Collection · team · Ops")
+	h.expect("[ ] web/test", "[ ] api/build", "tools/cleanup")
+	h.expectNot("team/web/test", "team/api/build")
+
+	h.key("/")
+	h.typeText("team/web") // matches the full name, though "team/" is not shown
+	h.expect("[ ] web/test")
+	h.expectNot("api/build")
+	h.key("esc")
+
+	h.key("m")
+	h.expectTitle("Run Monitor · team · Ops")
+	h.key("s") // show successful jobs too
+	h.expect("web/test", "api/build")
+	h.expectNot("team/web/test", "team/api/build")
+	h.key("esc")
+
+	h.key("e")
+	h.expectTitle("Edit · team · Ops")
+	h.expect("[ ] api/deploy", "[x] web/test")
+	h.expectNot("team/")
 }
 
 func TestCollectionEditMembers(t *testing.T) {
@@ -648,6 +758,25 @@ func newBranchFixture(t *testing.T) *jenkinstest.Server {
 
 const branchFilterConfig = `branch_filter = ["main", "feature/*"]`
 
+// A branch of a Multibranch Project is shown with the project and the decoded
+// branch in their own columns in a Collection, and as "project › branch" in
+// its Run Monitor, opened with m.
+func TestBranchNamesInCollectionAndMonitor(t *testing.T) {
+	f := newBranchFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Branches", "proj/main", "proj/feature%2Fx")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Branches")
+	h.expectBranch("proj", "main", "proj", "feature/x")
+	h.expectNot("proj/main", "feature%2Fx")
+	h.key("m")
+	h.expectTitle("Run Monitor: Branches")
+	h.key("s") // the builds succeeded: show them
+	h.expectRow("proj › main", "SUCCESS")
+	h.expectRow("proj › feature/x", "SUCCESS")
+	h.expectNot("feature%2Fx")
+}
+
 func TestBranchFilterCatalog(t *testing.T) {
 	f := newBranchFixture(t)
 	h := newApp(t, f, withConfigExtra(branchFilterConfig))
@@ -655,11 +784,12 @@ func TestBranchFilterCatalog(t *testing.T) {
 	h.openCatalog()
 	h.expect("branches: filtered (2 patterns)")
 	// only matching branches, names stay URL-encoded in keys; other jobs untouched.
-	h.expect("proj/main", "proj/feature%2Fx", "team/api/build", "tools/cleanup")
-	h.expectNot("proj/develop", "proj/release%2F1.0", "legacy/old")
+	h.expect("team/api/build", "tools/cleanup")
+	h.expectBranch("proj", "main", "proj", "feature/x")
+	h.expectNoBranch("proj", "develop", "proj", "release/1.0", "legacy", "old")
 	// projects with no matching branch get a placeholder row; the project itself is never a Job.
-	h.expect("legacy (no matching branches)", "empty (no matching branches)")
-	if h.hasLine("[ ] proj ") {
+	h.expectBranch("legacy", "(no matching branches)", "empty", "(no matching branches)")
+	if regexp.MustCompile(`\[ \] proj\s+●`).MatchString(h.screenText()) { // a row with no branch
 		t.Fatal("the Multibranch Project itself is listed as a job")
 	}
 	// placeholders cannot be selected.
@@ -672,12 +802,13 @@ func TestBranchFilterCatalog(t *testing.T) {
 
 	// b switches the filter off: every branch, "(no branches)" only for the empty project.
 	h.key("b")
-	h.expect("branches: all", "proj/develop", "proj/release%2F1.0", "legacy/old", "empty (no branches)")
+	h.expect("branches: all")
+	h.expectBranch("proj", "develop", "proj", "release/1.0", "legacy", "old", "empty", "(no branches)")
 	h.expectNot("(no matching branches)")
 	// b again turns it back on.
 	h.key("b")
 	h.expect("branches: filtered (2 patterns)")
-	h.expectNot("proj/develop")
+	h.expectNoBranch("proj", "develop")
 }
 
 func TestBranchFilterEditorSavesToConfig(t *testing.T) {
@@ -696,8 +827,9 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 	h.expect("develop")
 	h.key("enter") // close: saves
 	h.expectTitle("Job Catalog")
-	h.expect("proj/develop", "proj/main", "proj/feature%2Fx", "branches: filtered (3 patterns)")
-	h.expectNot("proj/release%2F1.0")
+	h.expect("branches: filtered (3 patterns)")
+	h.expectBranch("proj", "develop", "proj", "main", "proj", "feature/x")
+	h.expectNoBranch("proj", "release/1.0")
 	cfg, err := config.Load(h.path("config.toml"))
 	if err != nil {
 		t.Fatal(err)
@@ -711,8 +843,9 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 
 	// delete the first pattern (main); esc closes and saves too.
 	h.key("B", "d", "esc")
-	h.expectNot("proj/main")
-	h.expect("proj/develop", "proj/feature%2Fx", "branches: filtered (2 patterns)")
+	h.expectNoBranch("proj", "main")
+	h.expect("branches: filtered (2 patterns)")
+	h.expectBranch("proj", "develop", "proj", "feature/x")
 	cfg, _ = config.Load(h.path("config.toml"))
 	if want := []string{"feature/*", "develop"}; !reflect.DeepEqual(cfg.BranchFilter, want) {
 		t.Fatalf("branch_filter = %v, want %v", cfg.BranchFilter, want)
@@ -723,7 +856,8 @@ func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 
 	// deleting every pattern shows all branches and drops the key.
 	h.key("B", "d", "d", "enter")
-	h.expect("branches: all", "proj/main", "proj/release%2F1.0")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main", "proj", "release/1.0")
 	cfg, _ = config.Load(h.path("config.toml"))
 	if len(cfg.BranchFilter) != 0 || strings.Contains(readFile(t, h.path("config.toml")), "branch_filter") {
 		t.Fatalf("branch_filter not cleared: %q", readFile(t, h.path("config.toml")))
@@ -735,14 +869,17 @@ func TestBranchFilterIsCaseSensitiveAndFromScratch(t *testing.T) {
 	h := newApp(t, f) // no branch_filter in config
 	h.loginOK()
 	h.openCatalog()
-	h.expect("branches: all", "proj/main", "proj/develop", "proj/release%2F1.0", "legacy/old")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main", "proj", "develop", "proj", "release/1.0", "legacy", "old")
 	h.key("B", "a")
 	h.typeText("Main") // wrong case: matches nothing
 	h.key("enter", "enter")
-	h.expect("branches: filtered (1 pattern)", "proj (no matching branches)")
-	h.expectNot("proj/main")
+	h.expect("branches: filtered (1 pattern)")
+	h.expectBranch("proj", "(no matching branches)")
+	h.expectNoBranch("proj", "main")
 	h.key("B", "d", "esc") // remove it again
-	h.expect("proj/main", "branches: all")
+	h.expect("branches: all")
+	h.expectBranch("proj", "main")
 }
 
 func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
@@ -753,14 +890,15 @@ func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
 	h.openCollections()
 	h.openCollection("Branches")
 	// the filter hides release/1.0 when browsing, but the member stays and exists.
-	h.expect("2 jobs", "proj/release%2F1.0", "proj/main")
+	h.expect("2 jobs")
+	h.expectBranch("proj", "release/1.0", "proj", "main")
 	h.expectNot("MISSING")
 
 	// the picker applies the filter but does not drop hidden members on save.
 	h.key("e")
 	h.expectTitle("Edit Branches")
 	h.expect("2 selected", "branches: filtered (2 patterns)")
-	h.expectNot("proj/release%2F1.0", "proj/develop")
+	h.expectNoBranch("proj", "release/1.0", "proj", "develop")
 	h.key("enter")
 	h.expectTitle("Collection · Branches")
 	if want := []string{"proj/release%2F1.0", "proj/main"}; !reflect.DeepEqual(loadCollections(t, h).Items[0].Jobs, want) {
@@ -779,14 +917,14 @@ func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
 	}
 	// and the branch can be triggered through its encoded URL.
 	h.key("down", "down", "t")
-	h.expect("Trigger proj/feature%2Fx?")
+	h.expect("Trigger proj › feature/x?")
 	h.key("y")
 	tr := triggerFor(t, f, "proj/feature%2Fx")
 	if tr.Endpoint != "build" {
 		t.Fatalf("endpoint = %q", tr.Endpoint)
 	}
 	h.expectTitle("Run Monitor: Branches")
-	h.expectRow("proj/feature%2Fx", "QUEUED")
+	h.expectRow("proj › feature/x", "QUEUED")
 }
 
 func TestBranchFilterEditedInPickerPersists(t *testing.T) {
@@ -798,7 +936,7 @@ func TestBranchFilterEditedInPickerPersists(t *testing.T) {
 	h.key("B", "a")
 	h.typeText("release/*")
 	h.key("enter", "enter")
-	h.expect("proj/release%2F1.0")
+	h.expectBranch("proj", "release/1.0")
 	cfg, _ := config.Load(h.path("config.toml"))
 	if want := []string{"main", "feature/*", "release/*"}; !reflect.DeepEqual(cfg.BranchFilter, want) {
 		t.Fatalf("branch_filter = %v", cfg.BranchFilter)
@@ -806,13 +944,36 @@ func TestBranchFilterEditedInPickerPersists(t *testing.T) {
 	h.key("esc")
 	// a picker opened afterwards, and the catalog, see the saved patterns.
 	h.key("e")
-	h.expect("branches: filtered (3 patterns)", "proj/release%2F1.0")
+	h.expect("branches: filtered (3 patterns)")
+	h.expectBranch("proj", "release/1.0")
 	h.key("esc", "esc", "down")
 	h.key("enter")
 	h.expect("branches: filtered (3 patterns)")
 }
 
 // ---- 6. Trigger a single job without parameters ----
+
+// The trigger screen shows job names like the lists: relative to the parent
+// job, and a step starts one blank line under the title.
+func TestTriggerShowsShortNames(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withConfigExtra(`parent_job = "team"`),
+		withCollections(collectionsTOML("Ops", "team/api/build", "team/web/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("a", "t") // both jobs
+	h.expectTitle("Trigger")
+	rows := strings.Split(h.screenText(), "\n")
+	if rows[1] != "" || rows[2] == "" {
+		t.Fatalf("trigger step should start one blank line under the title:\n%s", strings.Join(rows[:4], "\n"))
+	}
+	for i := 0; i < 6 && !contains(h.screenText(), "Ready to trigger"); i++ {
+		h.key("enter") // through any parameter forms, keeping the defaults
+	}
+	h.expect("Ready to trigger 2 job(s)", "api/build", "web/build")
+	h.expectNot("team/")
+}
 
 func TestTriggerSingleJobNoParamsThroughMonitor(t *testing.T) {
 	stages := func(second string) []jenkinstest.Stage {
@@ -1266,6 +1427,23 @@ func TestMonitorOpensHidingSuccessAndToggles(t *testing.T) {
 	h.key("esc")
 	h.expectTitle("Collection · Mix")
 	h.expect("4 jobs")
+}
+
+// The Run Monitor's status line is on the title row, and the job list starts
+// one blank line under it.
+func TestMonitorBlankLineAboveJobs(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Mix")
+	h.key("m")
+	h.expectTitle("Run Monitor: Mix")
+	rows := strings.Split(h.screenText(), "\n")
+	if !strings.HasPrefix(rows[0], "Run Monitor: Mix") || !strings.Contains(rows[0], "hiding 2 successful (s to show) · 2 remaining") ||
+		rows[1] != "" || !strings.Contains(rows[2], "team/") {
+		t.Fatalf("monitor rows:\n%s", strings.Join(rows[:4], "\n"))
+	}
 }
 
 func TestMonitorFromCollectionsListAndBack(t *testing.T) {

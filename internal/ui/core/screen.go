@@ -39,6 +39,13 @@ type Screen interface {
 	Keys() []key.Binding
 }
 
+// Subtitler is optionally implemented by screens that show a short status
+// (counts, filter state, notices) on the title row, after the title and in
+// muted text. Return "" to show the title alone.
+type Subtitler interface {
+	Subtitle() string
+}
+
 // Navigation messages. Screens return them from commands via Nav* helpers or
 // directly as tea.Msg values.
 type (

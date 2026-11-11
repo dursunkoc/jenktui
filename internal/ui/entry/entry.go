@@ -78,7 +78,7 @@ func checkReachable(cfg config.Config) error {
 func errHint(err error) string {
 	switch {
 	case errors.Is(err, jenkins.ErrAuth):
-		return "Check your username and API token (Jenkins > your user > Configure > API Token)."
+		return "Check your username and password or API token. An API token is recommended (Jenkins > your user > Configure > API Token)."
 	case errors.Is(err, jenkins.ErrTLS):
 		return "The certificate is not trusted. Set ca_cert to your CA bundle in config.toml, or insecure_skip_verify = true (not recommended)."
 	case errors.Is(err, jenkins.ErrNetwork):

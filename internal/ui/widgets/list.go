@@ -2,13 +2,14 @@
 package widgets
 
 import (
-	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
@@ -16,6 +17,7 @@ import (
 type Item struct {
 	Key       string      // unique id, e.g. the job full path; also what the filter matches
 	Label     string      // text shown; defaults to Key when empty
+	Branch    string      // shown in the branch column (Label is then the Multibranch Project)
 	Badge     core.Status // shown after the label when ShowBadge is set
 	ShowBadge bool
 	Missing   bool // renders a MISSING warning badge; the item cannot be selected
@@ -29,12 +31,18 @@ type Options struct {
 }
 
 var (
-	keyToggle   = key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select"))
-	keyAll      = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "all"))
-	keyNone     = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "none"))
+	// KeySelect toggles the row under the cursor; screens show it in their
+	// help bar.
+	KeySelect   = key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "select"))
+	keyAll      = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "select all"))
+	keyNone     = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "clear selection"))
 	keyStatus   = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "status filter"))
 	keyMoveUp   = key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("shift+↑", "move up"))
 	keyMoveDown = key.NewBinding(key.WithKeys("shift+down"), key.WithHelp("shift+↓", "move down"))
+
+	// shown while the filter box has focus
+	keyFilterDone  = key.NewBinding(key.WithKeys("enter", "down"), key.WithHelp("enter/↓", "go to list"))
+	keyFilterClear = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "clear filter"))
 )
 
 // List is a filterable multi-select list. It is a sub-model, not a
@@ -131,11 +139,25 @@ func (l *List) Cursor() (Item, bool) {
 
 // Keys returns bindings for the help bar.
 func (l *List) Keys() []key.Binding {
-	ks := []key.Binding{core.KeyFilter, keyStatus, keyToggle, keyAll, keyNone}
-	if l.opts.Reorderable {
-		ks = append(ks, keyMoveUp, keyMoveDown)
+	ks := append(l.FilterKeys(), l.SelectKeys()...)
+	return append(ks, l.MoveKeys()...)
+}
+
+// SelectKeys, FilterKeys and MoveKeys are Keys split into groups for the
+// help panel. MoveKeys is empty unless the list is Reorderable.
+func (l *List) SelectKeys() []key.Binding { return []key.Binding{KeySelect, keyAll, keyNone} }
+func (l *List) FilterKeys() []key.Binding { return []key.Binding{core.KeyFilter, keyStatus} }
+func (l *List) MoveKeys() []key.Binding {
+	if !l.opts.Reorderable {
+		return nil
 	}
-	return ks
+	return []key.Binding{keyMoveUp, keyMoveDown}
+}
+
+// FilterEditKeys are the keys that work while the filter box has focus
+// (every other key is typed into it).
+func (l *List) FilterEditKeys() []key.Binding {
+	return []key.Binding{keyFilterDone, keyFilterClear}
 }
 
 // visible returns indices into items that match the filter.
@@ -241,7 +263,11 @@ func (l *List) cycleStatus() {
 	l.cursor, l.offset = 0, 0
 }
 
-func (l *List) rows() int { return max(l.h-1, 1) }
+// filterRows is the height of the filter block: a blank line, the filter
+// row, a blank line and the column titles (blank when nothing matches).
+const filterRows = 4
+
+func (l *List) rows() int { return max(l.h-filterRows, 1) }
 
 func (l *List) clamp() {
 	n := len(l.visible())
@@ -278,7 +304,7 @@ func (l *List) Update(msg tea.Msg) tea.Cmd {
 		l.cursor--
 	case key.Matches(km, core.KeyDown):
 		l.cursor++
-	case key.Matches(km, keyToggle):
+	case key.Matches(km, KeySelect):
 		if it, ok := l.Cursor(); ok && !it.Missing && !it.Disabled {
 			l.selected[it.Key] = !l.selected[it.Key]
 			if !l.selected[it.Key] {
@@ -348,9 +374,11 @@ func (l *List) updateFilter(km tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// View renders the filter row followed by the visible window of items.
+// View renders a blank line, the filter row, a blank line and the column
+// titles, followed by the visible window of items.
 func (l *List) View() string {
 	var b strings.Builder
+	b.WriteString("\n")
 	switch {
 	case l.editing || l.filter != "":
 		cur := ""
@@ -372,10 +400,12 @@ func (l *List) View() string {
 	}
 	v := l.visible()
 	if len(v) == 0 {
-		b.WriteString("\n" + l.theme.MutedTxt.Render("no matches"))
+		b.WriteString("\n\n\n" + l.theme.MutedTxt.Render("no matches"))
 		return b.String()
 	}
 	end := min(l.offset+l.rows(), len(v))
+	nameW, branchW, branchCol := l.columns()
+	b.WriteString("\n\n" + l.header(nameW, branchW, branchCol))
 	for r := l.offset; r < end; r++ {
 		it := l.items[v[r]]
 		box := "[ ]"
@@ -385,11 +415,15 @@ func (l *List) View() string {
 		case l.selected[it.Key]:
 			box = "[x]"
 		}
-		label := it.Label
-		if label == "" {
-			label = it.Key
+		// Columns: box, name, branch (only when some row has one), badge.
+		name := cell(nameOf(it), nameW)
+		line := box + " " + name
+		switch {
+		case branchCol && hasBadge(it):
+			line += colGap + cell(it.Branch, branchW)
+		case branchCol && it.Branch != "":
+			line += colGap + it.Branch // nothing after it: no need to cut or pad
 		}
-		line := fmt.Sprintf("%s %s", box, label)
 		// Style the text once, so nested ANSI resets cannot cut a highlight short.
 		style := lipgloss.NewStyle()
 		switch {
@@ -400,25 +434,131 @@ func (l *List) View() string {
 			// returns them to the plain style.
 			style = l.theme.Selected
 		}
+		// Every row is a 2-column gutter, the columns, then colGap and the
+		// badge. The cursor row is drawn in reverse video (readable on any
+		// terminal theme) with one column of padding on each side; the
+		// padding takes the place of the gutter's second column and of one
+		// column of the gap before the badge, so every column stays where it
+		// is on the other rows.
+		prefix, gap := "  ", colGap
+		plain := !it.Disabled && !(l.selected[it.Key] && !it.Missing) // no style of its own
 		if r == l.cursor {
-			// The row under the cursor is drawn in reverse video, which stays
-			// readable on any terminal theme.
 			style = style.Reverse(true).Bold(true)
 			line = " " + line + " "
+			prefix, gap, plain = l.theme.Selected.Render(">"), colGap[1:], false
 		}
-		line = style.Render(line)
+		if plain {
+			// Plain rows draw the folder separators muted. A styled row keeps
+			// them in its own style: a muted part inside it would reset, and
+			// so cut short, the row's highlight.
+			line = box + " " + strings.ReplaceAll(name, folderSep, l.theme.MutedTxt.Render(folderSep)) + line[len(box)+1+len(name):]
+		} else {
+			line = style.Render(line)
+		}
 		switch {
 		case it.Missing:
-			line += " " + l.theme.Badge(core.StatusMissing)
+			line += gap + l.theme.Badge(core.StatusMissing)
 		case it.ShowBadge:
-			line += " " + l.theme.Badge(it.Badge)
+			line += gap + l.theme.Badge(it.Badge)
 		}
-		line = lipgloss.NewStyle().MaxWidth(max(l.w-2, 1)).Render(line)
-		if r == l.cursor {
-			b.WriteString("\n" + l.theme.Selected.Render("> ") + line)
-		} else {
-			b.WriteString("\n  " + line)
-		}
+		line = lipgloss.NewStyle().MaxWidth(max(l.w-lipgloss.Width(prefix), 1)).Render(line)
+		b.WriteString("\n" + prefix + line)
 	}
 	return b.String()
+}
+
+// colGap separates the columns of a row.
+const colGap = "  "
+
+// folderSep replaces "/" between the folders of a name in the name column:
+// "team/api/build" is shown as "team › api › build".
+const folderSep = " › "
+
+// nameOf is the name column's text for it: its label with the folders
+// separated by folderSep. Only the display changes; Key keeps the "/".
+func nameOf(it Item) string { return strings.ReplaceAll(labelOf(it), "/", folderSep) }
+
+// Narrowest the name and branch columns get on a narrow terminal.
+const (
+	minNameW   = 12
+	minBranchW = 8
+)
+
+func labelOf(it Item) string {
+	if it.Label != "" {
+		return it.Label
+	}
+	return it.Key
+}
+
+func hasBadge(it Item) bool { return it.Missing || it.ShowBadge }
+
+// Column titles, shown muted on the row under the filter row.
+const (
+	headName   = "Pipeline"
+	headBranch = "Branch"
+	headStatus = "Status"
+)
+
+// header is the column titles, each over its column (the gutter and the
+// box take the first 6 columns).
+func (l *List) header(nameW, branchW int, branchCol bool) string {
+	h := strings.Repeat(" ", 6) + cell(headName, nameW)
+	if branchCol {
+		h += colGap + cell(headBranch, branchW)
+	}
+	if slices.ContainsFunc(l.items, hasBadge) {
+		h += colGap + headStatus
+	}
+	return l.theme.MutedTxt.Render(strings.TrimRight(h, " "))
+}
+
+// columns returns the widths of the name and branch columns, and whether
+// there is a branch column at all (some item has a Branch). Widths fit the
+// longest of all items, not only the visible ones, so columns do not move
+// while scrolling or filtering. A branch with no badge after it (such as a
+// placeholder's "(no branches)") does not widen its column. When a row would
+// be wider than the list the name column shrinks first, then the branch
+// column; the badge column never does.
+func (l *List) columns() (nameW, branchW int, branchCol bool) {
+	badgeW := 0
+	for _, it := range l.items {
+		nameW = max(nameW, lipgloss.Width(nameOf(it)))
+		branchCol = branchCol || it.Branch != ""
+		if !hasBadge(it) {
+			continue
+		}
+		branchW = max(branchW, lipgloss.Width(it.Branch))
+		st := it.Badge
+		if it.Missing {
+			st = core.StatusMissing
+		}
+		badgeW = max(badgeW, lipgloss.Width(l.theme.Badge(st)))
+	}
+	fixed := 2 + 4 // gutter, box and its space
+	if badgeW > 0 {
+		fixed += len(colGap) + max(badgeW, len(headStatus))
+	}
+	if branchCol {
+		fixed += len(colGap)
+	}
+	// Columns are at least as wide as their titles.
+	nameW = max(nameW, len(headName))
+	if branchCol {
+		branchW = max(branchW, len(headBranch))
+	}
+	avail := l.w - fixed
+	if nameW+branchW > avail {
+		nameW = max(avail-branchW, min(nameW, minNameW))
+	}
+	if nameW+branchW > avail && branchW > 0 {
+		branchW = max(avail-nameW, min(branchW, minBranchW))
+	}
+	return nameW, branchW, branchCol
+}
+
+// cell is s cut with "…" or padded with spaces to exactly w columns.
+func cell(s string, w int) string {
+	s = ansi.Truncate(s, w, "…")
+	return s + strings.Repeat(" ", max(w-lipgloss.Width(s), 0))
 }
