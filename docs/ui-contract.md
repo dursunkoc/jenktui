@@ -14,7 +14,7 @@ type Screen interface {
 }
 ```
 
-The Router draws the title bar (row 1) and help bar (last row); `View` renders only the body area.
+The Router draws the title bar (row 1) and a footer: a full-width rule and, under it, the help bar (last row). `View` renders only the body area, which is 3 rows shorter than the terminal.
 
 ```go
 type Subtitler interface { Subtitle() string } // optional

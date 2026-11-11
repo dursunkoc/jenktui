@@ -35,11 +35,11 @@ func TestRouterNavigation(t *testing.T) {
 	a, b, c := &fake{name: "a"}, &fake{name: "b"}, &fake{name: "c"}
 	r := NewRouter(&Session{}, a)
 	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
-	if a.size.Width != 80 || a.size.Height != 22 {
+	if a.size.Width != 80 || a.size.Height != 21 { // 24 - title - footer (rule, help bar)
 		t.Fatalf("body size = %+v", a.size)
 	}
 	r.Update(Push{b})
-	if r.Depth() != 2 || r.Top() != Screen(b) || b.inits != 1 || b.size.Height != 22 {
+	if r.Depth() != 2 || r.Top() != Screen(b) || b.inits != 1 || b.size.Height != 21 {
 		t.Fatalf("push failed: depth=%d inits=%d size=%+v", r.Depth(), b.inits, b.size)
 	}
 	r.Update(Replace{c})
@@ -81,6 +81,12 @@ func TestRouterView(t *testing.T) {
 	}
 	if n := strings.Count(v, "\n") + 1; n != 24 {
 		t.Errorf("view rows = %d, want 24", n)
+	}
+	// footer: a full-width rule right above the help bar.
+	rows := strings.Split(ansi.Strip(v), "\n")
+	n := len(rows)
+	if rows[n-2] != strings.Repeat("─", 80) || !strings.Contains(rows[n-1], "esc back") {
+		t.Errorf("footer rows:\n%s", strings.Join(rows[n-3:], "\n"))
 	}
 }
 

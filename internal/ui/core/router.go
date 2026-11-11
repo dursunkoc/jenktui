@@ -9,8 +9,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// chromeHeight is the rows the Router reserves: title bar and help bar.
-const chromeHeight = 2
+// chromeHeight is the rows the Router reserves: the title bar, and the
+// footer (a rule, then the help bar).
+const chromeHeight = 3
 
 // Router is the root tea.Model. It owns a navigation stack and renders the
 // top screen between a title bar and a help bar.
@@ -153,5 +154,6 @@ func (r *Router) View() string {
 		help = r.Help.View(top.Keys(), groups != nil, r.width)
 	}
 	body := lipgloss.NewStyle().Height(bh).MaxHeight(bh).Render(content)
-	return strings.Join([]string{header, body, help}, "\n")
+	rule := lipgloss.NewStyle().Foreground(r.Theme.Border).Render(strings.Repeat("─", r.width))
+	return strings.Join([]string{header, body, rule, help}, "\n")
 }
