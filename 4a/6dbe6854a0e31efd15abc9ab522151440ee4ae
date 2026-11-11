@@ -1,0 +1,21 @@
+e2e_test.go
+  s_26ac0d5c200416::t_be82fb48238e0b 607-618
+internal/ui/collections/collections.go
+  s_26ac0d5c200416::t_e8d6f3a39bd9fd 396
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4a6dbe6854a0e31efd15abc9ab522151440ee4ae",
+  "prompts": {},
+  "sessions": {
+    "s_26ac0d5c200416": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "1b029a9e-3ce2-4d7a-8e6c-52f2a413a590",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "fatihtelis <fatih.telis@gmail.com>"
+    }
+  }
+}
