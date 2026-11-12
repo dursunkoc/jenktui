@@ -1,0 +1,27 @@
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_e497130032f6c8 96
+internal/jenkins/joburl.go
+  s_1c16aed3d161c7::t_eea9de4677aed0 3-13
+internal/jenkins/joburl_test.go
+  s_1c16aed3d161c7::t_67be6c1091fe7b 5-27
+internal/ui/monitor/actions.go
+  s_1c16aed3d161c7::t_66201285cda80a 4-5,21-27,48-50,52-53,55,66,71-80,86-88
+internal/ui/monitor/actions_test.go
+  s_1c16aed3d161c7::t_bacfdc0b36ad78 5-6,9,33-36,41,96,152-203
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3115b26e1408dd3bf111431c50c586d21a9de9b1",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
