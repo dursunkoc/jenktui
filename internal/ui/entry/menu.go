@@ -15,6 +15,7 @@ type Menu struct {
 	deps          Deps
 	th            core.Theme
 	user          string
+	notice        string
 	cursor        int
 	width, height int
 }
@@ -26,13 +27,27 @@ func NewMenu(sess *core.Session, deps Deps, user string) *Menu {
 	return &Menu{sess: sess, deps: deps, th: core.NewTheme(), user: user}
 }
 
-func (m *Menu) Init() tea.Cmd { return nil }
+// Init opens the Collection named on the command line, once.
+func (m *Menu) Init() tea.Cmd {
+	name := m.sess.StartCollection
+	m.sess.StartCollection = ""
+	if name == "" || m.deps.OpenCollection == nil {
+		return nil
+	}
+	return m.deps.OpenCollection(m.sess, name)
+}
 
 func (m *Menu) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch v := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
+	case Start:
+		m.notice = v.Notice
+		if v.Screen != nil {
+			return m, core.Cmd(core.Push{Screen: v.Screen()})
+		}
 	case tea.KeyMsg:
+		m.notice = ""
 		switch {
 		case key.Matches(v, core.KeyUp):
 			m.cursor = (m.cursor + len(menuItems) - 1) % len(menuItems)
@@ -74,6 +89,9 @@ func (m *Menu) View() string {
 		}
 	}
 	body := m.th.MutedTxt.Render("Signed in as "+m.user) + "\n\n" + strings.Join(lines, "\n")
+	if m.notice != "" {
+		body += "\n\n" + lipgloss.NewStyle().Foreground(m.th.Warn).Render(m.notice)
+	}
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.th.Box.Render(body))
 }
 

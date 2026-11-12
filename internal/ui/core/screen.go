@@ -24,6 +24,10 @@ type JenkinsClient interface {
 type Session struct {
 	Config config.Config
 	Client JenkinsClient // nil until login succeeds
+	// StartCollection is the Collection named on the command line. The Menu
+	// reads it in its first Init, opens that Collection's Run Monitor and
+	// clears it.
+	StartCollection string
 }
 
 // Screen is one page of the app. Update returns the (possibly new) Screen

@@ -24,6 +24,18 @@ type Deps struct {
 	Collections Factory       // nil -> "coming soon" placeholder
 	Catalog     Factory       // nil -> "coming soon" placeholder
 	MinSplash   time.Duration // 0 -> 1.5s
+	// OpenCollection returns the command that opens the named Collection's Run
+	// Monitor (the Session's StartCollection); it yields a Start. nil ignores
+	// the name.
+	OpenCollection func(s *core.Session, name string) tea.Cmd
+}
+
+// Start is the result of Deps.OpenCollection. The command does the slow work
+// off the UI goroutine; Screen is called on it. A Notice is shown on the
+// Menu (an unknown Collection); a nil Screen leaves the Menu on top.
+type Start struct {
+	Screen func() core.Screen
+	Notice string
 }
 
 func (d Deps) configPath() string { return filepath.Join(d.ConfigDir, "config.toml") }
