@@ -217,7 +217,7 @@ func TestFolderColorsListsAFoldersItems(t *testing.T) {
 	if root, err := c.FolderColors(context.Background(), ""); err != nil || len(root) == 0 {
 		t.Fatalf("root = %v, %v", root, err)
 	}
-	if _, err := c.FolderColors(context.Background(), "team/nope"); err == nil {
-		t.Fatal("an unknown folder must be an error")
+	if _, err := c.FolderColors(context.Background(), "team/nope"); !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("an unknown folder must be ErrJobNotFound, got %v", err)
 	}
 }

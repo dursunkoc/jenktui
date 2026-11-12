@@ -328,3 +328,16 @@ func TestRefreshIsIgnoredWhileACycleRunsAndShowsRefreshing(t *testing.T) {
 		t.Fatal("refreshing stays after the result")
 	}
 }
+
+func TestGoneFolderMakesMembersMissingWithoutFallback(t *testing.T) {
+	cc := &colorClient{fakeClient: sampleClient(), errs: map[string]error{"team/old": jenkins.ErrJobNotFound},
+		colors: map[string]map[string]string{"app": {"feature%2Fx": "red"}}}
+	f := newFixture(cc, []Collection{{Name: "N", Jobs: []string{"team/old/a", "team/old/b", "app/feature%2Fx"}}}, nil)
+	f.run(f.s.Init())
+	if got := f.s.rows[0]; got.missing != 2 || got.failed != 1 {
+		t.Fatalf("row = %+v", got)
+	}
+	if len(cc.asked) != 0 {
+		t.Fatalf("fallback used for a gone folder: %v", cc.asked)
+	}
+}

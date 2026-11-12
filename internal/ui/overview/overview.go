@@ -24,7 +24,6 @@ import (
 const (
 	DefaultInterval = 30 * time.Second
 	DefaultTimeout  = 10 * time.Second
-	workers         = 8
 )
 
 // Client is the part of the Jenkins API the overview needs. If it also has
@@ -182,6 +181,13 @@ func tally(deps Deps, cols []Collection) []counts {
 			var err error
 			colors, err = fc.FolderColors(ctx, f)
 			cancel()
+			if errors.Is(err, jenkins.ErrJobNotFound) {
+				// the folder is gone: its members are missing, nothing to fall back to
+				for _, j := range folders[f] {
+					state[j] = stMissing
+				}
+				continue
+			}
 			if err != nil {
 				colors = nil
 			}
