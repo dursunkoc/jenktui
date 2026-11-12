@@ -58,7 +58,7 @@ It picks the right build for your system, checks it against the release checksum
 **Windows (PowerShell)**
 
 ```powershell
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12   # needed on Windows PowerShell 5.1
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12   # needed on Windows PowerShell 5.1
 $v = $env:JENKTUI_VERSION   # optional: set it first (e.g. $env:JENKTUI_VERSION = "0.1.4") to pin a version
 if (-not $v) { $v = (Invoke-RestMethod "https://api.github.com/repos/dursunkoc/jenktui/releases/latest").tag_name }
 $v = $v.TrimStart("v")
@@ -70,7 +70,7 @@ Expand-Archive $zip -DestinationPath $dir -Force
 [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
 ```
 
-This installs the latest release; to pin a version, set `$env:JENKTUI_VERSION = "0.1.4"` before running it. Open a new terminal and run `jenktui --version`. Use Windows Terminal; the config is in `%USERPROFILE%\.config\jenktui\`. The [wiki](https://github.com/dursunkoc/jenktui/wiki/Getting-Started) has the checksum check and upgrade steps.
+This installs the latest release; to pin a version, set `$env:JENKTUI_VERSION = "0.1.4"` before running it. If the lookup fails (offline, or GitHub's API rate limit), set `$env:JENKTUI_VERSION` and run it again. Open a new terminal and run `jenktui --version`. Use Windows Terminal; the config is in `%USERPROFILE%\.config\jenktui\`. The [wiki](https://github.com/dursunkoc/jenktui/wiki/Getting-Started) has the checksum check and upgrade steps.
 
 **Download by hand (macOS, Linux)**
 
