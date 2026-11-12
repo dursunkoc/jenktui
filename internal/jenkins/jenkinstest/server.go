@@ -125,7 +125,8 @@ type node struct {
 	folder   bool
 	multi    bool // multibranch project (also a folder)
 	params   []Param
-	last     *Build
+	last     *Build   // the newest build; serves lastBuild and the log, stages
+	builds   []*Build // all builds, newest first
 	disabled bool
 	pipeline bool
 	stages   []Stage
@@ -345,8 +346,41 @@ func (j *Job) Params(p ...Param) *Job {
 func (j *Job) LastBuild(b Build) *Job {
 	j.s.mu.Lock()
 	defer j.s.mu.Unlock()
+	j.n.builds = []*Build{&b}
 	j.n.last = &b
 	return j
+}
+
+// Builds sets the job's build history, replacing earlier builds. Order does
+// not matter: the build with the highest number is the last build, and the
+// job lists them newest first. /job/x/<n>/api/json serves any of them.
+func (j *Job) Builds(bs ...Build) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.builds = nil
+	for i := range bs {
+		b := bs[i]
+		j.n.builds = append(j.n.builds, &b)
+	}
+	sort.SliceStable(j.n.builds, func(a, b int) bool { return j.n.builds[a].Number > j.n.builds[b].Number })
+	j.n.last = nil
+	if len(j.n.builds) > 0 {
+		j.n.last = j.n.builds[0]
+	}
+	return j
+}
+
+// find returns the build a path segment names: "lastBuild" or a number.
+func (n *node) find(ref string) *Build {
+	if ref == "lastBuild" {
+		return n.last
+	}
+	for _, b := range n.builds {
+		if strconv.Itoa(b.Number) == ref {
+			return b
+		}
+	}
+	return nil
 }
 
 // Disabled marks the job disabled (color "disabled").
@@ -527,11 +561,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", fmt.Sprintf("%s/queue/item/%d/", s.URL, id))
 		w.WriteHeader(http.StatusCreated)
 	case len(rest) == 3 && rest[1] == "api" && rest[2] == "json" && r.Method == http.MethodGet:
-		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+		b := n.find(rest[0])
+		if n.folder || b == nil {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, s.buildJSON(full, n.last))
+		writeJSON(w, s.buildJSON(full, b))
 	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
 		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
 			http.NotFound(w, r)
@@ -700,6 +735,11 @@ func (s *Server) itemJSON(full string, n *node) map[string]any {
 	} else {
 		m["lastBuild"] = nil
 	}
+	list := []map[string]any{}
+	for _, b := range n.builds {
+		list = append(list, s.buildJSON(full, b))
+	}
+	m["builds"] = list
 	return m
 }
 
