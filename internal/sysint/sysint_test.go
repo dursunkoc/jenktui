@@ -37,11 +37,15 @@ func (r *recorder) runIn(in, name string, args ...string) error {
 }
 
 func newSys(goos string, r *recorder, out *bytes.Buffer) Sys {
-	s := Sys{Run: r.run, RunIn: r.runIn, GOOS: goos}
+	s := Sys{Run: r.run, RunIn: r.runIn, GOOS: goos, Getenv: env(map[string]string{"DISPLAY": ":0"})}
 	if out != nil {
 		s.Stdout = out
 	}
 	return s
+}
+
+func env(m map[string]string) func(string) string {
+	return func(k string) string { return m[k] }
 }
 
 func TestOpen(t *testing.T) {
@@ -94,7 +98,7 @@ func TestOpenUnsupportedAndNoRunner(t *testing.T) {
 	}
 }
 
-func TestCopy(t *testing.T) {
+func TestCopyTool(t *testing.T) {
 	const text = "https://jenkins.example/job/a b/1/ é"
 	tests := []struct {
 		goos string
@@ -108,15 +112,15 @@ func TestCopy(t *testing.T) {
 		t.Run(tc.goos, func(t *testing.T) {
 			r := &recorder{}
 			var out bytes.Buffer
-			if err := newSys(tc.goos, r, &out).Copy(text); err != nil {
-				t.Fatal(err)
+			route, err := newSys(tc.goos, r, &out).Copy(text)
+			if err != nil || route != RouteTool {
+				t.Fatalf("route=%v err=%v", route, err)
 			}
 			if !reflect.DeepEqual(r.calls, tc.want) {
 				t.Fatalf("calls = %#v, want %#v", r.calls, tc.want)
 			}
-			want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\a"
-			if out.String() != want {
-				t.Fatalf("osc52 = %q, want %q", out.String(), want)
+			if out.Len() != 0 {
+				t.Fatalf("OSC 52 written despite tool success: %q", out.String())
 			}
 		})
 	}
@@ -124,8 +128,9 @@ func TestCopy(t *testing.T) {
 
 func TestCopyLinuxFallsBackToXclip(t *testing.T) {
 	r := &recorder{fail: map[string]bool{"wl-copy": true}}
-	if err := newSys("linux", r, nil).Copy("x"); err != nil {
-		t.Fatal(err)
+	route, err := newSys("linux", r, nil).Copy("x")
+	if err != nil || route != RouteTool {
+		t.Fatal(route, err)
 	}
 	want := []call{
 		{Input: "x", Name: "wl-copy"},
@@ -136,26 +141,84 @@ func TestCopyLinuxFallsBackToXclip(t *testing.T) {
 	}
 }
 
-func TestCopyErrors(t *testing.T) {
-	// Tool fails and no OSC 52 was written: error.
+func TestCopyTerminalFallback(t *testing.T) {
+	const text = "héllo"
 	r := &recorder{fail: map[string]bool{"pbcopy": true}}
-	if err := newSys("darwin", r, nil).Copy("x"); err == nil {
+	var out bytes.Buffer
+	route, err := newSys("darwin", r, &out).Copy(text)
+	if err != nil || route != RouteTerminal {
+		t.Fatalf("route=%v err=%v", route, err)
+	}
+	want := "\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\a"
+	if out.String() != want {
+		t.Fatalf("osc52 = %q, want %q", out.String(), want)
+	}
+}
+
+func TestCopyInTmux(t *testing.T) {
+	r := &recorder{fail: map[string]bool{"pbcopy": true}}
+	var out bytes.Buffer
+	s := newSys("darwin", r, &out)
+	s.Getenv = env(map[string]string{"TMUX": "/tmp/tmux-1/default,1,0"})
+	route, err := s.Copy("x")
+	if err != nil || route != RouteTerminal {
+		t.Fatalf("route=%v err=%v", route, err)
+	}
+	want := []call{
+		{Input: "x", Name: "pbcopy"},
+		{Input: "x", Name: "tmux", Args: []string{"load-buffer", "-w", "-"}},
+	}
+	if !reflect.DeepEqual(r.calls, want) {
+		t.Fatalf("calls = %#v", r.calls)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("raw OSC 52 written inside tmux: %q", out.String())
+	}
+}
+
+func TestCopyErrors(t *testing.T) {
+	r := &recorder{fail: map[string]bool{"pbcopy": true}}
+	if _, err := newSys("darwin", r, nil).Copy("x"); err == nil {
 		t.Error("expected error when nothing copied")
 	}
-	// Tool fails but OSC 52 went out: success.
+	r = &recorder{fail: map[string]bool{"pbcopy": true, "tmux": true}}
+	s := newSys("darwin", r, nil)
+	s.Getenv = env(map[string]string{"TMUX": "1"})
+	if _, err := s.Copy("x"); err == nil {
+		t.Error("expected error when tmux also fails")
+	}
 	var out bytes.Buffer
-	if err := newSys("darwin", r, &out).Copy("x"); err != nil {
-		t.Errorf("OSC 52 written, got %v", err)
+	if route, err := newSys("plan9", &recorder{}, &out).Copy("x"); err != nil || route != RouteTerminal {
+		t.Errorf("unsupported GOOS with terminal: %v %v", route, err)
 	}
-	// Unsupported OS without a terminal: error; with a terminal: ok.
-	if err := newSys("plan9", &recorder{}, nil).Copy("x"); err == nil {
-		t.Error("unsupported GOOS without Stdout should fail")
-	}
-	if err := newSys("plan9", &recorder{}, &out).Copy("x"); err != nil {
-		t.Errorf("unsupported GOOS with OSC 52: %v", err)
-	}
-	if err := (Sys{GOOS: "darwin"}).Copy("x"); err == nil {
+	if _, err := (Sys{GOOS: "darwin"}).Copy("x"); err == nil {
 		t.Error("zero Sys should fail")
+	}
+}
+
+func TestOpenLinuxNeedsGraphicalSession(t *testing.T) {
+	r := &recorder{}
+	s := newSys("linux", r, nil)
+	s.Getenv = env(nil)
+	if err := s.Open("https://h/"); err == nil || !strings.Contains(err.Error(), "no graphical session") {
+		t.Fatalf("err = %v", err)
+	}
+	if len(r.calls) != 0 {
+		t.Fatalf("ran %v", r.calls)
+	}
+	s.Getenv = env(map[string]string{"WAYLAND_DISPLAY": "wayland-0"})
+	if err := s.Open("https://h/"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenPassesEncodedURL(t *testing.T) {
+	r := &recorder{}
+	if err := newSys("darwin", r, nil).Open(`https://h/job/a b"c/1/`); err != nil {
+		t.Fatal(err)
+	}
+	if got := r.calls[0].Args[0]; got != "https://h/job/a%20b%22c/1/" {
+		t.Fatalf("arg = %q", got)
 	}
 }
 
