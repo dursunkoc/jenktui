@@ -1,0 +1,21 @@
+internal/ui/monitor/display.go
+  s_1c16aed3d161c7::t_6d747a2aab4d3f 35,37-42
+internal/ui/monitor/display_test.go
+  s_1c16aed3d161c7::t_af68e58ebb3e43 6,10-11,116-158
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c1c29d545a6895aeb9ed83b2198f49a703d5f6f1",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
