@@ -114,3 +114,26 @@ func TestMasked(t *testing.T) {
 		t.Fatal("masked")
 	}
 }
+
+func TestCursorBlinks(t *testing.T) {
+	f := NewForm("t", defs, Options{})
+	// Init starts the blink of the focused text field.
+	msg := f.Init()()
+	if cmd := f.Update(msg); cmd == nil {
+		t.Fatal("initial blink message did not start the cursor blinking")
+	}
+	// Moving onto another text field starts its blink; a bool or choice has none.
+	if cmd := f.Update(key("tab")); cmd != nil {
+		t.Fatal("bool field has no cursor")
+	}
+	f.Update(key("tab"))
+	if cmd := f.Update(key("tab")); cmd == nil {
+		t.Fatal("moving onto a text field did not start its cursor blinking")
+	}
+}
+
+func TestEmptyFormViewDoesNotPanic(t *testing.T) {
+	if v := NewForm("none", nil, Options{}).View(); !strings.Contains(v, "none") {
+		t.Fatalf("view: %q", v)
+	}
+}

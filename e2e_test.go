@@ -1276,7 +1276,7 @@ func parseSummary(text string, jobs []string) map[string]map[string]string {
 	out := map[string]map[string]string{}
 	var cur map[string]string
 	for _, l := range strings.Split(text, "\n") {
-		l = strings.TrimSpace(l)
+		l = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(l), "›")) // › marks the highlighted job
 		if slicesContains(jobs, l) {
 			cur = map[string]string{}
 			out[l] = cur

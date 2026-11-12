@@ -356,3 +356,19 @@ func TestJobName(t *testing.T) {
 func branchRow(name, branch string) *regexp.Regexp {
 	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
 }
+
+func TestSubtitleCountSkipsPlaceholder(t *testing.T) {
+	// "lib" has no matching branch, so it is a placeholder row.
+	s := newBranchScreen(t, []string{"main"}, nil)
+	if sub := s.Subtitle(); !strings.Contains(sub, "2 jobs") {
+		t.Errorf("no text filter: want 2 jobs (plain, app/main), got %q", sub)
+	}
+	s.Update(kmsg("/"))
+	typeText(s, "lib")
+	if v := shown(s); !strings.Contains(v, "no matching branches") {
+		t.Fatalf("placeholder should match the filter:\n%s", v)
+	}
+	if sub := s.Subtitle(); !strings.Contains(sub, "0 of 2 jobs") {
+		t.Errorf("text filter on placeholder only: want 0 of 2 jobs, got %q", sub)
+	}
+}

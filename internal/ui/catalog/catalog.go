@@ -221,9 +221,10 @@ func (s *Screen) Subtitle() string {
 	if s.err != nil || s.loading && !s.loaded || s.editing {
 		return ""
 	}
-	count := fmt.Sprintf("%d jobs", s.list.Total())
+	shown, total := s.list.JobCounts()
+	count := fmt.Sprintf("%d jobs", total)
 	if s.list.Filter() != "" {
-		count = fmt.Sprintf("%d of %d jobs", s.list.Len(), s.list.Total())
+		count = fmt.Sprintf("%d of %d jobs", shown, total)
 	}
 	if n := len(s.list.Selected()); n > 0 {
 		count += fmt.Sprintf(" · %d selected", n)
