@@ -17,6 +17,7 @@ type maState struct {
 	// stage marker has not been placed yet (stages may still be loading). Any
 	// movement key clears it.
 	focusFailed bool
+	counts      map[buildKey]countsEntry // test counts per build (MA3)
 }
 
 var (
