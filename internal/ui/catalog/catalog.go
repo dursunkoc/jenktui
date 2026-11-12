@@ -244,9 +244,19 @@ func (s *Screen) Subtitle() string {
 // branch name ("digital-ui › feature/x" rather than "digital-ui/feature%2Fx").
 func JobName(j jenkins.Job, parent string) core.JobName {
 	if j.Multibranch != "" && j.Branch != "" {
-		return core.JobName{Name: core.RelName(j.Multibranch, parent), Branch: j.Branch}
+		return core.JobName{Name: projectName(j.Multibranch, parent), Branch: j.Branch}
 	}
 	return core.JobName{Name: core.RelName(j.FullName, parent)}
+}
+
+// projectName is a Multibranch Project's name relative to parent. When the
+// project is the parent itself the relative name would be empty, so it shows
+// the project's own (last) segment: "app › main" rather than just "main".
+func projectName(project, parent string) string {
+	if project == strings.Trim(parent, "/") {
+		return project[strings.LastIndex(project, "/")+1:]
+	}
+	return core.RelName(project, parent)
 }
 
 // Row is the list row for job j: keyed by its full name, labelled with
@@ -261,7 +271,7 @@ func Row(j jenkins.Job, parent string, badge core.Status) widgets.Item {
 // "(no matching branches)", in the branch column.
 func PlaceholderRow(it branchfilter.Item, parent string) widgets.Item {
 	why := strings.TrimSpace(strings.TrimPrefix(it.Label, it.Project))
-	return widgets.Item{Key: it.Key(), Label: core.RelName(it.Project, parent), Branch: why, Disabled: true}
+	return widgets.Item{Key: it.Key(), Label: projectName(it.Project, parent), Branch: why, Disabled: true}
 }
 
 // statusFromColor maps a Jenkins "color" hint to a badge status via

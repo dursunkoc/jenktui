@@ -159,3 +159,32 @@ func TestListCatalogMultibranch(t *testing.T) {
 		t.Fatalf("addressing encoded branch: %v", err)
 	}
 }
+
+func TestListCatalogParentIsMultibranch(t *testing.T) {
+	s := jenkinstest.New(t)
+	mb := s.Multibranch("team/app")
+	mb.Branch("main").LastBuild(jenkinstest.Build{Number: 1, Result: "SUCCESS"})
+	mb.Branch("feature/x").LastBuild(jenkinstest.Build{Number: 2, Result: "FAILURE"})
+	s.Multibranch("team/empty")
+	c, _ := New(Options{BaseURL: s.URL, Username: "me", Token: "tok"})
+
+	cat, err := c.ListCatalog(context.Background(), "team/app")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Job{
+		{FullName: "team/app/feature%2Fx", Color: "red", Multibranch: "team/app", Branch: "feature/x"},
+		{FullName: "team/app/main", Color: "blue", Multibranch: "team/app", Branch: "main"},
+	}
+	if !reflect.DeepEqual(cat.Jobs, want) {
+		t.Fatalf("jobs:\n got %+v\nwant %+v", cat.Jobs, want)
+	}
+	if !reflect.DeepEqual(cat.MultibranchProjects, []string{"team/app"}) {
+		t.Fatalf("projects: %v", cat.MultibranchProjects)
+	}
+	// An empty Multibranch parent is still a project, so the UI can show a placeholder.
+	cat, err = c.ListCatalog(context.Background(), "team/empty")
+	if err != nil || len(cat.Jobs) != 0 || !reflect.DeepEqual(cat.MultibranchProjects, []string{"team/empty"}) {
+		t.Fatalf("empty: %+v %v", cat, err)
+	}
+}

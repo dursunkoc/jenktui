@@ -231,7 +231,21 @@ func (c *Client) ListCatalog(ctx context.Context, parent string) (Catalog, error
 		}
 		return nil
 	}
-	if err := walk(strings.Trim(parent, "/"), ""); err != nil {
+	root := strings.Trim(parent, "/")
+	// When the parent is itself a Multibranch Project its children are
+	// branches, not plain jobs: walk it as a project.
+	project := ""
+	if root != "" {
+		var self jobNode
+		if _, err := c.do(ctx, http.MethodGet, jobPath(root)+"/api/json?tree=_class", &self); err != nil {
+			return Catalog{}, err
+		}
+		if self.multibranch() {
+			project = root
+			cat.MultibranchProjects = append(cat.MultibranchProjects, root)
+		}
+	}
+	if err := walk(root, project); err != nil {
 		return Catalog{}, err
 	}
 	sort.Slice(cat.Jobs, func(i, j int) bool { return cat.Jobs[i].FullName < cat.Jobs[j].FullName })
