@@ -84,20 +84,24 @@ func (f *Form) SetSize(w, h int) {
 	}
 }
 
-func (f *Form) setFocus(i int) {
+// setFocus moves focus to field i (wrapping) and returns the command that
+// starts the new text field's cursor blinking.
+func (f *Form) setFocus(i int) tea.Cmd {
 	if len(f.fields) == 0 {
-		return
+		return nil
 	}
+	var cmd tea.Cmd
 	f.focus = (i + len(f.fields)) % len(f.fields)
 	for k, fd := range f.fields {
 		if fd.isText() {
 			if k == f.focus {
-				fd.input.Focus()
+				cmd = fd.input.Focus()
 			} else {
 				fd.input.Blur()
 			}
 		}
 	}
+	return cmd
 }
 
 func (fd *field) isText() bool { return fd.def.Type != "bool" && fd.def.Type != "choice" }
@@ -133,7 +137,9 @@ func (f *Form) Done() bool { return f.done }
 // Reopen clears the submitted flag so the form can be edited again.
 func (f *Form) Reopen() { f.done = false }
 
-// Init returns the cursor blink command.
+// Init returns the command that starts the focused field's cursor blinking.
+// Run it whenever the form is shown; the blink messages that follow reach the
+// focused field through Update.
 func (f *Form) Init() tea.Cmd { return textinput.Blink }
 
 // Update handles a message and returns a command.
@@ -145,18 +151,15 @@ func (f *Form) Update(msg tea.Msg) tea.Cmd {
 	if k, ok := msg.(tea.KeyMsg); ok {
 		switch k.String() {
 		case "tab", "down":
-			f.setFocus(f.focus + 1)
-			return nil
+			return f.setFocus(f.focus + 1)
 		case "shift+tab", "up":
-			f.setFocus(f.focus - 1)
-			return nil
+			return f.setFocus(f.focus - 1)
 		case "enter":
 			if f.focus == len(f.fields)-1 {
 				f.done = true
-			} else {
-				f.setFocus(f.focus + 1)
+				return nil
 			}
-			return nil
+			return f.setFocus(f.focus + 1)
 		}
 		switch cur.def.Type {
 		case "bool":

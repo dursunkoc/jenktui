@@ -243,7 +243,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{})
 		s.st = stForm
 		s.resizeForms()
-		return s, nil
+		return s, s.form.Init()
 	}
 	s.plan = paramsmerge.Build(s.jobs, s.defs)
 	for _, j := range s.jobs {
@@ -254,8 +254,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 		}
 	}
 	if len(s.plan.Common) > 0 {
-		s.enterCommon()
-		return s, nil
+		return s, s.enterCommon()
 	}
 	s.commonVals = map[string]string{}
 	return s, s.afterCommon()
@@ -283,7 +282,8 @@ func (s *screen) commonDefs() ([]jenkins.ParamDef, map[string]string) {
 	return defs, ph
 }
 
-func (s *screen) enterCommon() {
+// enterCommon shows the Common Parameters form; the command starts its cursor.
+func (s *screen) enterCommon() tea.Cmd {
 	if s.commonForm == nil {
 		defs, ph := s.commonDefs()
 		s.commonForm = params.NewForm(fmt.Sprintf("Common Parameters (applied to all %d jobs)", len(s.jobs)), defs,
@@ -292,6 +292,7 @@ func (s *screen) enterCommon() {
 	}
 	s.commonForm.Reopen()
 	s.st = stCommon
+	return s.commonForm.Init()
 }
 
 // effectiveCommon is the common value a job would receive without overrides.
@@ -367,7 +368,7 @@ func (s *screen) enterJob(i int) tea.Cmd {
 	}
 	f.Reopen()
 	s.st = stJob
-	return nil
+	return f.Init()
 }
 
 func (s *screen) collectOverrides(job string) {
@@ -431,20 +432,18 @@ func (s *screen) back() (core.Screen, tea.Cmd) {
 			return s, s.enterJob(s.pos - 1)
 		}
 		if s.commonForm != nil {
-			s.enterCommon()
-			return s, nil
+			return s, s.enterCommon()
 		}
 	case stSummary:
 		switch {
 		case len(s.jobs) == 1:
 			s.form.Reopen()
 			s.st = stForm
-			return s, nil
+			return s, s.form.Init()
 		case len(s.jobSeq) > 0:
 			return s, s.enterJob(len(s.jobSeq) - 1)
 		case s.commonForm != nil:
-			s.enterCommon()
-			return s, nil
+			return s, s.enterCommon()
 		}
 	}
 	return s, pop
