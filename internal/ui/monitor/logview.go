@@ -35,6 +35,8 @@ var (
 	keyLogNext = key.NewBinding(key.WithKeys("n"), key.WithHelp("n/N", "next/prev match"))
 	keyLogPrev = key.NewBinding(key.WithKeys("N"))
 	keyLogGoto = key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "go to line"))
+	keyLogErr  = key.NewBinding(key.WithKeys("e"), key.WithHelp("e/E", "next/prev error"))
+	keyLogErrP = key.NewBinding(key.WithKeys("E"))
 	keyLogBack = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to details"))
 
 	keyPromptOK  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
@@ -42,6 +44,19 @@ var (
 
 	logHATokens = regexp.MustCompile(`\x1b\[8mha:////[A-Za-z0-9+/=]*\x1b\[0m`)
 )
+
+// errorMarkers are the substrings that make a log line an error line
+// (case-sensitive). Not configurable yet.
+var errorMarkers = []string{"ERROR", "FAILED", "FAILURE", "Exception", "Caused by:", "BUILD FAILURE", "npm ERR!", "error:"}
+
+func isErrorLine(s string) bool {
+	for _, m := range errorMarkers {
+		if strings.Contains(s, m) {
+			return true
+		}
+	}
+	return false
+}
 
 type logPrompt int
 
@@ -302,7 +317,7 @@ func (m *model) logKeys() []key.Binding {
 	if m.log.prompt != promptNone {
 		return []key.Binding{keyPromptOK, keyPromptEsc}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 }
 
 // logKey handles the keys of the log view; ok is false for keys it leaves to
@@ -339,6 +354,10 @@ func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		lv.findNext(+1, cur, page)
 	case key.Matches(msg, keyLogPrev):
 		lv.findNext(-1, cur, page)
+	case key.Matches(msg, keyLogErr):
+		lv.nextError(+1, cur, page)
+	case key.Matches(msg, keyLogErrP):
+		lv.nextError(-1, cur, page)
 	default:
 		return nil, false
 	}
@@ -436,6 +455,49 @@ func (lv *logView) findNext(dir, cur, page int) {
 	lv.status = fmt.Sprintf("no match for %q", lv.query)
 }
 
+// nextError moves to the next (dir > 0) or previous error line, wrapping
+// around, and reports "error i/total" in the status.
+func (lv *logView) nextError(dir, cur, page int) {
+	all := lv.all()
+	n := len(all)
+	total := 0
+	for _, l := range all {
+		if isErrorLine(l) {
+			total++
+		}
+	}
+	if total == 0 {
+		lv.status = "no errors found"
+		return
+	}
+	from := cur - 1
+	if dir < 0 {
+		from = cur
+	}
+	if lv.focus >= 0 {
+		from = lv.focus
+	}
+	for step := 1; step <= n; step++ {
+		i := ((from+dir*step)%n + n) % n
+		if !isErrorLine(all[i]) {
+			continue
+		}
+		wrapped := dir > 0 && i <= from || dir < 0 && i >= from
+		lv.reveal(i, n, page)
+		rank := 0
+		for _, l := range all[:i+1] {
+			if isErrorLine(l) {
+				rank++
+			}
+		}
+		lv.status = fmt.Sprintf("error %d/%d", rank, total)
+		if wrapped {
+			lv.status += " (wrapped)"
+		}
+		return
+	}
+}
+
 func (lv *logView) matches(all []string) (c int) {
 	for _, l := range all {
 		if lv.re.MatchString(l) {
@@ -510,7 +572,11 @@ func (m *model) logView() string {
 		if tw > 0 {
 			text = ansi.Truncate(text, tw, "…")
 		}
-		rows = append(rows, num+m.th.MutedTxt.Render(" │ ")+highlight(text, lv.re))
+		base := lipgloss.NewStyle()
+		if isErrorLine(all[i]) {
+			base = base.Foreground(m.th.Fail)
+		}
+		rows = append(rows, num+m.th.MutedTxt.Render(" │ ")+highlightWith(text, lv.re, base))
 	}
 	for m.h > 0 && len(rows) < page+1 {
 		rows = append(rows, "")
@@ -539,13 +605,24 @@ func (m *model) logFooter() string {
 	if lv.status != "" {
 		return m.th.MutedTxt.Render(lv.status)
 	}
-	return m.th.MutedTxt.Render("/ find · : go to line · pgup/pgdn page · g top · G follow · esc back")
+	return m.th.MutedTxt.Render("/ find · e/E error · : go to line · pgup/pgdn page · g top · G follow · esc back")
 }
 
 // highlight marks the matches of re in s in reverse video.
 func highlight(s string, re *regexp.Regexp) string {
+	return highlightWith(s, re, lipgloss.NewStyle())
+}
+
+// highlightWith is highlight with the rest of s drawn in base.
+func highlightWith(s string, re *regexp.Regexp, base lipgloss.Style) string {
+	plain := func(t string) string {
+		if t == "" {
+			return t
+		}
+		return base.Render(t)
+	}
 	if re == nil {
-		return s
+		return plain(s)
 	}
 	var b strings.Builder
 	prev := 0
@@ -553,11 +630,11 @@ func highlight(s string, re *regexp.Regexp) string {
 		if p[1] == p[0] {
 			continue
 		}
-		b.WriteString(s[prev:p[0]])
-		b.WriteString(lipgloss.NewStyle().Reverse(true).Render(s[p[0]:p[1]]))
+		b.WriteString(plain(s[prev:p[0]]))
+		b.WriteString(base.Reverse(true).Render(s[p[0]:p[1]]))
 		prev = p[1]
 	}
-	b.WriteString(s[prev:])
+	b.WriteString(plain(s[prev:]))
 	return b.String()
 }
 
