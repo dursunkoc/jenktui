@@ -242,14 +242,17 @@ LV issues add their keys to `logKeys()` (moved into `logview.go` by M0) and thei
 
 ---
 
-## Wave 3: cross-screen work (one agent, lane CORE, serial)
+## Wave 3: cross-screen work (lane CORE, serial; CORE6 in parallel)
 
-Owns `main.go`, `internal/ui/core`, `docs/ui-contract.md`, `internal/ui/entry`, and the new packages below.
+Lane CORE owns `main.go`, `internal/ui/core/router.go` and the rest of `core` except `theme.go`, `docs/ui-contract.md` (Router, keymap and Session sections), `internal/ui/entry`, the Run Monitor's `monitor.go` for CORE1's key, and the new packages below. CORE6 runs in parallel and owns `internal/ui/core/theme.go` (and the ui-contract Theme section); it touches no other file unless a screen draws something invisible without colour, in which case it says so first.
+
+**Lessons from waves 1 and 2 that apply here:** replies reach only the top screen (`core.Router`), so a screen pushed over the Run Monitor swallows its poll results and fetches; Run Monitor features live in their own files using the seams in `internal/ui/monitor/seams.go`; URLs to open or copy come from `Client.JobURL`/`BuildURL`; every async result is an `applier` or a typed message with a generation check.
 
 **CORE1: rerun** *(after JC1 and all of lane MA, which owns `monitor.go` until then)*
 - **From:** v0.2 §4. **Reverses a settled decision**, as MA4.
 - **Do:** `r` in the Run Monitor list and details reruns the highlighted build with its parameters. The monitor cannot open the trigger screen itself (screens never import each other), so it calls `Deps.Rerun` (the field M0 added), which this issue wires in `main.go` to `trigger.New` with the values prefilled (`params.Options{Prefill}` already exists). `r` calls `BuildContext` for the build and converts `Params` to `Prefill`, leaving out the `Password` ones (they cannot be read back, so the form asks for them); a job without parameters gets the plain confirmation. The new run joins the same monitor through the trigger's `Next`, as today. The key handling is a small edit in `monitor.go`; do it after lane MA is finished.
-- **Tests:** an e2e scenario: trigger with parameters, open the monitor, `r`, the form is prefilled, confirm, a new build is tracked.
+- Fetch `BuildContext` inside a `tea.Cmd` when `r` is pressed (flash "loading parameters…"), through an optional interface on `m.deps.Client`; put the feature in a new file (e.g. `rerun.go`) and keep the `monitor.go` change to the key case. `r` is shown only when `Deps.Rerun` is set and the highlighted row has a build. A parameter that the job no longer defines is dropped; a new one gets its default.
+- **Tests:** an e2e scenario: trigger with parameters, open the monitor, `r`, the form is prefilled, confirm, a new build is tracked. Plus unit tests: password left empty and asked for; a job without parameters gets the confirmation.
 
 **CORE2: open a Collection from the command line**
 - **Do:** `jenktui [collection]`: after login, go straight to that Collection's Run Monitor (case-insensitive name; unknown name: show the menu with a notice). Update `flag.Usage`. The Session gains a `StartCollection string`, read by the menu's first `Init`.
@@ -263,10 +266,14 @@ Owns `main.go`, `internal/ui/core`, `docs/ui-contract.md`, `internal/ui/entry`, 
 **CORE4: jump with `Ctrl+P`**
 - **From:** v0.2 §6.
 - **Do:** the Router catches `ctrl+p` on every screen (it is not typeable text, so no text field needs it). Do not use `FullHelp() == nil` as a signal: it is also nil during loading, on errors, in the monitor's details and log views, and for every screen without `FullHelper`. If some widget turns out to bind `ctrl+p`, add an explicit optional `TextFocused() bool` interface instead. The Router pushes a palette screen from a factory in `Session` or `NewRouter`, so `core` does not import screens. The palette lists Collections and catalog jobs with the list widget's fuzzy filter; `Enter` on a Collection opens it, on a job opens the catalog filtered to it. Update `docs/ui-contract.md` (Router and keymap sections).
-- **Tests:** core tests for the Router intercept; e2e: `ctrl+p`, type, `Enter`.
+- **Replies to covered screens:** the palette is pushed over whatever is on show, so while it is open the screen below receives none of its async replies (the Router delivers only to the top). For the Run Monitor that means lost poll results (`pending` never reaching zero) and lost fetches. Choose and document one fix: (a) the Router forwards non-key messages it does not recognise to every screen on the stack, not only the top; or (b) the palette replaces the stack instead of pushing; or (c) covered screens get an explicit `Covered()`/`Uncovered()` notification so the monitor can bump its epoch and restart its cycle. (a) is likely the simplest and fixes the general problem; check it against every screen's stale-message guards and the e2e suite.
+- **Tests:** core tests for the Router intercept; e2e: `ctrl+p`, type, `Enter`; and a test that opening and closing the palette over a running Run Monitor leaves it polling.
 
-**CORE5: cleanup in `main.go`**
+**CORE5: cleanups**
 - Delete a Collection's monitor when the Collection is deleted (Known gaps), through a `Deleted` hook beside `Renamed` in `collections.Deps`.
+- `internal/jenkins`: extract one `postWithCrumb` helper used by `Trigger` (`trigger.go`) and `StopBuild`/`CancelQueue` (`control.go`), keeping each caller's redirect policy and response handling; `trigger.go`'s ad-hoc "job not found" error wraps `ErrJobNotFound`.
+- Under a Multibranch `parent_job`, the Run Monitor's and trigger screen's fallback name for a job they have no name for decodes the branch (`feature/x`, not `feature%2Fx`).
+- Two monitors could accept each other's poll results if `gen`, job and `rev` match: tag the monitor's messages with a per-monitor id (only if CORE4's fix did not already make this impossible).
 
 **CORE6: colours** *(small; may run in W1 if F1 is merged)*
 - **From:** v0.2 §8.
