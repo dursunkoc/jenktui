@@ -824,7 +824,7 @@ func TestMultibranchParentJob(t *testing.T) {
 	h.loginOK()
 	h.openCatalog()
 	h.expectTitle("Job Catalog · team/app")
-	h.expect("branches: filtered (1 patterns)")
+	h.expect("branches: filtered (1 pattern)")
 	h.expectBranch("app", "main")
 	h.expectNoBranch("app", "feature/x")
 	h.key("esc")
