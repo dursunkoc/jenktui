@@ -399,7 +399,7 @@ func (m *model) Keys() []key.Binding {
 	}
 	if m.details {
 		ks := []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll}
-		if _, ok := m.reporter(); ok {
+		if m.canReport() {
 			ks = append(ks, keyReport)
 		}
 		ks = append(ks, m.actionKeys()...)

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
@@ -37,8 +38,9 @@ type buildKey struct {
 // countsEntry is what is known about a build's test counts. have is false
 // while the fetch is in flight or when the build has no report.
 type countsEntry struct {
-	have bool
-	rep  jenkins.TestReport
+	epoch int // the monitor epoch the fetch started in; an older one counts as lost
+	have  bool
+	rep   jenkins.TestReport
 }
 
 func (m *model) reporter() (reporter, bool) {
@@ -54,32 +56,36 @@ func (m *model) fetchCounts(i int) tea.Cmd {
 	if !ok || st.phase != phFinished || st.num == 0 {
 		return nil
 	}
-	if _, asked := m.ma.counts[k]; asked {
+	// A reply that arrives while the monitor is not on top never reaches it
+	// (the Router sends messages to the top screen only), so an asked entry
+	// from an earlier epoch is lost and is fetched again.
+	if e, asked := m.ma.counts[k]; asked && (e.have || e.epoch == m.epoch) {
 		return nil
 	}
 	if m.ma.counts == nil {
 		m.ma.counts = map[buildKey]countsEntry{}
 	}
-	m.ma.counts[k] = countsEntry{}
-	timeout, epoch := m.deps.PollTimeout, m.epoch
+	m.ma.counts[k] = countsEntry{epoch: m.epoch}
+	timeout := m.deps.PollTimeout
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		rep, err := r.TestCounts(ctx, k.job, k.num)
-		return countsDone{epoch: epoch, key: k, rep: rep, err: err}
+		return countsDone{key: k, rep: rep, err: err}
 	}
 }
 
 type countsDone struct {
-	epoch int
-	key   buildKey
-	rep   jenkins.TestReport
-	err   error
+	key buildKey
+	rep jenkins.TestReport
+	err error
 }
 
 func (d countsDone) apply(m *model) tea.Cmd {
-	if d.epoch != m.epoch {
-		return nil
+	// Applied whatever the epoch: the entry is keyed by job and build number
+	// and a finished build's counts never change.
+	if m.ma.counts == nil {
+		m.ma.counts = map[buildKey]countsEntry{}
 	}
 	switch {
 	case d.err == nil:
@@ -109,21 +115,29 @@ func (m *model) countsLine(r jenkins.TestReport) string {
 	return failed + m.th.MutedTxt.Render(fmt.Sprintf(" · %d passed · %d skipped", r.PassCount, r.SkipCount))
 }
 
+// canReport reports whether `t` applies: the client serves reports and the
+// selected row is a finished build with a number.
+func (m *model) canReport() bool {
+	i := m.selected()
+	_, ok := m.reporter()
+	return ok && i >= 0 && m.runs[i].phase == phFinished && m.runs[i].num > 0
+}
+
 // reportKey handles `t` in the details view of a finished build.
 func (m *model) reportKey() tea.Cmd {
 	i := m.selected()
-	r, ok := m.reporter()
-	if i < 0 || !ok || !m.details || m.runs[i].phase != phFinished || m.runs[i].num == 0 {
+	r, _ := m.reporter()
+	if !m.details || !m.canReport() {
 		return nil
 	}
 	k := buildKey{m.runs[i].run.Job, m.runs[i].num}
 	timeout, epoch := m.deps.PollTimeout, m.epoch
-	return func() tea.Msg {
+	return tea.Batch(m.flash("loading test report…"), func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		rep, err := r.TestReport(ctx, k.job, k.num)
 		return reportDone{epoch: epoch, key: k, rep: rep, err: err}
-	}
+	})
 }
 
 type reportDone struct {
@@ -147,6 +161,7 @@ func (d reportDone) apply(m *model) tea.Cmd {
 	case d.err != nil:
 		return m.flash(shortErr(d.err))
 	}
+	m.notice = "" // the loading notice
 	m.overlay = &reportOverlay{m: m, bk: d.key, rep: d.rep}
 	return nil
 }
@@ -187,16 +202,24 @@ func (o *reportOverlay) traceLines() []string {
 		return nil
 	}
 	c := o.rep.Failed[o.cur]
-	var l []string
+	var raw []string
 	if c.ErrorDetails != "" {
-		l = append(l, strings.Split(c.ErrorDetails, "\n")...)
-		l = append(l, "")
+		raw = append(raw, strings.Split(c.ErrorDetails, "\n")...)
+		raw = append(raw, "")
 	}
 	if c.StackTrace != "" {
-		l = append(l, strings.Split(strings.ReplaceAll(c.StackTrace, "\t", "    "), "\n")...)
+		raw = append(raw, strings.Split(strings.ReplaceAll(c.StackTrace, "\t", "    "), "\n")...)
 	}
-	if len(l) == 0 {
-		l = []string{"No error details."}
+	if len(raw) == 0 {
+		raw = []string{"No error details."}
+	}
+	if o.m.w <= 0 {
+		return raw
+	}
+	// Wrap to the inner width so a long one-line message is fully reachable.
+	var l []string
+	for _, r := range raw {
+		l = append(l, strings.Split(ansi.Hardwrap(strings.TrimRight(r, "\r"), max(o.m.w-4, 10), true), "\n")...)
 	}
 	return l
 }

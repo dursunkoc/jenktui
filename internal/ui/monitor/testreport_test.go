@@ -6,10 +6,12 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
 // repClient adds the optional reporter to the fake client.
@@ -198,3 +200,136 @@ func TestTHiddenWithoutReporterAndOutsideDetails(t *testing.T) {
 		t.Fatal("t only in details")
 	}
 }
+
+// msgs runs cmd and returns the messages it yields (batches flattened).
+func msgs(cmd tea.Cmd) []tea.Msg {
+	if cmd == nil {
+		return nil
+	}
+	switch msg := cmd().(type) {
+	case nil:
+		return nil
+	case tea.BatchMsg:
+		var out []tea.Msg
+		for _, c := range msg {
+			out = append(out, msgs(c)...)
+		}
+		return out
+	default:
+		return []tea.Msg{msg}
+	}
+}
+
+func TestCountsLostWhileLeftAreFetchedAgain(t *testing.T) {
+	c := &repClient{counts: jenkins.TestReport{FailCount: 2, PassCount: 9}}
+	m := reportModel(c)
+	m.cursor = 0
+	root := &rootScreen{}
+	r := core.NewRouter(&core.Session{}, root)
+	r.Update(core.Push{Screen: m})
+	_, cmd := r.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	first := msgs(cmd) // the counts reply, not delivered yet
+	r.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd = r.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	for _, msg := range msgs(cmd) {
+		r.Update(msg) // Pop
+	}
+	if r.Top() != root {
+		t.Fatal("setup: the monitor should be left")
+	}
+	for _, msg := range first {
+		r.Update(msg) // goes to the root screen, which does not know it
+	}
+	r.Update(core.Push{Screen: m})
+	_, cmd = r.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	for _, msg := range msgs(cmd) {
+		r.Update(msg)
+	}
+	if c.nCounts != 2 || !strings.Contains(screen(m), "2 failed · 9 passed · 0 skipped") {
+		t.Fatalf("calls=%d\n%s", c.nCounts, screen(m))
+	}
+}
+
+func TestCountsNotRefetchedWithinTheSameVisit(t *testing.T) {
+	c := &repClient{counts: jenkins.TestReport{FailCount: 1}}
+	m := reportModel(c)
+	m.cursor = 0
+	_, first := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msgs(first) // in flight: the reply is not delivered
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	msgs(cmd)
+	if c.nCounts != 1 {
+		t.Fatalf("calls=%d", c.nCounts)
+	}
+}
+
+func TestTFlashesLoading(t *testing.T) {
+	c := &repClient{full: jenkins.TestReport{FailCount: 1, Failed: []jenkins.FailedCase{{Name: "x"}}}}
+	m := reportModel(c)
+	openDetails(m, 1)
+	cmd := pressKey(m, 't')
+	if m.notice != "loading test report…" {
+		t.Fatalf("notice %q", m.notice)
+	}
+	run(m, cmd)
+	if m.overlay == nil || m.notice != "" {
+		t.Fatal("overlay replaces the loading notice")
+	}
+}
+
+func TestLongTraceLinesWrapAndStayReachable(t *testing.T) {
+	long := "expected: <" + strings.Repeat("abcdefghij", 30) + "> but was: <END>"
+	c := &repClient{full: jenkins.TestReport{FailCount: 1, Failed: []jenkins.FailedCase{{Name: "x", ErrorDetails: long}}}}
+	m := reportModel(c)
+	m.w, m.h = 60, 12
+	openDetails(m, 1)
+	run(m, pressKey(m, 't'))
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	var seen strings.Builder
+	for i := 0; i < 20; i++ {
+		seen.WriteString(screen(m))
+		m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	}
+	flat := strings.NewReplacer("\n", "", " ", "", "│", "", "╭", "", "╮", "", "╰", "", "╯", "", "─", "").Replace(seen.String())
+	if !strings.Contains(flat, "but was: <END>"[:0]+"butwas:<END>") {
+		t.Fatalf("end of the long message unreachable")
+	}
+	if o := m.overlay.(*reportOverlay); o.scroll > len(o.traceLines()) {
+		t.Fatal("scroll beyond the wrapped lines")
+	}
+}
+
+func TestTHelpOnlyForFinishedBuildWithNumber(t *testing.T) {
+	c := &repClient{}
+	m := reportModel(c)
+	openDetails(m, 0)
+	has := func() bool {
+		for _, k := range helpKeys(m) {
+			if k == "t test report" {
+				return true
+			}
+		}
+		return false
+	}
+	if !has() {
+		t.Fatal("finished build: t shown")
+	}
+	m.runs[0].phase = phRunning
+	if has() {
+		t.Fatal("running build: t hidden")
+	}
+	m.runs[0].phase, m.runs[0].num = phFinished, 0
+	if has() {
+		t.Fatal("no number: t hidden")
+	}
+}
+
+// rootScreen is a screen under the monitor that ignores every message.
+type rootScreen struct{}
+
+func (r *rootScreen) Init() tea.Cmd                         { return nil }
+func (r *rootScreen) Update(tea.Msg) (core.Screen, tea.Cmd) { return r, nil }
+func (r *rootScreen) View() string                          { return "" }
+func (r *rootScreen) Title() string                         { return "root" }
+func (r *rootScreen) Keys() []key.Binding                   { return nil }
