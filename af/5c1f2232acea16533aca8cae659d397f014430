@@ -1,0 +1,29 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_578de3b4ffb115 23
+README.md
+  s_1c16aed3d161c7::t_b0556b8929eaab 120
+internal/ui/monitor/display.go
+  s_1c16aed3d161c7::t_d62fe53a195d7e 9-10,14-25,29-31,34-36
+internal/ui/monitor/display_test.go
+  s_1c16aed3d161c7::t_19b69afa437932 4,10,161-305
+internal/ui/monitor/history.go
+  s_1c16aed3d161c7::t_6bc4ed4b35c971 1-191
+internal/ui/monitor/render.go
+  s_1c16aed3d161c7::t_b7f8ba9d2bf224 158-160,388
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "af5c1f2232acea16533aca8cae659d397f014430",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
