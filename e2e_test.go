@@ -827,7 +827,7 @@ func TestMultibranchParentJob(t *testing.T) {
 	h.expect("branches: filtered (1 pattern)")
 	h.expectBranch("app", "main")
 	h.expectNoBranch("app", "feature/x")
-	h.key("esc")
+	h.key("esc", "up") // back to the menu, cursor on Collections again
 
 	h.openCollections()
 	h.openCollection("Ops")
@@ -835,7 +835,7 @@ func TestMultibranchParentJob(t *testing.T) {
 	h.key("m")
 	h.key("s") // the build succeeded: show it
 	h.expectRow("app › main", "SUCCESS")
-	h.expectNot("team/app", "%2F")
+	h.expectNot("team/app/main", "%2F")
 }
 
 func TestBranchFilterEditorSavesToConfig(t *testing.T) {
