@@ -183,8 +183,9 @@ func newDeps(dir string) entry.Deps {
 					monitor.SetNames(m, names)
 					monitorNames[m] = names
 					monitor.Add(m, runs)
-					// Hide successful jobs, as `m` does. The new builds are queued or
-					// running, so they stay visible until they finish successfully.
+					// Forced on purpose, even for a kept monitor: it focuses the
+					// outcome of the new builds. They are queued or running, so they
+					// stay visible until they finish successfully.
 					monitor.HideSuccess(m, true)
 					return m
 				},

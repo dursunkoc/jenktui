@@ -442,3 +442,18 @@ func TestMenuNoticeIsCutToTheBox(t *testing.T) {
 		t.Fatal("notice not truncated")
 	}
 }
+
+func TestMenuIsBusyWhileACollectionIsOpening(t *testing.T) {
+	m, _ := startMenu("N")
+	if m.Busy() {
+		t.Fatal("busy before Init")
+	}
+	m.Init()
+	if !m.Busy() {
+		t.Fatal("not busy while opening")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyDown}) // a key cancels the push
+	if m.Busy() {
+		t.Fatal("still busy after a key")
+	}
+}

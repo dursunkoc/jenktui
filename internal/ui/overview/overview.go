@@ -116,6 +116,9 @@ func New(deps Deps) core.Screen {
 	return &screen{deps: deps, th: core.NewTheme(), w: 80, h: 20}
 }
 
+// Busy is true while Enter's Collection is being opened.
+func (s *screen) Busy() bool { return s.opening }
+
 func (s *screen) Title() string { return "Overview" }
 
 var keyOpen = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open monitor"))

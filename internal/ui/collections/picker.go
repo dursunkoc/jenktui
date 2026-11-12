@@ -102,6 +102,10 @@ func (s *pickerScreen) result() []string {
 	return append(out, added...)
 }
 
+// Busy is true while the catalog loads (its reply would be lost under the
+// jump palette).
+func (s *pickerScreen) Busy() bool { return s.loading }
+
 func (s *pickerScreen) Init() tea.Cmd { return tea.Batch(s.load.Start(), s.loadCatalog(s.seq)) }
 
 func (s *pickerScreen) Title() string { return s.title }

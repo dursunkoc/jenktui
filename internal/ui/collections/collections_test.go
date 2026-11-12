@@ -505,9 +505,15 @@ func TestPickerShowsModalWhileLoading(t *testing.T) {
 	if out := shown(p); !strings.Contains(out, "Loading jobs…") {
 		t.Fatalf("%q", out)
 	}
+	if !p.Busy() {
+		t.Fatal("a loading picker must report Busy")
+	}
 	p2 := open(p)
 	if strings.Contains(shown(p2), "Loading") || p.load.Active() {
 		t.Fatal("picker still loading")
+	}
+	if p.Busy() {
+		t.Fatal("a loaded picker is not Busy")
 	}
 }
 
