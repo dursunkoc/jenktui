@@ -26,6 +26,38 @@ type CatalogLister interface {
 	ListCatalog(ctx context.Context, parent string) (jenkins.Catalog, error)
 }
 
+// Opener opens a URL in the browser. sysint.Sys satisfies it; tests fake it.
+type Opener interface {
+	Open(url string) error
+}
+
+// OpenedMsg is the result of an Opener call started by OpenCmd.
+type OpenedMsg struct {
+	URL string
+	Err error
+}
+
+// OpenCmd opens url off the UI goroutine (the opener can block).
+func OpenCmd(o Opener, url string) tea.Cmd {
+	return func() tea.Msg { return OpenedMsg{URL: url, Err: o.Open(url)} }
+}
+
+// OpenNotice is the status text for the result of an open.
+func OpenNotice(m OpenedMsg) string {
+	if m.Err != nil {
+		return "could not open: " + m.Err.Error()
+	}
+	return "opened " + m.URL
+}
+
+// KeyOpen opens the highlighted job in the browser.
+var KeyOpen = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser"))
+
+// WithOpener enables `o` (open the highlighted job in the browser).
+func WithOpener(o Opener) Option {
+	return func(s *Screen) { s.opener = o }
+}
+
 // Option customises New.
 type Option func(*Screen)
 
@@ -60,7 +92,9 @@ type Screen struct {
 	seq     int
 	w, h    int
 
-	cat jenkins.Catalog
+	opener Opener
+	urls   map[string]string // job key to web URL
+	cat    jenkins.Catalog
 	BranchPanel
 }
 
@@ -87,6 +121,12 @@ func (s *Screen) rebuild() {
 		rows[i] = Row(it.Job, s.parent, statusFromColor(it.Job.Color))
 	}
 	s.list.SetItems(rows)
+	s.urls = map[string]string{}
+	for _, j := range s.cat.Jobs {
+		if j.URL != "" {
+			s.urls[j.FullName] = j.URL
+		}
+	}
 }
 
 // Selected returns the selected job full paths in list order.
@@ -124,7 +164,11 @@ func (s *Screen) Keys() []key.Binding {
 	case s.list.Filtering():
 		return s.list.FilterEditKeys()
 	}
-	return []key.Binding{core.KeyFilter, widgets.KeySelect, KeyBranch, core.KeyBack}
+	keys := []key.Binding{core.KeyFilter, widgets.KeySelect, KeyBranch}
+	if s.opener != nil {
+		keys = append(keys, KeyOpen)
+	}
+	return append(keys, core.KeyBack)
 }
 
 // FullHelp groups every catalog key for the help panel (? key). It is nil
@@ -133,11 +177,15 @@ func (s *Screen) FullHelp() []core.HelpGroup {
 	if s.editing || s.err != nil || s.loading || s.list.Filtering() {
 		return nil
 	}
+	general := []key.Binding{core.KeyBack, core.KeyQuit}
+	if s.opener != nil {
+		general = append([]key.Binding{KeyOpen}, general...)
+	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
 		{Title: "Selection", Keys: s.list.SelectKeys()},
 		{Title: "Filter", Keys: append(s.list.FilterKeys(), KeyBranch, KeyEditor)},
-		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
+		{Title: "General", Keys: general},
 	}
 }
 
@@ -163,6 +211,9 @@ func (s *Screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			s.cat, s.loaded = m.cat, true
 			s.rebuild()
 		}
+		return s, nil
+	case OpenedMsg:
+		s.notice = OpenNotice(m)
 		return s, nil
 	case tea.KeyMsg:
 		return s.key(m)
@@ -193,6 +244,15 @@ func (s *Screen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		return s, tea.Batch(s.load.Start(), s.fetch())
 	case s.loading || s.err != nil:
 		return s, nil
+	}
+	if s.opener != nil && key.Matches(m, KeyOpen) {
+		it, ok := s.list.Cursor()
+		u := s.urls[it.Key]
+		if !ok || it.Disabled || u == "" {
+			return s, nil
+		}
+		s.notice = ""
+		return s, OpenCmd(s.opener, u)
 	}
 	if handled, changed := s.HandleKey(m); handled {
 		if changed {

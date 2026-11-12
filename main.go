@@ -139,7 +139,7 @@ func newDeps(dir string) entry.Deps {
 	return entry.Deps{
 		ConfigDir: dir,
 		Catalog: func(s *core.Session) core.Screen {
-			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)))
+			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys))
 		},
 		Collections: func(s *core.Session) core.Screen {
 			return collections.New(collections.Deps{
@@ -149,6 +149,7 @@ func newDeps(dir string) entry.Deps {
 				Trigger:      triggerFor(s),
 				Monitor:      openMonitor(s),
 				Renamed:      renamed,
+				Opener:       sys,
 				BranchFilter: branchSettings(s),
 			})
 		},

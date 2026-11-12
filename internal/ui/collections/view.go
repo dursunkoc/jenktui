@@ -88,7 +88,11 @@ func (s *viewScreen) Keys() []key.Binding {
 	if s.list.Filtering() {
 		return s.list.FilterEditKeys()
 	}
-	return []key.Binding{keyTrigger, keyMonitor, widgets.KeySelect, core.KeyFilter, core.KeyBack}
+	keys := []key.Binding{keyTrigger, keyMonitor, widgets.KeySelect, core.KeyFilter}
+	if s.deps.Opener != nil {
+		keys = append(keys, catalog.KeyOpen)
+	}
+	return append(keys, core.KeyBack)
 }
 
 // FullHelp groups every key of an opened Collection for the help panel. It
@@ -97,11 +101,15 @@ func (s *viewScreen) FullHelp() []core.HelpGroup {
 	if s.err != nil || s.loading && !s.loaded || s.list.Filtering() {
 		return nil
 	}
+	actions := []key.Binding{keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh}
+	if s.deps.Opener != nil {
+		actions = append(actions, catalog.KeyOpen)
+	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: append([]key.Binding{core.KeyUp, core.KeyDown}, s.list.MoveKeys()...)},
 		{Title: "Selection", Keys: s.list.SelectKeys()},
 		{Title: "Filter", Keys: s.list.FilterKeys()},
-		{Title: "Actions", Keys: []key.Binding{keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh}},
+		{Title: "Actions", Keys: actions},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -127,6 +135,8 @@ func (s *viewScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			s.cat, s.loaded = m.cat, true
 			s.rebuild()
 		}
+	case catalog.OpenedMsg:
+		s.notice = catalog.OpenNotice(m)
 	case tea.KeyMsg:
 		return s.key(m)
 	}
@@ -179,6 +189,19 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 			s.rebuild()
 			return nil
 		})})
+	case s.deps.Opener != nil && key.Matches(m, catalog.KeyOpen):
+		it, ok := s.list.Cursor()
+		u := ""
+		for _, j := range s.cat.Jobs {
+			if ok && j.FullName == it.Key {
+				u = j.URL
+			}
+		}
+		if u == "" {
+			return s, nil
+		}
+		s.notice = ""
+		return s, catalog.OpenCmd(s.deps.Opener, u)
 	case key.Matches(m, keyTrigger):
 		return s.trigger()
 	case key.Matches(m, keyMonitor):

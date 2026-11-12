@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -544,5 +545,65 @@ func TestPickerCountSkipsPlaceholder(t *testing.T) {
 	v := shown(p)
 	if !strings.Contains(v, "no matching branches") || !strings.Contains(v, "1 jobs ·") {
 		t.Fatalf("want placeholder row and 1 jobs: %q", v)
+	}
+}
+
+type recOpener struct {
+	urls []string
+	err  error
+}
+
+func (r *recOpener) Open(u string) error { r.urls = append(r.urls, u); return r.err }
+
+// pressOpen sends o and delivers the opener's result to the view.
+func pressOpen(s core.Screen) core.Screen {
+	s, cmd := s.Update(kmsg("o"))
+	if cmd != nil {
+		s, _ = s.Update(cmd())
+	}
+	return s
+}
+
+func TestViewOpenKey(t *testing.T) {
+	o := &recOpener{}
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{
+		{FullName: "a", Color: "blue", URL: "http://j/job/a/"}, {FullName: "nourl", Color: "blue"}}},
+		config.Collection{Name: "C", Jobs: []string{"a", "nourl", "gone"}})
+	r.deps.Opener = o
+	s, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+
+	v = pressOpen(v)
+	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" || !strings.Contains(shown(v), "opened http://j/job/a/") {
+		t.Fatalf("opened %v\n%s", o.urls, shown(v))
+	}
+	v, _ = send(v, "down")
+	v = pressOpen(v) // no URL
+	v, _ = send(v, "down")
+	v = pressOpen(v) // missing member
+	if len(o.urls) != 1 {
+		t.Fatalf("opened %v", o.urls)
+	}
+	_ = s
+
+	o.err = errors.New("no display")
+	v, _ = send(v, "up", "up")
+	v = pressOpen(v)
+	if !strings.Contains(shown(v), "could not open: no display") {
+		t.Fatalf("no error notice:\n%s", shown(v))
+	}
+}
+
+func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a", URL: "http://j/"}}}, config.Collection{Name: "C", Jobs: []string{"a"}})
+	_, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+	if _, cmd := v.Update(kmsg("o")); cmd != nil {
+		t.Error("o acted without an opener")
+	}
+	for _, k := range v.(core.Screen).Keys() {
+		if k.Help().Desc == "open in browser" {
+			t.Error("o shown without an opener")
+		}
 	}
 }

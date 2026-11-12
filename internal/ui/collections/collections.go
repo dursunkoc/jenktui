@@ -46,6 +46,9 @@ type Deps struct {
 	// Renamed, when set, is told after a Collection was renamed so per-name
 	// state (such as its Run Monitor) can follow it.
 	Renamed func(oldName, newName string)
+	// Opener opens the highlighted job in the browser (`o` in an opened
+	// Collection). May be nil: the key is then hidden.
+	Opener catalog.Opener
 	// BranchFilter wires the Branch Filter patterns and their persistence into
 	// the picker, exactly as for the Job Catalog.
 	BranchFilter catalog.Settings

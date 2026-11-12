@@ -405,3 +405,90 @@ func TestMultibranchParentRowsAndFilter(t *testing.T) {
 		t.Errorf("missing placeholder:\n%s", v)
 	}
 }
+
+type recOpener struct {
+	urls []string
+	err  error
+}
+
+func (r *recOpener) Open(u string) error { r.urls = append(r.urls, u); return r.err }
+
+func openScreen(t *testing.T, o Opener, jobs ...jenkins.Job) *Screen {
+	t.Helper()
+	f := &fakeCatalog{cat: jenkins.Catalog{Jobs: jobs, MultibranchProjects: []string{"empty"}}}
+	s := New(f, "", WithOpener(o))
+	feed(t, s, s.Init())
+	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	return s
+}
+
+// press sends key k and runs the returned command, delivering its result.
+func press(s *Screen, k string) {
+	_, cmd := s.Update(kmsg(k))
+	if cmd != nil {
+		s.Update(cmd())
+	}
+}
+
+func TestOpenKeyOpensHighlightedJob(t *testing.T) {
+	o := &recOpener{}
+	s := openScreen(t, o, jenkins.Job{FullName: "a", URL: "http://j/job/a/"}, jenkins.Job{FullName: "b", URL: "http://j/job/b/"})
+	press(s, "o")
+	press(s, "down")
+	press(s, "o")
+	if len(o.urls) != 2 || o.urls[0] != "http://j/job/a/" || o.urls[1] != "http://j/job/b/" {
+		t.Fatalf("opened %v", o.urls)
+	}
+	if v := shown(s); !strings.Contains(v, "opened http://j/job/b/") {
+		t.Errorf("no success notice:\n%s", v)
+	}
+	if !strings.Contains(helpText(s), "open in browser") {
+		t.Error("help lacks o")
+	}
+}
+
+func TestOpenKeyPlaceholderAndMissingURLDoNothing(t *testing.T) {
+	o := &recOpener{}
+	s := openScreen(t, o, jenkins.Job{FullName: "nourl"})
+	press(s, "o") // job without URL
+	press(s, "down")
+	press(s, "o") // placeholder row ("empty" project) or end of list
+	if len(o.urls) != 0 {
+		t.Fatalf("opened %v", o.urls)
+	}
+}
+
+func TestOpenKeyErrorShowsNotice(t *testing.T) {
+	o := &recOpener{err: errors.New("no display")}
+	s := openScreen(t, o, jenkins.Job{FullName: "a", URL: "http://j/job/a/"})
+	press(s, "o")
+	if v := shown(s); !strings.Contains(v, "could not open: no display") {
+		t.Errorf("no error notice:\n%s", v)
+	}
+}
+
+func TestOpenKeyHiddenWithoutOpener(t *testing.T) {
+	f := &fakeCatalog{cat: jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a", URL: "http://j/"}}}}
+	s := New(f, "")
+	feed(t, s, s.Init())
+	if strings.Contains(helpText(s), "open in browser") {
+		t.Error("o shown without an opener")
+	}
+	_, cmd := s.Update(kmsg("o"))
+	if cmd != nil {
+		t.Error("o acted without an opener")
+	}
+}
+
+func helpText(s *Screen) string {
+	var b strings.Builder
+	for _, k := range s.Keys() {
+		b.WriteString(k.Help().Desc + "\n")
+	}
+	for _, g := range s.FullHelp() {
+		for _, k := range g.Keys {
+			b.WriteString(k.Help().Desc + "\n")
+		}
+	}
+	return b.String()
+}
