@@ -1,0 +1,27 @@
+internal/ui/monitor/monitor_test.go
+  s_68aed7bbf4c6d1::t_b00f12ae12b032 871-893
+internal/ui/monitor/monitor.go
+  s_68aed7bbf4c6d1::t_bdb24b875463d9 128,464-466,470-472,492,500-511
+  s_68aed7bbf4c6d1::t_d79bd3d6e7a036 512-513
+README.md
+  s_68aed7bbf4c6d1::t_b00f12ae12b032 87
+internal/ui/monitor/render.go
+  s_68aed7bbf4c6d1::t_bdb24b875463d9 292,294-295,297-298,309-313,316-319,331,336-340
+  s_68aed7bbf4c6d1::t_b00f12ae12b032 314-315
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b7148179ed98362aa4567b5feff467f770f619ee",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
