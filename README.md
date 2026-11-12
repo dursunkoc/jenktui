@@ -153,7 +153,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
 | Trigger summary (several jobs) | `↑`/`↓` pick a job, `PgUp`/`PgDn` scroll, `e` edit it (`Enter` on the last field applies, `Esc` cancels), `y`/`Enter` trigger, `n`/`Esc` back |
-| Run Monitor | `Enter` details (`↑`/`↓` move between stages, `l` stage log, `L` full log, with `/` find, `e`/`E` next/previous error, `w` wrap and `:` go to line), `s` show/hide successful, `R` refresh now, `o` open the build in the browser (the job if it has no build yet), `y` copy its URL (list and details), `Esc` back (from details: back to the list) |
+| Run Monitor | `Enter` details (on a failed build the marker starts on the failed stage; `↑`/`↓` move between stages, `l` stage log (a failed build's log opens at its end), `L` full log, with `/` find, `e`/`E` next/previous error, `w` wrap and `:` go to line), `s` show/hide successful, `R` refresh now, `f` jump to the next failed job, `o` open the build in the browser (the job if it has no build yet), `y` copy its URL (list and details), `Esc` back (from details: back to the list) |
 
 ## Scope
 
