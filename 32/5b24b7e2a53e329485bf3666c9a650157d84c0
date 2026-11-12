@@ -1,0 +1,19 @@
+README.md
+  s_68aed7bbf4c6d1::t_542885ce135c22 23-37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "325b24b7e2a53e329485bf3666c9a650157d84c0",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
