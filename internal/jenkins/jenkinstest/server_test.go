@@ -504,3 +504,38 @@ func TestTreeFilter(t *testing.T) {
 		}
 	})
 }
+
+// A client that follows redirects, as the real one does, must end on a 200
+// after stop and cancelItem.
+func TestStopAndCancelRedirectsResolve(t *testing.T) {
+	s := jenkinstest.New(t).EnableCrumb(true)
+	s.Job("f/x").Builds(jenkinstest.Build{Number: 4, Building: true})
+	id := s.AddQueueItem(jenkinstest.QueueItem{Job: "f/x"})
+	post := func(path string) *http.Response {
+		t.Helper()
+		r, _ := http.NewRequest("POST", s.URL+path, nil)
+		r.SetBasicAuth("me", "tok")
+		r.Header.Set(jenkinstest.CrumbHeaderName, s.Crumb())
+		resp, err := http.DefaultClient.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { _ = resp.Body.Close() })
+		return resp
+	}
+	if r := post("/job/f/job/x/4/stop"); r.StatusCode != 200 || !strings.HasSuffix(r.Request.URL.Path, "/job/f/job/x/4/") {
+		t.Fatalf("stop ended on %d %s", r.StatusCode, r.Request.URL)
+	}
+	if r := post("/queue/cancelItem?id=" + strconv.Itoa(id)); r.StatusCode != 200 || r.Request.URL.Path != "/queue/" {
+		t.Fatalf("cancel ended on %d %s", r.StatusCode, r.Request.URL)
+	}
+	if got := s.Stops(); len(got) != 1 || len(s.Cancels()) != 1 {
+		t.Fatalf("stops %v cancels %v", got, s.Cancels())
+	}
+	if r := req(t, s, "GET", "/job/f/job/x/lastBuild/", nil, ""); r.StatusCode != 200 {
+		t.Fatalf("lastBuild page %d", r.StatusCode)
+	}
+	if r := req(t, s, "GET", "/job/f/job/x/9/", nil, ""); r.StatusCode != 404 {
+		t.Fatalf("missing build page %d", r.StatusCode)
+	}
+}

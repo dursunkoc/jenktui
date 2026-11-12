@@ -597,6 +597,13 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// htmlPage answers with a small HTML page, standing in for the Jenkins pages
+// that stop and cancelItem redirect to.
+func htmlPage(w http.ResponseWriter, title string) {
+	w.Header().Set("Content-Type", "text/html;charset=utf-8")
+	_, _ = io.WriteString(w, "<html><head><title>"+html.EscapeString(title)+"</title></head><body>"+html.EscapeString(title)+"</body></html>\n")
+}
+
 // writeTree answers like Jenkins' remote API: when the request carries a
 // tree= query only the named fields are returned (see filterTree). The
 // Pipeline REST API (wfapi) ignores tree= on a real Jenkins and so does the
@@ -844,6 +851,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	case len(segs) == 3 && segs[0] == "me" && segs[1] == "api":
 		writeTree(w, r, map[string]any{"_class": "hudson.model.User", "fullName": "Me Myself", "id": s.user})
 		return
+	case len(segs) == 1 && segs[0] == "queue" && r.Method == http.MethodGet:
+		htmlPage(w, "Build Queue") // where cancelItem redirects to
+		return
 	case len(segs) >= 2 && segs[0] == "queue":
 		s.serveQueue(w, r, segs)
 		return
@@ -892,6 +902,8 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeTree(w, r, s.buildJSON(full, b))
+	case len(rest) == 1 && r.Method == http.MethodGet && !n.folder && n.find(rest[0]) != nil:
+		htmlPage(w, fmt.Sprintf("%s #%d", full, n.find(rest[0]).Number)) // where stop redirects to
 	case len(rest) == 2 && rest[1] == "stop" && r.Method == http.MethodPost:
 		b := n.find(rest[0])
 		if n.folder || b == nil {
