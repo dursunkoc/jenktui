@@ -45,18 +45,11 @@ var (
 	logHATokens = regexp.MustCompile(`\x1b\[8mha:////[A-Za-z0-9+/=]*\x1b\[0m`)
 )
 
-// errorMarkers are the substrings that make a log line an error line
-// (case-sensitive). Not configurable yet.
-var errorMarkers = []string{"ERROR", "FAILED", "FAILURE", "Exception", "Caused by:", "BUILD FAILURE", "npm ERR!", "error:"}
+// errorLine matches the lines drawn as errors (case-sensitive). Not
+// configurable yet.
+var errorLine = regexp.MustCompile(`\bERROR\b|\bFAILED\b|\bFAILURE\b|Exception\b|Caused by:|npm ERR!|error:|Error:|^--- FAIL:`)
 
-func isErrorLine(s string) bool {
-	for _, m := range errorMarkers {
-		if strings.Contains(s, m) {
-			return true
-		}
-	}
-	return false
-}
+func isErrorLine(s string) bool { return errorLine.MatchString(s) }
 
 type logPrompt int
 
@@ -222,8 +215,11 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 		lv.err = nil
 		if len(lv.nodes) > 0 {
 			// A stage log has no offset: refetch it whole while the build runs.
+			top, focus := lv.top, lv.focus
 			lv.lines, lv.part, lv.dropped = nil, "", 0
 			lv.append(msg.chunk.Text)
+			lv.top = max(min(top, len(lv.lines)), 0)
+			lv.focus = min(focus, len(lv.lines)-1)
 			if len(lv.lines) == 0 && lv.part == "" {
 				lv.lines = []string{"(Jenkins has no output for this " + strings.SplitN(lv.what, " ", 2)[0] + "; L shows the whole build)"}
 			}
@@ -472,7 +468,7 @@ func (lv *logView) nextError(dir, cur, page int) {
 	}
 	from := cur - 1
 	if dir < 0 {
-		from = cur
+		from = min(cur+page, n)
 	}
 	if lv.focus >= 0 {
 		from = lv.focus

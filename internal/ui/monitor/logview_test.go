@@ -8,18 +8,66 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
+
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 )
 
 func TestErrorLineMatching(t *testing.T) {
-	for _, l := range []string{"ERROR boom", "x FAILED", "FAILURE", "java.lang.NullPointerException", "Caused by: x", "[INFO] BUILD FAILURE", "npm ERR! code 1", "main.go:3: error: bad"} {
+	for _, l := range []string{"> Task :test FAILED", "Finished: FAILURE", "ERROR: script returned exit code 1", "[ERROR] Failed", "hudson.AbortException: x", "java.lang.NullPointerException", "TypeError: x", "Error: Cannot find module", "--- FAIL: TestFoo", "Caused by: x", "npm ERR! code 1", "main.go:3: error: bad", "[INFO] BUILD FAILURE"} {
 		if !isErrorLine(l) {
 			t.Errorf("%q should match", l)
 		}
 	}
-	for _, l := range []string{"all good", "error handling docs", "Error", "failed"} {
+	for _, l := range []string{"MAX_ERRORS=10", "[INFO] Running com.acme.GlobalExceptionHandlerTest", "Tests run: 12, Failures: 0, Errors: 0", "[INFO] BUILD SUCCESS", "-Werror", "ErrorProne", "all good"} {
 		if isErrorLine(l) {
 			t.Errorf("%q should not match", l)
 		}
+	}
+}
+
+func TestLogErrorBackwardFromFollowStartsBelowScreen(t *testing.T) {
+	var ls []string
+	for i := 0; i < 30; i++ {
+		ls = append(ls, "ok")
+	}
+	ls[2], ls[26], ls[28] = "ERROR a", "ERROR b", "ERROR c"
+	m := numberedLog(t, ls...)
+	if !m.log.follow {
+		t.Fatal("expected follow mode")
+	}
+	pressKey(m, 'E')
+	if m.log.status != "error 3/3" || m.log.focus != 28 {
+		t.Fatalf("status %q focus %d", m.log.status, m.log.focus)
+	}
+}
+
+func TestStageLogRefetchKeepsFocusOverCap(t *testing.T) {
+	m, _ := stagedLog(t)
+	m.Update(pressKey(m, 'l')())
+	lv := m.log
+	var sb strings.Builder
+	for i := 0; i < maxLogLines+500; i++ {
+		if i == maxLogLines+100 {
+			sb.WriteString("ERROR target\n")
+			continue
+		}
+		sb.WriteString("ok\n")
+	}
+	text := sb.String()
+	deliverChunk := func() {
+		m.updateLog(logMsg{gen: m.logGen, start: lv.next, chunk: jenkins.LogChunk{Text: text}})
+	}
+	deliverChunk()
+	pressKey(m, 'e')
+	want := lv.all()[lv.focus]
+	if want != "ERROR target" {
+		t.Fatalf("focus on %q", want)
+	}
+	focus := lv.focus
+	deliverChunk()
+	deliverChunk()
+	if lv.focus != focus || lv.all()[lv.focus] != "ERROR target" {
+		t.Fatalf("focus drifted from %d to %d (%q)", focus, lv.focus, lv.all()[lv.focus])
 	}
 }
 
