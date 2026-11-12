@@ -1,0 +1,43 @@
+README.md
+  s_1c16aed3d161c7::t_24b9b425a45dba 28
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_a2dbaad0a54ea4 70-71
+internal/ui/collections/collections.go
+  s_1c16aed3d161c7::t_4522af7bd5f50a 159-160
+internal/ui/core/theme.go
+  s_1c16aed3d161c7::t_c84a1af60036d1 37-41,44-49,53-59,65-68,90-91
+internal/ui/core/theme_test.go
+  s_1c16aed3d161c7::t_6f7995091adccc 92-93,96-98,100-102,105,110-120
+internal/ui/entry/login.go
+  s_1c16aed3d161c7::t_24cd9d31645dea 157
+internal/ui/entry/setup.go
+  s_1c16aed3d161c7::t_249f50f57b1921 35-39,120
+internal/ui/monitor/display_test.go
+  s_1c16aed3d161c7::t_9ed28841174010 252-253,258,264
+internal/ui/monitor/history.go
+  s_1c16aed3d161c7::t_8df6982774def3 185
+internal/ui/monitor/logview.go
+  s_1c16aed3d161c7::t_3c2fc6b9a3b982 663
+internal/ui/monitor/testreport.go
+  s_1c16aed3d161c7::t_f244335756e46d 112
+internal/ui/params/form.go
+  s_1c16aed3d161c7::t_7f9094c9271bf5 64
+main.go
+  s_1c16aed3d161c7::t_fdb2e2bae681ab 42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b169608afba6d314641d301693654c1263c5c5f0",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
