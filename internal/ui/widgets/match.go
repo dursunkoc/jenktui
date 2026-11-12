@@ -14,7 +14,13 @@ import (
 // Everything else matches literally. A lone trailing backslash is literal.
 // Empty (or all-space) text returns nil, meaning "match everything".
 func compileFilter(text string) *regexp.Regexp {
-	text = strings.TrimSpace(text)
+	return Glob(strings.TrimSpace(text))
+}
+
+// Glob compiles text with the same wildcards as the list filter (`*`, `_`,
+// backslash escapes) into a case-insensitive, unanchored matcher, without
+// trimming it. Empty text returns nil, meaning "match everything".
+func Glob(text string) *regexp.Regexp {
 	if text == "" {
 		return nil
 	}

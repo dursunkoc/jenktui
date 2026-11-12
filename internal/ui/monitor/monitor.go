@@ -352,7 +352,10 @@ var keyShow = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "show/hide suc
 
 func (m *model) Keys() []key.Binding {
 	if m.log != nil {
-		return []key.Binding{core.KeyUp, core.KeyDown, keyLogEnd, keyLogBack, core.KeyQuit}
+		if m.log.prompt != promptNone {
+			return []key.Binding{keyPromptOK, keyPromptEsc}
+		}
+		return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 	}
 	if m.details {
 		return []key.Binding{core.KeyUp, core.KeyDown, keyLog,
