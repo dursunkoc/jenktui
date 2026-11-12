@@ -1,0 +1,23 @@
+internal/ui/monitor/monitor.go
+  s_1c16aed3d161c7::t_415d41e9f1846f 402
+internal/ui/monitor/testreport.go
+  s_1c16aed3d161c7::t_e495eb7b7d9213 13,41-43,59-62,68-69,74,79-81,85-88,118-125,129-130,135,140,164,205,207-208,211-214,216-222
+internal/ui/monitor/testreport_test.go
+  s_1c16aed3d161c7::t_a3bb1ff233edee 9,14,203-335
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "2f8e0cc5c240e1bef0d3de2f71a5971859000ff5",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
