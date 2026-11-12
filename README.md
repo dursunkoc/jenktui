@@ -21,6 +21,7 @@
 ## Features
 
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
+- **Jump** (`Ctrl+P`): from any screen after login, a list of your Collections (`◆`) and every catalog job. Type to filter, `Enter` opens the Collection's Run Monitor, or the Job Catalog filtered to the job; `Esc` clears the filter, then closes it. The screen you came from keeps working underneath.
 - **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
 - **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
@@ -152,7 +153,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 
 | Where | Keys |
 |---|---|
-| Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit |
+| Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit, `Ctrl+P` jump to a Collection (opens its Run Monitor) or a job (opens the Job Catalog filtered to it) from any screen after login |
 | Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |

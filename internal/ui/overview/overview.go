@@ -137,6 +137,9 @@ func (s *screen) start() tea.Cmd {
 	return s.cycle(s.gen)
 }
 
+// Pause is called by the Router when a screen is pushed over this one.
+func (s *screen) Pause() { s.pause() }
+
 // pause drops in-flight and scheduled work (the screen is left or covered).
 func (s *screen) pause() { s.gen++; s.busy = false }
 

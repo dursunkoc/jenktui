@@ -28,6 +28,9 @@ type Session struct {
 	// reads it in its first Init, opens that Collection's Run Monitor and
 	// clears it.
 	StartCollection string
+	// Palette builds the jump palette `ctrl+p` opens (nil before login, which
+	// turns the key off). The Router calls it, so core imports no screens.
+	Palette func() Screen
 }
 
 // Screen is one page of the app. Update returns the (possibly new) Screen
@@ -48,6 +51,20 @@ type Screen interface {
 // muted text. Return "" to show the title alone.
 type Subtitler interface {
 	Subtitle() string
+}
+
+// Pauser is optionally implemented by screens with background work (polling).
+// The Router calls Pause on the screen a Push covers, so it can drop in-flight
+// results and stop rescheduling; Resumer (below) restarts it on Pop. Screens
+// that need neither keep working only while on top.
+type Pauser interface {
+	Pause()
+}
+
+// PaletteScreen marks the jump palette, so the Router does not open one over
+// another.
+type PaletteScreen interface {
+	IsPalette()
 }
 
 // Resumer is optionally implemented by screens that must restart work when a

@@ -254,7 +254,7 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 
 func (m *model) logSchedule(d time.Duration) tea.Cmd {
 	gen := m.logGen
-	return tea.Tick(d, func(time.Time) tea.Msg { return logTickMsg{gen} })
+	return m.after(d, logTickMsg{gen})
 }
 
 // append adds raw console text: carriage returns and terminal escapes are

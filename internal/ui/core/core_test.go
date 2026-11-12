@@ -358,3 +358,72 @@ func TestPopGivesTheUncoveredScreenTheCurrentSize(t *testing.T) {
 		t.Fatalf("size after pop = %+v", a.size)
 	}
 }
+
+type pausable struct {
+	fake
+	paused, resumed int
+}
+
+func (p *pausable) Update(m tea.Msg) (Screen, tea.Cmd) { p.fake.Update(m); return p, nil }
+func (p *pausable) Pause()                             { p.paused++ }
+func (p *pausable) Resume() tea.Cmd                    { p.resumed++; return nil }
+
+type paletteFake struct{ fake }
+
+func (*paletteFake) IsPalette()                           {}
+func (p *paletteFake) Update(m tea.Msg) (Screen, tea.Cmd) { p.fake.Update(m); return p, nil }
+
+func ctrlP() tea.KeyMsg { return tea.KeyMsg{Type: tea.KeyCtrlP} }
+
+func TestCtrlPPushesThePaletteOverAnyScreenAndPausesIt(t *testing.T) {
+	base := &pausable{fake: fake{name: "base"}}
+	pal := &paletteFake{fake{name: "palette"}}
+	sess := &Session{Palette: func() Screen { return pal }}
+	r := NewRouter(sess, base)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r.Update(ctrlP())
+	if r.Top() != Screen(pal) || r.Depth() != 2 || base.paused != 1 {
+		t.Fatalf("top=%s depth=%d paused=%d", r.Top().Title(), r.Depth(), base.paused)
+	}
+	if len(base.got) != 0 {
+		t.Fatal("ctrl+p reached the screen")
+	}
+	r.Update(ctrlP()) // no palette over the palette
+	if r.Depth() != 2 {
+		t.Fatalf("palette over palette: depth %d", r.Depth())
+	}
+	r.Update(Pop{})
+	if r.Top() != Screen(base) || base.resumed != 1 {
+		t.Fatalf("resumed=%d", base.resumed)
+	}
+}
+
+func TestCtrlPIsIgnoredWithoutAPalette(t *testing.T) {
+	a := &fake{name: "a"}
+	r := NewRouter(&Session{}, a)
+	r.Update(ctrlP())
+	if r.Depth() != 1 || len(a.got) != 1 {
+		t.Fatalf("depth=%d got=%d: without a palette the key goes to the screen", r.Depth(), len(a.got))
+	}
+}
+
+func TestPushPausesTheCoveredScreenOnlyWhenItIsAPauser(t *testing.T) {
+	p, plain := &pausable{fake: fake{name: "p"}}, &fake{name: "plain"}
+	r := NewRouter(&Session{}, p)
+	r.Update(Push{plain})
+	if p.paused != 1 {
+		t.Fatalf("paused = %d", p.paused)
+	}
+	r.Update(Push{&fake{name: "x"}}) // covering a non-Pauser is fine
+}
+
+func TestUnwindingReplaceResumesInsteadOfInit(t *testing.T) {
+	a, mon, form := &fake{name: "a"}, &pausable{fake: fake{name: "mon"}}, &fake{name: "form"}
+	r := NewRouter(&Session{}, a)
+	r.Update(Push{mon})
+	r.Update(Push{form})
+	r.Update(Replace{mon})
+	if r.Depth() != 2 || mon.resumed != 1 || mon.inits != 1 {
+		t.Fatalf("depth=%d resumed=%d inits=%d", r.Depth(), mon.resumed, mon.inits)
+	}
+}

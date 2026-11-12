@@ -20,7 +20,9 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/entry"
 	"github.com/dursunkoc/jenktui/internal/ui/monitor"
 	"github.com/dursunkoc/jenktui/internal/ui/overview"
+	"github.com/dursunkoc/jenktui/internal/ui/palette"
 	"github.com/dursunkoc/jenktui/internal/ui/trigger"
+	"github.com/dursunkoc/jenktui/internal/ui/widgets"
 	"github.com/dursunkoc/jenktui/internal/version"
 )
 
@@ -212,6 +214,11 @@ func newDeps(dir string) entry.Deps {
 		}
 	}
 
+	newCatalog := func(s *core.Session, extra ...catalog.Option) core.Screen {
+		opts := append([]catalog.Option{catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s))}, extra...)
+		return catalog.New(s.Client, s.Config.ParentJob, opts...)
+	}
+
 	return entry.Deps{
 		ConfigDir:      dir,
 		OpenCollection: openByName,
@@ -237,8 +244,40 @@ func newDeps(dir string) entry.Deps {
 				},
 			})
 		},
-		Catalog: func(s *core.Session) core.Screen {
-			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s)))
+		Catalog: func(s *core.Session) core.Screen { return newCatalog(s) },
+		Palette: func(s *core.Session) core.Screen {
+			return palette.New(palette.Deps{
+				Parent: s.Config.ParentJob,
+				Load: func() (palette.Data, error) {
+					cs, err := config.LoadCollections(collectionsPath)
+					if err != nil {
+						return palette.Data{}, err
+					}
+					var d palette.Data
+					for _, c := range cs.Items {
+						d.Collections = append(d.Collections, c.Name)
+					}
+					if cl := client(s); cl != nil {
+						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+						defer cancel()
+						if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err != nil {
+							d.Warn = "jobs unavailable: " + err.Error()
+						} else {
+							d.Jobs = cat.Jobs
+						}
+					}
+					return d, nil
+				},
+				OpenCollection: func(name string) tea.Cmd {
+					return func() tea.Msg {
+						scr, notice := resolveCollection(s, name)
+						return palette.Opened{Screen: scr, Notice: notice}
+					}
+				},
+				OpenJob: func(fullName string) core.Screen {
+					return newCatalog(s, catalog.WithFilter(widgets.QuoteGlob(fullName)))
+				},
+			})
 		},
 		Collections: func(s *core.Session) core.Screen {
 			return collections.New(collections.Deps{

@@ -60,6 +60,17 @@ func (r *Router) enter(s Screen) (Screen, tea.Cmd) {
 	return s, tea.Batch(cmds...)
 }
 
+// push covers the top screen with s, telling it to pause first.
+func (r *Router) push(s Screen) (tea.Model, tea.Cmd) {
+	r.helpOpen = false
+	if p, ok := r.Top().(Pauser); ok {
+		p.Pause()
+	}
+	s, c := r.enter(s)
+	r.stack = append(r.stack, s)
+	return r, c
+}
+
 func (r *Router) setTop(s Screen) { r.stack[len(r.stack)-1] = s }
 
 func (r *Router) Init() tea.Cmd { return r.Top().Init() }
@@ -87,18 +98,34 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			r.helpOpen = true
 			return r, nil
 		}
+		// ctrl+p jumps from any screen. It is not typeable text, so no text
+		// field needs it. No palette over the palette, and none before login.
+		if key.Matches(m, KeyJump) && r.Session != nil && r.Session.Palette != nil {
+			if _, open := r.Top().(PaletteScreen); open {
+				return r, nil
+			}
+			return r.push(r.Session.Palette())
+		}
 	case Quit:
 		return r, tea.Quit
 	case Push:
-		r.helpOpen = false
-		s, c := r.enter(m.Screen)
-		r.stack = append(r.stack, s)
-		return r, c
+		return r.push(m.Screen)
 	case Replace:
 		r.helpOpen = false
 		for i := len(r.stack) - 2; i >= 0; i-- {
 			if sameScreen(r.stack[i], m.Screen) {
 				r.stack = r.stack[:i+1]
+				// It was paused when covered: a Resumer restarts itself
+				// instead of starting over with Init.
+				if rs, ok := m.Screen.(Resumer); ok {
+					var cmds []tea.Cmd
+					if r.width > 0 {
+						s, c := m.Screen.Update(r.bodySize())
+						r.setTop(s)
+						cmds = append(cmds, c)
+					}
+					return r, tea.Batch(append(cmds, rs.Resume())...)
+				}
 				break
 			}
 		}

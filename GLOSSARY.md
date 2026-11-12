@@ -16,6 +16,9 @@ _Avoid_: list, sublist.
 **Overview**
 The screen that lists every Collection with the number of its Jobs whose latest build failed (or is unstable), is running, or is waiting in the queue. It polls on its own while shown and opens a Collection's Run Monitor.
 
+**Jump**
+The quick way to a Collection or a Job from any screen: a filterable list of both. Choosing a Collection opens its Run Monitor; choosing a Job opens the Job Catalog filtered to it.
+
 **Trigger**
 Requesting a new build of one or more Jobs, optionally supplying build parameters.
 

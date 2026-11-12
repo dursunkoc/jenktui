@@ -93,7 +93,18 @@ func prefillOf(ps []jenkins.BuildParam) map[string]string {
 	return out
 }
 
-// Resume restarts polling when the screen pushed by `r` is popped.
+// Pause is called by the Router when a screen is pushed over the monitor
+// (the jump palette, for one): it drops in-flight polls and fetches. An open
+// log stays open; Resume restarts its polling.
+func (m *model) Pause() { m.pause() }
+
+// Resume restarts polling when the screen pushed over the monitor is popped
+// (or the monitor is shown again by an unwinding Replace).
 func (m *model) Resume() tea.Cmd {
-	return m.Init()
+	cmds := []tea.Cmd{m.Init()}
+	if m.log != nil {
+		m.logGen++ // drop a fetch that was in flight when the log was covered
+		cmds = append(cmds, m.fetchLog(m.log.next))
+	}
+	return tea.Batch(cmds...)
 }

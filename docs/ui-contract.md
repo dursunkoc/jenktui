@@ -55,11 +55,15 @@ Pass `*Session` to screen constructors. `Client` is nil until login succeeds; th
 | `Replace{Screen}` | swap top (e.g. splash -> login); if the screen is already lower in the stack (same pointer) the screens above it are dropped and it becomes the top, so it is never on the stack twice |
 | `Quit{}` | exit program |
 
+`ctrl+p` (`KeyJump`) is handled by the Router on every screen, before the screen sees it: it pushes the screen `Session.Palette()` returns (nil before login, which turns the key off; `entry.Deps.Palette` sets it at login), unless the top screen implements the marker `core.PaletteScreen`, so there is never a palette over a palette. Do not infer "a text field has focus" from `FullHelp() == nil`; no text widget binds `ctrl+p`. The palette is `internal/ui/palette`: Collections (`◆ name`) and catalog jobs in the list widget; `Enter` on a Collection runs `Deps.OpenCollection` (the `resolveCollection` path of `jenktui [collection]`, with `opening <name>…` and cancel-on-key) and `Replace`s the palette with its Run Monitor, on a job `Replace`s it with the Job Catalog started with `catalog.WithFilter`; `Esc` clears a non-empty filter, then pops.
+
+`core.Pauser` (`Pause()`): on every `Push` (the palette included) the Router calls `Pause` on the screen being covered, if it implements it, so a screen with background work drops in-flight results and stops rescheduling; `Pop` calls its `Resume` (below). The Run Monitor's `Pause` is its `pause()` (generation and epoch bump, notification memory cleared, spinner stopped) and does not close an open log; its `Resume` restarts polling and refetches the log. The Overview does the same. A screen that is not a `Pauser` loses the replies that arrive while it is covered, so a screen with a one-shot request in flight (a trigger posting, a catalog loading) should implement it before the palette is allowed over it. When `Replace` unwinds to a screen already in the stack and it is a `Resumer`, the Router calls `Resume` instead of `Init`.
+
 A screen that polls can implement `core.Resumer` (`Resume() tea.Cmd`): after a `Pop` uncovers it, the Router runs the returned command to restart its work, since a screen under another gets no messages. The Run Monitor uses both for rerun.
 
 Use `core.Cmd(core.Push{s})` to build the `tea.Cmd`. `ctrl+c` always quits globally; screens handle `esc` (emit `Pop`) and `q` themselves.
 
-Size: the Router forwards `tea.WindowSizeMsg` to the active screen with Height already reduced by the 2 chrome rows, so a screen can lay out using it directly. A newly entered screen immediately receives the current size. Only the top screen receives messages; async results for a popped or covered screen are dropped, so use `Replace`/`Push` rather than relying on background screens. A screen that must keep working across a `Push` implements `Resumer` (see above); on `Pop` the uncovered screen also gets the current size.
+Size: the Router forwards `tea.WindowSizeMsg` to the active screen with Height already reduced by the 2 chrome rows, so a screen can lay out using it directly. A newly entered screen immediately receives the current size. Only the top screen receives messages; async results for a popped or covered screen are dropped, so use `Replace`/`Push` rather than relying on background screens. A screen that must keep working across a `Push` implements `Pauser` and `Resumer` (see above); on `Pop` the uncovered screen also gets the current size.
 
 Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.TooSmall`, `core.MinWidth/MinHeight`).
 
@@ -81,7 +85,7 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 
 ## Keymap
 
-Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q)`. `?` is reserved for the help panel (`KeyHelp`, `KeyCloseHelp`, handled by the Router) on `FullHelper` screens. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
+Shared bindings: `KeyUp, KeyDown, KeyEnter, KeyBack (esc), KeyFilter (/), KeyQuit (q), KeyJump (ctrl+p, handled by the Router)`. `?` is reserved for the help panel (`KeyHelp`, `KeyCloseHelp`, handled by the Router) on `FullHelper` screens. Reuse them (`key.Matches(msg, core.KeyBack)`) and return them from `Keys()`; add screen-specific bindings with `key.WithHelp`. Disabled bindings are hidden from the help bar.
 
 ## Loading indicators
 

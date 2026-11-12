@@ -1930,3 +1930,72 @@ func TestOverviewWithoutCollections(t *testing.T) {
 	h.menuTo(2)
 	h.expect("No Collections yet")
 }
+
+// ---- Jump palette, ctrl+p (CORE4) ----
+
+func TestCtrlPJumpsToACollectionsMonitor(t *testing.T) {
+	f := mixFixture(t)
+	toml := collectionsTOML("Mix", mixJobs...) + collectionsTOML("Calm", "team/api/build")
+	h := newApp(t, f, withCollections(toml))
+	h.loginOK()
+	h.key("ctrl+p")
+	h.expectTitle("Jump to")
+	h.expect("◆ Mix", "◆ Calm", "team/api/build")
+	h.key("ctrl+p") // no palette over the palette
+	h.expectTitle("Jump to")
+	h.typeText("calm")
+	h.expectNot("◆ Mix")
+	h.key("enter")
+	h.expectTitle("Run Monitor: Calm")
+	h.key("esc")
+	h.expectTitle("jenktui") // the palette was replaced, so back on the menu
+}
+
+func TestCtrlPOnAJobOpensTheCatalogFilteredToIt(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.key("ctrl+p")
+	h.typeText("web/test")
+	h.key("enter")
+	if !strings.HasPrefix(h.title(), "Job Catalog") {
+		t.Fatalf("title = %q", h.title())
+	}
+	h.expect("team/web/test")
+	h.expectNot("team/api/build")
+	h.key("esc")
+	h.expectTitle("jenktui")
+}
+
+func TestPaletteOverARunningMonitorLeavesItPolling(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Mix")
+	h.key("m")
+	mon := h.router.Top()
+	h.expectRow("team/web/test", "RUNNING", "#9")
+
+	h.key("ctrl+p")
+	h.expectTitle("Jump to")
+	h.key("esc") // empty filter: back
+	if h.router.Top() != mon {
+		t.Fatal("esc did not return to the monitor")
+	}
+	// The server moves on while nothing was pressed: the monitor polls on its own again.
+	f.Job("team/web/test").LastBuild(jenkinstest.Build{Number: 9, Result: "FAILURE", Timestamp: now()})
+	h.key("R")
+	h.expectRow("team/web/test", "FAILED", "#9")
+
+	// Jumping to the monitor's own Collection from its monitor unwinds, never stacks twice.
+	h.key("ctrl+p")
+	h.typeText("mix")
+	h.key("enter")
+	h.expectTitle("Run Monitor: Mix")
+	depth := h.router.Depth()
+	h.key("esc")
+	if h.router.Depth() != depth-1 {
+		t.Fatalf("depth %d after esc, want %d", h.router.Depth(), depth-1)
+	}
+}

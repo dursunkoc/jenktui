@@ -73,6 +73,10 @@ func (l *Login) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			return l, nil
 		}
 		l.sess.Client = m.client
+		if l.deps.Palette != nil {
+			sess, f := l.sess, l.deps.Palette
+			l.sess.Palette = func() core.Screen { return f(sess) }
+		}
 		return l, core.Cmd(core.Replace{Screen: NewMenu(l.sess, l.deps, m.name)})
 	case tea.KeyMsg:
 		if l.busy {

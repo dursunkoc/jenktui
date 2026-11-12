@@ -129,6 +129,22 @@ func (l *List) Selected() []string {
 // treat esc, q or letters as their own while it is true.
 func (l *List) Filtering() bool { return l.editing }
 
+// SetFilter sets the filter text and leaves the box unfocused.
+func (l *List) SetFilter(text string) {
+	l.input.SetValue(text)
+	l.stopEditing()
+	l.cursor, l.offset = 0, 0
+	l.clamp()
+}
+
+// StartFiltering focuses the filter box, as `/` does.
+func (l *List) StartFiltering() tea.Cmd { return l.startEditing() }
+
+// QuoteGlob escapes text so the filter matches it literally.
+func QuoteGlob(text string) string {
+	return strings.NewReplacer(`\`, `\\`, `*`, `\*`, `_`, `\_`).Replace(text)
+}
+
 // Filter returns the current filter text.
 func (l *List) Filter() string { return l.input.Value() }
 

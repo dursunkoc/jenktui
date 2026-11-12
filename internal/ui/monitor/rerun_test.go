@@ -40,6 +40,7 @@ func rerunModel(c *rerunClient, withRerun bool, calls *[]map[string]string) *mod
 	}
 	m := NewCollection(d, "Nightly", []string{"api/deploy"}, nil).(*model)
 	wire(m)
+	m.load.SetMin(0) // the injected clock never advances: end the spinner at once
 	cycle(m)
 	return m
 }
