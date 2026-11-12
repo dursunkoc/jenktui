@@ -82,13 +82,92 @@ func TextParam(name, desc, def string) Param {
 	return Param{Type: TypeText, Name: name, Description: desc, Default: def}
 }
 
-// Build describes a job's last build.
+// Build describes one build of a job.
 type Build struct {
 	Number    int
 	Result    string // SUCCESS, FAILURE, UNSTABLE, ABORTED; ignored while Building
 	Building  bool
 	Timestamp time.Time
 	Duration  time.Duration
+
+	// EstimatedDuration is Jenkins' estimate for a running build; zero is
+	// served as -1, as Jenkins does when it has no estimate.
+	EstimatedDuration time.Duration
+	Causes            []Cause      // why the build started
+	Changes           []Change     // commits in the build's change set
+	Params            []BuildParam // parameter values the build ran with
+}
+
+// Cause is one reason a build started (a CauseAction entry).
+type Cause struct {
+	Description string // shortDescription, e.g. "Started by user Ada"
+	User        string // userId; a cause with a user is a UserIdCause
+	UserName    string // userName; only served together with User
+	Class       string // _class of a cause with no user (CauseTimer, CauseUpstream, ...); empty = generic
+}
+
+// Cause classes for causes without a user.
+const (
+	CauseTimer    = "hudson.triggers.TimerTrigger$TimerTriggerCause"
+	CauseUpstream = "hudson.model.Cause$UpstreamCause"
+	CauseSCM      = "hudson.triggers.SCMTrigger$SCMTriggerCause"
+)
+
+// Change is one commit in a build's change set.
+type Change struct {
+	Commit, Author, Message string
+}
+
+// BuildParam is a parameter value a build ran with. Kind is a parameter
+// definition type (TypeString when empty, TypeBoolean, TypePassword); Value is
+// "true" or "false" for a boolean. Passwords are served without a value.
+type BuildParam struct {
+	Name, Value string
+	Kind        string
+}
+
+// StringBuildParam is a string parameter value.
+func StringBuildParam(name, value string) BuildParam {
+	return BuildParam{Name: name, Value: value, Kind: TypeString}
+}
+
+// BoolBuildParam is a boolean parameter value.
+func BoolBuildParam(name string, value bool) BuildParam {
+	return BuildParam{Name: name, Value: strconv.FormatBool(value), Kind: TypeBoolean}
+}
+
+// PasswordBuildParam is a password parameter value; Jenkins never reveals it.
+func PasswordBuildParam(name string) BuildParam {
+	return BuildParam{Name: name, Kind: TypePassword}
+}
+
+// Test case statuses as reported by Jenkins' test result API.
+const (
+	CasePassed     = "PASSED"
+	CaseSkipped    = "SKIPPED"
+	CaseFailed     = "FAILED"
+	CaseFixed      = "FIXED"
+	CaseRegression = "REGRESSION"
+)
+
+// TestReport is a build's JUnit test report. When all three counts are zero
+// they are derived from the cases (FAILED and REGRESSION count as failures,
+// PASSED and FIXED as passes, SKIPPED as skips).
+type TestReport struct {
+	FailCount, PassCount, SkipCount int
+	Suites                          []TestSuite
+}
+
+// TestSuite is a group of test cases.
+type TestSuite struct {
+	Name  string
+	Cases []TestCase
+}
+
+// TestCase is one test result.
+type TestCase struct {
+	ClassName, Name, Status       string
+	ErrorDetails, ErrorStackTrace string
 }
 
 // Stage is a pipeline stage; Children model parallel branches.
@@ -120,16 +199,24 @@ type Trigger struct {
 	QueueID  int
 }
 
+// Stop records one POST to /job/x/<n>/stop.
+type Stop struct {
+	Job    string
+	Number int
+}
+
 type node struct {
 	name     string
 	folder   bool
 	multi    bool // multibranch project (also a folder)
 	params   []Param
-	last     *Build
+	last     *Build   // the newest build; serves lastBuild and the log, stages
+	builds   []*Build // all builds, newest first
 	disabled bool
 	pipeline bool
 	stages   []Stage
-	log      string // console output of the last build
+	log      string              // console output of the last build
+	reports  map[int]*TestReport // by build number; 0 = whatever build is last
 }
 
 // Server is a fake Jenkins.
@@ -152,6 +239,8 @@ type Server struct {
 	queue          []QueueItem
 	nextQueue      int
 	triggers       []Trigger
+	stops          []Stop
+	cancels        []int             // queue item ids passed to /queue/cancelItem
 	rejects        map[string]reject // job full name -> forced answer to trigger POSTs
 }
 
@@ -345,8 +434,67 @@ func (j *Job) Params(p ...Param) *Job {
 func (j *Job) LastBuild(b Build) *Job {
 	j.s.mu.Lock()
 	defer j.s.mu.Unlock()
+	j.n.builds = []*Build{&b}
 	j.n.last = &b
 	return j
+}
+
+// Builds sets the job's build history, replacing earlier builds. Order does
+// not matter: the build with the highest number is the last build, and the
+// job lists them newest first. /job/x/<n>/api/json serves any of them.
+func (j *Job) Builds(bs ...Build) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.builds = nil
+	for i := range bs {
+		b := bs[i]
+		j.n.builds = append(j.n.builds, &b)
+	}
+	sort.SliceStable(j.n.builds, func(a, b int) bool { return j.n.builds[a].Number > j.n.builds[b].Number })
+	j.n.last = nil
+	if len(j.n.builds) > 0 {
+		j.n.last = j.n.builds[0]
+	}
+	return j
+}
+
+// find returns the build a path segment names: "lastBuild" or a number.
+func (n *node) find(ref string) *Build {
+	if ref == "lastBuild" {
+		return n.last
+	}
+	for _, b := range n.builds {
+		if strconv.Itoa(b.Number) == ref {
+			return b
+		}
+	}
+	return nil
+}
+
+// TestReport attaches a test report to the job's last build (resolved when
+// the report is requested, so it follows a later LastBuild or Builds call).
+func (j *Job) TestReport(r TestReport) *Job { return j.TestReportFor(0, r) }
+
+// TestReportFor attaches a test report to build number n.
+func (j *Job) TestReportFor(n int, r TestReport) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	if j.n.reports == nil {
+		j.n.reports = map[int]*TestReport{}
+	}
+	j.n.reports[n] = &r
+	return j
+}
+
+// report returns the test report of build b, if it has one.
+func (n *node) report(b *Build) *TestReport {
+	if r, ok := n.reports[b.Number]; ok {
+		return r
+	}
+	if b == n.last {
+		return n.reports[0]
+	}
+	return nil
 }
 
 // Disabled marks the job disabled (color "disabled").
@@ -418,6 +566,20 @@ func (s *Server) Triggers() []Trigger {
 	return append([]Trigger(nil), s.triggers...)
 }
 
+// Stops returns all recorded build stops in order.
+func (s *Server) Stops() []Stop {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Stop(nil), s.stops...)
+}
+
+// Cancels returns the queue item ids cancelled through /queue/cancelItem, in order.
+func (s *Server) Cancels() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int(nil), s.cancels...)
+}
+
 // LastTrigger returns the most recent trigger, if any.
 func (s *Server) LastTrigger() (Trigger, bool) {
 	s.mu.Lock()
@@ -433,6 +595,210 @@ func (s *Server) LastTrigger() (Trigger, bool) {
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json;charset=utf-8")
 	_ = json.NewEncoder(w).Encode(v)
+}
+
+// htmlPage answers with a small HTML page, standing in for the Jenkins pages
+// that stop and cancelItem redirect to.
+func htmlPage(w http.ResponseWriter, title string) {
+	w.Header().Set("Content-Type", "text/html;charset=utf-8")
+	_, _ = io.WriteString(w, "<html><head><title>"+html.EscapeString(title)+"</title></head><body>"+html.EscapeString(title)+"</body></html>\n")
+}
+
+// writeTree answers like Jenkins' remote API: when the request carries a
+// tree= query only the named fields are returned (see filterTree). The
+// Pipeline REST API (wfapi) ignores tree= on a real Jenkins and so does the
+// fake: those handlers call writeJSON.
+func writeTree(w http.ResponseWriter, r *http.Request, v any) {
+	spec := r.URL.Query().Get("tree")
+	if spec == "" {
+		writeJSON(w, v)
+		return
+	}
+	tree, err := parseTree(spec)
+	if err != nil {
+		http.Error(w, "bad tree: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.UseNumber() // keep timestamps exact
+	var generic any
+	if err := dec.Decode(&generic); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, filterTree(generic, tree))
+}
+
+// treeProp is one property of a tree= expression: a name, an optional nested
+// tree in [...] and an optional {M,N} range for list values.
+type treeProp struct {
+	name     string
+	sub      []treeProp
+	hasRange bool
+	from, to int // M inclusive, N exclusive; to < 0 means no upper bound
+}
+
+// parseTree parses a Jenkins tree= expression such as
+// "name,builds[number,result]{0,5},jobs[name,jobs[name]]". "*" names every field.
+func parseTree(spec string) ([]treeProp, error) {
+	p := &treeParser{s: spec}
+	props, err := p.props(false)
+	if err != nil {
+		return nil, err
+	}
+	if p.i < len(p.s) {
+		return nil, fmt.Errorf("unexpected %q at %d", p.s[p.i], p.i)
+	}
+	return props, nil
+}
+
+type treeParser struct {
+	s string
+	i int
+}
+
+func (p *treeParser) props(nested bool) ([]treeProp, error) {
+	var out []treeProp
+	for {
+		start := p.i
+		for p.i < len(p.s) && !strings.ContainsRune(",[]{}", rune(p.s[p.i])) {
+			p.i++
+		}
+		prop := treeProp{name: p.s[start:p.i]}
+		if prop.name == "" {
+			return nil, fmt.Errorf("empty property name at %d", start)
+		}
+		if p.i < len(p.s) && p.s[p.i] == '[' {
+			p.i++
+			sub, err := p.props(true)
+			if err != nil {
+				return nil, err
+			}
+			prop.sub = sub
+		}
+		if p.i < len(p.s) && p.s[p.i] == '{' {
+			end := strings.IndexByte(p.s[p.i:], '}')
+			if end < 0 {
+				return nil, fmt.Errorf("unterminated range at %d", p.i)
+			}
+			if err := prop.setRange(p.s[p.i+1 : p.i+end]); err != nil {
+				return nil, err
+			}
+			p.i += end + 1
+		}
+		out = append(out, prop)
+		switch {
+		case p.i < len(p.s) && p.s[p.i] == ',':
+			p.i++
+		case nested && p.i < len(p.s) && p.s[p.i] == ']':
+			p.i++
+			return out, nil
+		case !nested && p.i >= len(p.s):
+			return out, nil
+		default:
+			return nil, fmt.Errorf("unexpected end or character at %d", p.i)
+		}
+	}
+}
+
+// setRange parses "M,N", "M,", ",N" or "M" (just the M-th item).
+func (t *treeProp) setRange(r string) error {
+	lo, hi, two := strings.Cut(r, ",")
+	t.hasRange, t.from, t.to = true, 0, -1
+	var err error
+	if lo = strings.TrimSpace(lo); lo != "" {
+		if t.from, err = strconv.Atoi(lo); err != nil {
+			return fmt.Errorf("bad range %q", r)
+		}
+	}
+	switch hi = strings.TrimSpace(hi); {
+	case !two:
+		t.to = t.from + 1
+	case hi != "":
+		if t.to, err = strconv.Atoi(hi); err != nil {
+			return fmt.Errorf("bad range %q", r)
+		}
+	}
+	return nil
+}
+
+// filterTree keeps only what the tree names, like Jenkins: unnamed fields are
+// dropped, "_class" always stays, lists are filtered element by element and a
+// {M,N} range slices the list it follows. A property whose value is not an
+// object or list is returned whole even if the tree names sub-fields.
+func filterTree(v any, tree []treeProp) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		if c, ok := x["_class"]; ok {
+			out["_class"] = c
+		}
+		for _, prop := range tree {
+			if prop.name == "*" {
+				for k, val := range x {
+					out[k] = applyProp(val, prop)
+				}
+				continue
+			}
+			if val, ok := x[prop.name]; ok {
+				out[prop.name] = applyProp(val, prop)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = filterTree(e, tree)
+		}
+		return out
+	}
+	return v
+}
+
+func applyProp(val any, prop treeProp) any {
+	if list, ok := val.([]any); ok && prop.hasRange {
+		lo := min(max(prop.from, 0), len(list))
+		hi := len(list)
+		if prop.to >= 0 {
+			hi = min(prop.to, len(list))
+		}
+		val = list[lo:max(lo, hi)]
+	}
+	if prop.sub == nil {
+		return stub(val)
+	}
+	return filterTree(val, prop.sub)
+}
+
+// stub is what Jenkins returns for a field named without [...]: scalars and
+// lists of scalars whole, an object as just its "_class", a list of objects
+// as a list of such stubs.
+func stub(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		if c, ok := x["_class"]; ok {
+			out["_class"] = c
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			switch e.(type) {
+			case map[string]any, []any:
+				out[i] = stub(e)
+			default:
+				out[i] = e
+			}
+		}
+		return out
+	}
+	return v
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -465,7 +831,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		if s.crumbSession {
 			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: "fake-session", Path: "/"})
 		}
-		writeJSON(w, map[string]any{
+		writeTree(w, r, map[string]any{
 			"_class": "hudson.security.csrf.DefaultCrumbIssuer", "crumb": s.crumb, "crumbRequestField": CrumbHeaderName,
 		})
 		return
@@ -483,7 +849,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(segs) == 3 && segs[0] == "me" && segs[1] == "api":
-		writeJSON(w, map[string]any{"_class": "hudson.model.User", "fullName": "Me Myself", "id": s.user})
+		writeTree(w, r, map[string]any{"_class": "hudson.model.User", "fullName": "Me Myself", "id": s.user})
+		return
+	case len(segs) == 1 && segs[0] == "queue" && r.Method == http.MethodGet:
+		htmlPage(w, "Build Queue") // where cancelItem redirects to
 		return
 	case len(segs) >= 2 && segs[0] == "queue":
 		s.serveQueue(w, r, segs)
@@ -515,7 +884,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(rest) == 2 && rest[0] == "api" && rest[1] == "json" && r.Method == http.MethodGet:
-		writeJSON(w, s.itemJSON(full, n))
+		writeTree(w, r, s.itemJSON(full, n))
 	case r.Method == http.MethodPost && len(rest) == 1 && (rest[0] == "build" || rest[0] == "buildWithParameters") && !n.folder:
 		if rj, ok := s.rejects[full]; ok {
 			http.Error(w, rj.body, rj.status)
@@ -527,11 +896,33 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", fmt.Sprintf("%s/queue/item/%d/", s.URL, id))
 		w.WriteHeader(http.StatusCreated)
 	case len(rest) == 3 && rest[1] == "api" && rest[2] == "json" && r.Method == http.MethodGet:
-		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+		b := n.find(rest[0])
+		if n.folder || b == nil {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, s.buildJSON(full, n.last))
+		writeTree(w, r, s.buildJSON(full, b))
+	case len(rest) == 1 && r.Method == http.MethodGet && !n.folder && n.find(rest[0]) != nil:
+		htmlPage(w, fmt.Sprintf("%s #%d", full, n.find(rest[0]).Number)) // where stop redirects to
+	case len(rest) == 2 && rest[1] == "stop" && r.Method == http.MethodPost:
+		b := n.find(rest[0])
+		if n.folder || b == nil {
+			http.NotFound(w, r)
+			return
+		}
+		if b.Building {
+			b.Result, b.Building = "ABORTED", false
+		}
+		s.stops = append(s.stops, Stop{Job: full, Number: b.Number})
+		w.Header().Set("Location", fmt.Sprintf("%s%d/", s.itemURL(full), b.Number))
+		w.WriteHeader(http.StatusFound)
+	case len(rest) == 4 && rest[1] == "testReport" && rest[2] == "api" && rest[3] == "json" && r.Method == http.MethodGet:
+		b := n.find(rest[0])
+		if n.folder || b == nil || n.report(b) == nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeTree(w, r, testReportJSON(n.report(b)))
 	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
 		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
 			http.NotFound(w, r)
@@ -680,7 +1071,7 @@ func (s *Server) itemJSON(full string, n *node) map[string]any {
 	m["buildable"] = !n.disabled
 	m["inQueue"] = false
 	for _, q := range s.queue {
-		if q.Job == full && q.Executable == 0 {
+		if q.Job == full && q.Executable == 0 && !q.Cancelled {
 			m["inQueue"] = true
 		}
 	}
@@ -700,6 +1091,11 @@ func (s *Server) itemJSON(full string, n *node) map[string]any {
 	} else {
 		m["lastBuild"] = nil
 	}
+	list := []map[string]any{}
+	for _, b := range n.builds {
+		list = append(list, s.buildJSON(full, b))
+	}
+	m["builds"] = list
 	return m
 }
 
@@ -751,6 +1147,63 @@ func (s *Server) buildJSON(full string, b *Build) map[string]any {
 	} else {
 		m["result"] = b.Result
 	}
+	est := b.EstimatedDuration.Milliseconds()
+	if b.EstimatedDuration == 0 {
+		est = -1
+	}
+	m["estimatedDuration"] = est
+
+	// "actions" is a mixed list on real Jenkins: parameter and cause actions
+	// next to unrelated ones, an empty object for actions with no JSON, and nulls.
+	actions := []any{map[string]any{}}
+	if len(b.Params) > 0 {
+		ps := []map[string]any{}
+		for _, p := range b.Params {
+			pm := map[string]any{"name": p.Name}
+			switch p.Kind {
+			case TypeBoolean:
+				pm["_class"], pm["value"] = "hudson.model.BooleanParameterValue", p.Value == "true"
+			case TypePassword:
+				pm["_class"] = "hudson.model.PasswordParameterValue" // no value
+			default:
+				pm["_class"], pm["value"] = "hudson.model.StringParameterValue", p.Value
+			}
+			ps = append(ps, pm)
+		}
+		actions = append(actions, map[string]any{"_class": "hudson.model.ParametersAction", "parameters": ps})
+	}
+	actions = append(actions, nil)
+	if len(b.Causes) > 0 {
+		cs := []map[string]any{}
+		for _, c := range b.Causes {
+			cm := map[string]any{"_class": "hudson.model.Cause", "shortDescription": c.Description}
+			if c.Class != "" {
+				cm["_class"] = c.Class
+			}
+			if c.User != "" {
+				cm["_class"], cm["userId"] = "hudson.model.Cause$UserIdCause", c.User
+				if c.UserName != "" {
+					cm["userName"] = c.UserName
+				}
+			}
+			cs = append(cs, cm)
+		}
+		actions = append(actions, map[string]any{"_class": "hudson.model.CauseAction", "causes": cs})
+	}
+	m["actions"] = actions
+
+	items := []map[string]any{}
+	for _, c := range b.Changes {
+		items = append(items, map[string]any{
+			"_class": "hudson.plugins.git.GitChangeSet", "commitId": c.Commit,
+			"author": map[string]any{"_class": "hudson.model.User", "fullName": c.Author}, "msg": c.Message,
+		})
+	}
+	changeSets := []map[string]any{}
+	if len(items) > 0 {
+		changeSets = append(changeSets, map[string]any{"_class": "hudson.plugins.git.GitChangeSetList", "items": items, "kind": "git"})
+	}
+	m["changeSets"] = changeSets
 	return m
 }
 
@@ -768,6 +1221,7 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 		}
 		if q.Cancelled {
 			m["cancelled"] = true
+			m["_class"] = "hudson.model.Queue$LeftItem"
 		}
 		if q.Executable > 0 {
 			m["executable"] = map[string]any{"number": q.Executable, "url": fmt.Sprintf("%s%d/", s.itemURL(q.Job), q.Executable)}
@@ -775,19 +1229,36 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 		return m
 	}
 	switch {
+	case len(segs) == 2 && segs[1] == "cancelItem" && r.Method == http.MethodPost:
+		id, err := strconv.Atoi(r.URL.Query().Get("id"))
+		if err != nil {
+			http.Error(w, "id is required", http.StatusBadRequest)
+			return
+		}
+		for i := range s.queue {
+			if s.queue[i].ID == id && !s.queue[i].Cancelled && s.queue[i].Executable == 0 {
+				// Like Jenkins, keep the item: it answers as a cancelled LeftItem.
+				s.queue[i].Cancelled = true
+				s.cancels = append(s.cancels, id)
+				w.Header().Set("Location", s.URL+"/queue/")
+				w.WriteHeader(http.StatusFound)
+				return
+			}
+		}
+		http.NotFound(w, r)
 	case len(segs) == 3 && segs[1] == "api" && segs[2] == "json":
 		items := []map[string]any{}
 		for _, q := range s.queue {
-			if q.Executable == 0 {
+			if q.Executable == 0 && !q.Cancelled {
 				items = append(items, toJSON(q))
 			}
 		}
-		writeJSON(w, map[string]any{"_class": "hudson.model.Queue", "items": items})
+		writeTree(w, r, map[string]any{"_class": "hudson.model.Queue", "items": items})
 	case len(segs) == 5 && segs[1] == "item" && segs[3] == "api" && segs[4] == "json":
 		id, _ := strconv.Atoi(segs[2])
 		for _, q := range s.queue {
 			if q.ID == id {
-				writeJSON(w, toJSON(q))
+				writeTree(w, r, toJSON(q))
 				return
 			}
 		}
@@ -834,6 +1305,46 @@ func stageJSON(id int, st Stage) map[string]any {
 		m["stageFlowNodes"] = kids
 	}
 	return m
+}
+
+func testReportJSON(r *TestReport) map[string]any {
+	fail, pass, skip := r.FailCount, r.PassCount, r.SkipCount
+	if fail == 0 && pass == 0 && skip == 0 {
+		for _, su := range r.Suites {
+			for _, c := range su.Cases {
+				switch c.Status {
+				case CaseFailed, CaseRegression:
+					fail++
+				case CaseSkipped:
+					skip++
+				default:
+					pass++
+				}
+			}
+		}
+	}
+	suites := []map[string]any{}
+	for _, su := range r.Suites {
+		cases := []map[string]any{}
+		for _, c := range su.Cases {
+			cm := map[string]any{
+				"className": c.ClassName, "name": c.Name, "status": c.Status, "skipped": c.Status == CaseSkipped,
+				"errorDetails": nil, "errorStackTrace": nil,
+			}
+			if c.ErrorDetails != "" {
+				cm["errorDetails"] = c.ErrorDetails
+			}
+			if c.ErrorStackTrace != "" {
+				cm["errorStackTrace"] = c.ErrorStackTrace
+			}
+			cases = append(cases, cm)
+		}
+		suites = append(suites, map[string]any{"name": su.Name, "cases": cases})
+	}
+	return map[string]any{
+		"_class": "hudson.tasks.junit.TestResult", "failCount": fail, "passCount": pass, "skipCount": skip,
+		"duration": 0.0, "empty": len(suites) == 0, "suites": suites,
+	}
 }
 
 func (s *Server) runJSON(n *node) map[string]any {
