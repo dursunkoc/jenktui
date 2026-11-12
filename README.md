@@ -20,7 +20,21 @@ curl -fsSL https://raw.githubusercontent.com/dursunkoc/jenktui/main/install.sh |
 
 It picks the right build for your system, checks it against the release checksums, and installs `jenktui` to `/usr/local/bin` (or `~/.local/bin` if that is not writable). Set `INSTALL_DIR` to choose another folder and `JENKTUI_VERSION` for a specific version. Read the [script](install.sh) first if you prefer.
 
-**Download by hand (macOS, Linux, Windows):** get the archive for your system from the [Releases](https://github.com/dursunkoc/jenktui/releases) page, unpack it, and put `jenktui` on your `PATH`. On macOS, a file downloaded in a browser is quarantined; clear it once with `xattr -d com.apple.quarantine jenktui`.
+**Windows (PowerShell):**
+
+```powershell
+$v = "0.1.4"   # the version on the Releases page
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") { "arm64" } else { "amd64" }
+$zip = "jenktui_${v}_windows_$arch.zip"
+Invoke-WebRequest "https://github.com/dursunkoc/jenktui/releases/download/v$v/$zip" -OutFile $zip
+$dir = "$env:LOCALAPPDATA\Programs\jenktui"
+Expand-Archive $zip -DestinationPath $dir -Force
+[Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$dir", "User")
+```
+
+Open a new terminal and run `jenktui --version`. Use Windows Terminal; the config is in `%USERPROFILE%\.config\jenktui\`. The [wiki](https://github.com/dursunkoc/jenktui/wiki/Getting-Started) has the checksum check and upgrade steps.
+
+**Download by hand (macOS, Linux):** get the archive for your system from the [Releases](https://github.com/dursunkoc/jenktui/releases) page, unpack it, and put `jenktui` on your `PATH` (Windows: use the steps above). On macOS, a file downloaded in a browser is quarantined; clear it once with `xattr -d com.apple.quarantine jenktui`.
 
 **With Go:** `go install github.com/dursunkoc/jenktui@latest`, or build from a checkout with `go build -o jenktui .`
 
