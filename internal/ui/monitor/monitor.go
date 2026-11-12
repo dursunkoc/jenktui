@@ -162,7 +162,10 @@ type model struct {
 	notice      string    // timed status text for Subtitle (flash)
 	noticeUntil time.Time // when the notice stops showing
 	sections    []detailSection
-	confirm     *confirmPrompt // yes/no question over the help bar, or nil
+	confirm     *confirmPrompt // yes/no question on the last body line, or nil
+	overlay     overlay        // modal replacing the body, or nil
+	md          mdState        // lane MD feature data (never on runState)
+	ma          maState        // lane MA feature data (never on runState)
 
 	schedule func(d time.Duration, gen int) tea.Cmd // injectable for tests
 }
@@ -183,7 +186,7 @@ func newBase(deps Deps, name string) *model {
 	th := core.NewTheme()
 	m := &model{deps: deps, th: th, load: core.NewLoading(th), name: name, triggered: deps.Now()}
 	m.load.SetNow(deps.Now)
-	m.initHooks()
+	m.initHooks() // MD registers its detail sections there; MA registers its own below this line
 	m.schedule = func(d time.Duration, gen int) tea.Cmd {
 		return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{gen} })
 	}
@@ -382,6 +385,9 @@ func (m *model) Keys() []key.Binding {
 	if m.confirm != nil {
 		return []key.Binding{keyConfirmYes, keyConfirmNo}
 	}
+	if m.overlay != nil {
+		return m.overlay.keys()
+	}
 	if m.log != nil {
 		return m.logKeys()
 	}
@@ -399,7 +405,7 @@ var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "de
 // FullHelp groups every key of the runs list for the help panel. The
 // details view has few keys and shows them all in the help bar.
 func (m *model) FullHelp() []core.HelpGroup {
-	if m.details || m.log != nil || m.confirm != nil {
+	if m.details || m.log != nil || m.confirm != nil || m.overlay != nil {
 		return nil
 	}
 	return []core.HelpGroup{
@@ -475,6 +481,8 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 				m.runs[i].stages, m.runs[i].stagesFinal = msg.stages, m.runs[i].phase == phFinished
 			}
 		}
+	case applier:
+		return m, msg.apply(m)
 	case logMsg, logTickMsg:
 		return m, m.updateLog(msg)
 	case tea.KeyMsg:
@@ -484,9 +492,19 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 }
 
 func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
+	if m.overlay != nil && m.confirm == nil {
+		cmd, done := m.overlay.key(msg)
+		if done {
+			m.overlay = nil
+		}
+		return m, cmd
+	}
 	if m.log != nil && m.confirm == nil {
 		if cmd, ok := m.logKey(msg); ok {
 			return m, cmd
+		}
+		if !key.Matches(msg, core.KeyQuit) {
+			return m, nil // the log swallows keys it does not use; q still quits
 		}
 	}
 	switch {
@@ -588,8 +606,8 @@ func (m *model) detailOpen(i int) bool {
 }
 
 // startCycle opens a new generation and polls every due row concurrently,
-// delivering each result as a message. With force every pollable row is
-// polled regardless of due-ness (manual refresh, manual = true). Bumping the generation
+// delivering each result as a message. With manual every pollable row is
+// polled regardless of due-ness (manual refresh). Bumping the generation
 // drops the previous cycle's results and its scheduled tick, so only one tick
 // chain stays alive.
 func (m *model) startCycle(manual bool) tea.Cmd {

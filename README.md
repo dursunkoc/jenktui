@@ -104,7 +104,6 @@ username = "me"            # optional; prefills the login screen
 # ca_cert = "/path/to/ca.pem"
 insecure_skip_verify = false
 branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch names
-notify = "failures"        # optional; when the Run Monitor notifies: "failures" (default), "all" or "off"
 ```
 
 Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app.
