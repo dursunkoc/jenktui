@@ -366,6 +366,15 @@ func TestLogFileNameReplacesSlashes(t *testing.T) {
 	if got := logFileName("app/feature%2Fx", 12); got != "app_feature_x-12.log" {
 		t.Fatal(got)
 	}
+	for in, want := range map[string]string{
+		"app/feat%5C..%5C..%5Cx": "app_feat_.._.._x-3.log",
+		"app/a%3Ab":              "app_a_b-3.log",
+		"a%00b%0Ac*?\"<>|":       "a_b_c______-3.log",
+	} {
+		if got := logFileName(in, 3); got != want {
+			t.Errorf("logFileName(%q) = %q, want %q", in, got, want)
+		}
+	}
 }
 
 // growClient serves a console log that grows with every request and always

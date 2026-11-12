@@ -150,12 +150,19 @@ func cleanConsole(text string) string {
 }
 
 // logFileName is <job>-<n>.log with the job name decoded (a branch shows as
-// app/feature/x, not app/feature%2Fx) and "/" replaced by "_".
+// app/feature/x, not app/feature%2Fx) and every path separator, NTFS-reserved
+// or control character replaced by "_".
 func logFileName(job string, num int) string {
 	if d, err := url.PathUnescape(job); err == nil {
 		job = d
 	}
-	return fmt.Sprintf("%s-%d.log", strings.ReplaceAll(job, "/", "_"), num)
+	job = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f || strings.ContainsRune(`/\:*?"<>|`, r) {
+			return '_'
+		}
+		return r
+	}, job)
+	return fmt.Sprintf("%s-%d.log", job, num)
 }
 
 // createNew creates name in dir (empty: the working directory) and never
