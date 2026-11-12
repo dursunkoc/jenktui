@@ -119,7 +119,7 @@ func TestResolveQueue(t *testing.T) {
 			if !errors.Is(err, tc.err) {
 				t.Fatalf("err = %v want %v", err, tc.err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got %+v want %+v", got, tc.want)
 			}
 		})
@@ -177,7 +177,7 @@ func TestBuildStatus(t *testing.T) {
 				t.Fatalf("timestamp %v", got.Timestamp)
 			}
 			got.Timestamp, tc.want.Timestamp = time.Time{}, time.Time{}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Fatalf("got %+v want %+v", got, tc.want)
 			}
 		})
