@@ -2,6 +2,7 @@ package collections
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"regexp"
@@ -544,5 +545,86 @@ func TestPickerCountSkipsPlaceholder(t *testing.T) {
 	v := shown(p)
 	if !strings.Contains(v, "no matching branches") || !strings.Contains(v, "1 jobs ·") {
 		t.Fatalf("want placeholder row and 1 jobs: %q", v)
+	}
+}
+
+type recOpener struct {
+	urls []string
+	err  error
+}
+
+func (r *recOpener) Open(u string) error { r.urls = append(r.urls, u); return r.err }
+
+// pressOpen sends o and delivers the opener's result to the view.
+func pressOpen(s core.Screen) core.Screen {
+	s, cmd := s.Update(kmsg("o"))
+	if cmd != nil {
+		s, _ = s.Update(cmd())
+	}
+	return s
+}
+
+func TestViewOpenKey(t *testing.T) {
+	o := &recOpener{}
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{
+		{FullName: "a", Color: "blue"}, {FullName: "b", Color: "blue"}}},
+		config.Collection{Name: "C", Jobs: []string{"a", "b", "gone"}})
+	r.deps.Opener = o
+	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
+	s, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+
+	v = pressOpen(v)
+	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" || !strings.Contains(shown(v), "opened in browser") {
+		t.Fatalf("opened %v\n%s", o.urls, shown(v))
+	}
+	v, _ = send(v, "down")
+	v = pressOpen(v)
+	if len(o.urls) != 2 || o.urls[1] != "http://j/job/b/" {
+		t.Fatalf("opened %v", o.urls)
+	}
+	v, _ = send(v, "down")
+	v = pressOpen(v) // missing member
+	if len(o.urls) != 2 {
+		t.Fatalf("opened %v", o.urls)
+	}
+	_ = s
+
+	o.err = errors.New("sysint: no display")
+	v, _ = send(v, "up", "up")
+	v = pressOpen(v)
+	if !strings.Contains(shown(v), "could not open: no display") {
+		t.Fatalf("no error notice:\n%s", shown(v))
+	}
+}
+
+func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a"}}}, config.Collection{Name: "C", Jobs: []string{"a"}})
+	r.deps.Opener = &recOpener{} // an opener without JobURL is not enough
+	_, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+	if _, cmd := v.Update(kmsg("o")); cmd != nil {
+		t.Error("o acted without an opener")
+	}
+	for _, k := range v.(core.Screen).Keys() {
+		if k.Help().Desc == "open in browser" {
+			t.Error("o shown without an opener")
+		}
+	}
+}
+
+func TestViewOpenKeyTypesInFilterBox(t *testing.T) {
+	o := &recOpener{}
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "foo"}}}, config.Collection{Name: "C", Jobs: []string{"foo"}})
+	r.deps.Opener = o
+	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
+	_, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+	v, _ = send(v, "/", "o")
+	if len(o.urls) != 0 || !strings.Contains(shown(v), "o") {
+		t.Fatalf("opened %v", o.urls)
+	}
+	if vs := v.(*viewScreen); vs.list.Filter() != "o" {
+		t.Fatalf("filter %q", vs.list.Filter())
 	}
 }
