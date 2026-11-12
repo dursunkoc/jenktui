@@ -4,7 +4,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.1.1` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew cask is published in the tap (replaced by a formula from `v0.1.3`). `v0.1.0` was tagged before the cask config existed, so it has no cask; nothing else differs.
+`v0.1.4` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
@@ -12,6 +12,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] `install.sh` tested against the real release: latest-release lookup, a pinned version, a strict POSIX shell.
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
+- [ ] Run the Windows PowerShell install steps (README, wiki Getting Started) on a Windows machine; they were written without one.
 - [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The tap now holds a formula (from `v0.1.3`); the cask upgrade to `v0.1.2` worked on the owner's Mac, the formula is untried.
 - [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
@@ -38,6 +39,11 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 - Run Monitor state lives only for the session; nothing survives a restart.
 - The Run Monitor's header spinner flashes on every automatic poll (every 3 seconds while builds run). If that distracts, show it only for manual `R`.
 - Job keys keep Jenkins' URL-encoded branch names (`app/feature%2Fx`), so a hand-edited `collections.toml` must use that form.
+
+- The console log has no horizontal scroll: long lines are cut with `…`. It caps at 10,000 lines (numbering keeps counting) and has no `?` help panel, since `?` is typeable in the find prompt.
+- A running build's stage or step log is refetched whole every 3 seconds (the stage endpoint has no byte offset), which is wasteful for very long stages.
+- The README and wiki Windows snippets hardcode a version (`$v = "0.1.4"`) that goes stale after each release.
+- The README screenshots are generated (see HANDOFF) and do not update on their own; regenerate them when a screen changes.
 
 ## Tech debt
 
