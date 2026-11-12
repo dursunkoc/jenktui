@@ -57,7 +57,8 @@ type reportJSON struct {
 	Suites       []reportSuite `json:"suites"`
 	ChildReports []struct {
 		Child struct {
-			Name string `json:"name"`
+			FullDisplayName string `json:"fullDisplayName"`
+			DisplayName     string `json:"displayName"`
 		} `json:"child"`
 		Result struct {
 			Suites []reportSuite `json:"suites"`
@@ -101,7 +102,7 @@ func (c *Client) TestCounts(ctx context.Context, fullName string, number int) (T
 //
 // Aggregated reports (matrix, Maven modules) have no top-level suites; their
 // suites live under childReports[].result and are walked too, with Child set
-// to the cell or module name. tree= omits missing fields, so one query fits
+// to the child run's full display name (or display name). tree= omits missing fields, so one query fits
 // both shapes.
 //
 // Size: Jenkins cannot filter cases by status, and a {M,N} range on cases
@@ -111,7 +112,7 @@ func (c *Client) TestCounts(ctx context.Context, fullName string, number int) (T
 // many MB; there is no cheaper standard endpoint (see TestCounts for counts).
 func (c *Client) TestReport(ctx context.Context, fullName string, number int) (TestReport, error) {
 	const cases = "cases[className,name,status,errorDetails,errorStackTrace]"
-	const tree = "failCount,passCount,skipCount,totalCount,suites[name," + cases + "],childReports[child[name,url],result[suites[name," + cases + "]]]"
+	const tree = "failCount,passCount,skipCount,totalCount,suites[name," + cases + "],childReports[child[fullDisplayName,displayName,url],result[suites[name," + cases + "]]]"
 	r, err := c.fetchReport(ctx, fullName, number, tree)
 	if err != nil {
 		return TestReport{}, err
@@ -140,7 +141,11 @@ func (c *Client) TestReport(ctx context.Context, fullName string, number int) (T
 	}
 	add("", r.Suites)
 	for _, ch := range r.ChildReports {
-		add(ch.Child.Name, ch.Result.Suites)
+		name := ch.Child.FullDisplayName
+		if name == "" {
+			name = ch.Child.DisplayName
+		}
+		add(name, ch.Result.Suites)
 	}
 	if out.FailCount > len(out.Failed) {
 		out.Truncated = true

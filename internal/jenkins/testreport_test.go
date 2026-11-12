@@ -147,10 +147,10 @@ func TestTestReportAggregated(t *testing.T) {
 	c := rawClient(t, func(w http.ResponseWriter, r *http.Request) {
 		gotTree = r.URL.Query().Get("tree")
 		fmt.Fprint(w, `{"failCount":2,"skipCount":1,"totalCount":10,"childReports":[
-		 {"child":{"name":"linux","url":"u"},"result":{"suites":[{"name":"S","cases":[
+		 {"child":{"fullDisplayName":"x » linux #3","displayName":"#3","url":"u"},"result":{"suites":[{"name":"S","cases":[
 		   {"className":"a.A","name":"x","status":"FAILED","errorDetails":"d","errorStackTrace":"st"},
 		   {"className":"a.A","name":"y","status":"PASSED","errorDetails":null,"errorStackTrace":null}]}]}},
-		 {"child":{"name":"win","url":"u"},"result":{"suites":[{"name":"S","cases":[
+		 {"child":{"displayName":"#3","url":"u"},"result":{"suites":[{"name":"S","cases":[
 		   {"className":"b.B","name":"z","status":"REGRESSION","errorDetails":null,"errorStackTrace":null}]}]}}]}`)
 	})
 	r, err := c.TestReport(context.Background(), "x", 0)
@@ -160,10 +160,10 @@ func TestTestReportAggregated(t *testing.T) {
 	if r.FailCount != 2 || r.PassCount != 7 || r.SkipCount != 1 || r.Truncated || len(r.Failed) != 2 {
 		t.Fatalf("%+v", r)
 	}
-	if r.Failed[0].Child != "linux" || r.Failed[0].Name != "x" || r.Failed[1].Child != "win" || r.Failed[1].Name != "z" {
+	if r.Failed[0].Child != "x » linux #3" || r.Failed[0].Name != "x" || r.Failed[1].Child != "#3" || r.Failed[1].Name != "z" {
 		t.Fatalf("%+v", r.Failed)
 	}
-	if !strings.Contains(gotTree, "childReports[child[name,url],result[suites[") || !strings.Contains(gotTree, "totalCount") {
+	if !strings.Contains(gotTree, "childReports[child[fullDisplayName,displayName,url],result[suites[") || !strings.Contains(gotTree, "totalCount") {
 		t.Fatalf("tree %q", gotTree)
 	}
 }
