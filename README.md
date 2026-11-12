@@ -117,7 +117,7 @@ Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
 - **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then one step for each job that has parameters of its own (with the Common Parameters it can override), then a summary to confirm. On the summary, `↑`/`↓` pick a job and `e` edits it, so any job, including one with only Common Parameters, can override a Common Parameter. Passwords are shown as `••••`.
-- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
+- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. A running row shows its progress (`1m36s / ~4m` from Jenkins' estimate, `4m12s (over)` once it overruns) and a finished row shows when it started (`2m ago`, `3h ago`, `yesterday`). Leaving it keeps its state for the session.
   - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
   - `l` shows the log of the highlighted stage or step (a stage is its steps' output together); `L` shows the whole build.
   - The log is a modal with line numbers that follows new output while the build runs. `↑`/`↓`/`PgUp`/`PgDn` scroll, `g` goes to the top, `G` follows again, `:` goes to a line number, and `/` finds text (case-insensitive; `*` any text, `_` one character, `\*` `\_` literal), with `n`/`N` for the next and previous match. Matches are highlighted. `Esc` goes back.
@@ -148,9 +148,9 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
-| Catalog and picker | `b` Branch Filter on/off, `B` edit patterns |
+| Catalog and picker | `b` Branch Filter on/off, `B` edit patterns, `o` open the highlighted job in the browser (Catalog only) |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
-| Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |
+| Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
 | Trigger summary (several jobs) | `↑`/`↓` pick a job, `PgUp`/`PgDn` scroll, `e` edit it (`Enter` on the last field applies, `Esc` cancels), `y`/`Enter` trigger, `n`/`Esc` back |
 | Run Monitor | `Enter` details (on a failed build the marker starts on the failed stage; `↑`/`↓` move between stages, `l` stage log (a failed build's log opens at its end), `L` full log, with `/` find and `:` go to line), `s` show/hide successful, `R` refresh now, `f` jump to the next failed job, `o` open the build in the browser (the job if it has no build yet), `y` copy its URL (list and details), `Esc` back (from details: back to the list) |
