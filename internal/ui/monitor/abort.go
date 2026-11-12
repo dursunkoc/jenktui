@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
@@ -75,9 +76,11 @@ func (d abortDone) apply(m *model) tea.Cmd {
 		return nil
 	}
 	switch {
-	case errors.Is(d.err, jenkins.ErrForbidden):
+	case errors.Is(d.err, jenkins.ErrForbidden) && !strings.Contains(strings.ToLower(d.err.Error()), "crumb"):
 		return m.flash("not allowed to abort")
-	case errors.Is(d.err, jenkins.ErrBuildNotFound), errors.Is(d.err, jenkins.ErrQueueItemNotFound):
+	case errors.Is(d.err, jenkins.ErrQueueItemNotFound):
+		return tea.Batch(m.flash("no longer queued (started or cancelled)"), m.pollNow())
+	case errors.Is(d.err, jenkins.ErrBuildNotFound):
 		return tea.Batch(m.flash("already finished or gone"), m.pollNow())
 	case d.err != nil:
 		return m.flash(shortErr(d.err))

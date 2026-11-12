@@ -187,3 +187,22 @@ func TestAbortFromDetails(t *testing.T) {
 		t.Fatal("X works in the details view")
 	}
 }
+
+func TestAbortQueueItemGoneAndCrumbMessages(t *testing.T) {
+	c := &stopClient{err: jenkins.ErrQueueItemNotFound}
+	m := abortModel(c)
+	m.cursor = 1
+	pressKey(m, 'X')
+	_, next := m.Update(pressKey(m, 'y')())
+	if m.notice != "no longer queued (started or cancelled)" || next == nil {
+		t.Fatalf("notice %q", m.notice)
+	}
+	c2 := &stopClient{err: fmt.Errorf("%w (bad CSRF crumb)", jenkins.ErrForbidden)}
+	m = abortModel(c2)
+	m.cursor = 0
+	pressKey(m, 'X')
+	m.Update(pressKey(m, 'y')())
+	if !strings.Contains(m.notice, "crumb") {
+		t.Fatalf("notice %q", m.notice)
+	}
+}
