@@ -1,0 +1,29 @@
+internal/ui/monitor/logview.go
+  s_1c16aed3d161c7::t_ce9aa0ec350c3c 42-43,397-401,447-450
+internal/ui/monitor/logview_test.go
+  s_1c16aed3d161c7::t_ab110df7eca74a 4-6,12,20,366-519
+README.md
+  s_1c16aed3d161c7::t_441c046363ac1c 123,156
+internal/ui/monitor/actions_test.go
+  s_1c16aed3d161c7::t_073fdf374c7176 176
+internal/ui/monitor/logsave.go
+  s_1c16aed3d161c7::t_4d6d598b422c24 7-8,16-17,37-38,44-45,61-71,73-77,81-88,93-96,98-101,106-135,152-153,155-157,161,163-164,176,181,186-268
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_dc9c6b4f465667 94,96
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "6063079703a398572f662fdb81df989de9976b1e",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
