@@ -1,0 +1,25 @@
+internal/ui/catalog/catalog.go
+  s_1c16aed3d161c7::t_f8a29af5d8f8d1 48,50,216-218
+internal/ui/catalog/catalog_test.go
+  s_1c16aed3d161c7::t_bac1e436c39ade 442,454-463,470,503-512
+internal/ui/collections/collections_test.go
+  s_1c16aed3d161c7::t_d13e04ab929616 577,589,610-624
+internal/ui/collections/view.go
+  s_1c16aed3d161c7::t_055052e5f59be1 309-311
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "304922d7a5ecaddd18e9b0ea7497b78a09834d8d",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
