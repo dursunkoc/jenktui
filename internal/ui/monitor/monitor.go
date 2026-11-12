@@ -192,6 +192,7 @@ func newBase(deps Deps, name string) *model {
 	m.load.SetNow(deps.Now)
 	m.hooks.result, m.hooks.detailsOpen = m.onResult, m.onDetailsOpen
 	m.initHooks() // MD registers its detail sections there; MA registers its own below this line
+	m.addDetailSection(m.testSection)
 	m.schedule = func(d time.Duration, gen int) tea.Cmd {
 		return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{gen} })
 	}
@@ -398,13 +399,23 @@ func (m *model) Keys() []key.Binding {
 	}
 	if m.details {
 		ks := []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll}
+		if m.canReport() {
+			ks = append(ks, keyReport)
+		}
+		if m.abortable() {
+			ks = append(ks, keyAbort)
+		}
 		ks = append(ks, m.actionKeys()...)
 		return append(ks,
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "hide details")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit)
 	}
-	return append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, append(m.actionKeys(), core.KeyBack)...)
+	ks := append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...)
+	if m.abortable() {
+		ks = append(ks, keyAbort)
+	}
+	return append(ks, core.KeyBack)
 }
 
 var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details"))
@@ -417,7 +428,7 @@ func (m *model) FullHelp() []core.HelpGroup {
 	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Run Monitor", Keys: append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...)},
+		{Title: "Run Monitor", Keys: append(append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...), m.abortKeys()...)},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -523,6 +534,10 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 	switch {
 	case m.confirm != nil:
 		return m, m.confirmKey(msg)
+	case key.Matches(msg, keyAbort):
+		return m, m.abortKey()
+	case key.Matches(msg, keyReport) && m.details:
+		return m, m.reportKey()
 	case key.Matches(msg, keyOpen, keyCopy):
 		cmd, _ := m.actionKey(msg)
 		return m, cmd
@@ -585,7 +600,7 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		m.ma.focusFailed = m.details && m.runs[m.selected()].failed()
 		m.focusFailedStage()
 		if m.details {
-			return m, tea.Batch(m.detailStages(), m.hooks.detailsOpen(m.selected()))
+			return m, tea.Batch(m.detailStages(), m.hooks.detailsOpen(m.selected()), m.fetchCounts(m.selected()))
 		}
 	}
 	return m, nil
