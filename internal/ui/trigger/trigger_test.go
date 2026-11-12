@@ -29,9 +29,17 @@ func (h *harness) pump(cmd tea.Cmd) {
 	ch := make(chan tea.Msg, 1)
 	go func() { ch <- cmd() }()
 	var msg tea.Msg
+	// A form only ever returns cursor-blink commands (which sleep for their
+	// blink interval) and navigation messages (which return at once), so
+	// there is no point waiting long for them. Elsewhere a command may do
+	// real (fake-server) I/O.
+	wait := 250 * time.Millisecond
+	if h.inForm() {
+		wait = 10 * time.Millisecond
+	}
 	select {
 	case msg = <-ch:
-	case <-time.After(250 * time.Millisecond): // cursor blink and friends
+	case <-time.After(wait): // cursor blink, spinner tick
 		return
 	}
 	switch m := msg.(type) {
@@ -48,6 +56,15 @@ func (h *harness) pump(cmd tea.Cmd) {
 		h.s, c = h.s.Update(m)
 		h.pump(c)
 	}
+}
+
+// inForm reports whether the screen shows a parameter form.
+func (h *harness) inForm() bool {
+	switch h.s.(*screen).st {
+	case stForm, stCommon, stJob:
+		return true
+	}
+	return false
 }
 
 func (h *harness) send(msg tea.Msg) {
