@@ -570,6 +570,177 @@ func writeJSON(w http.ResponseWriter, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeTree answers like Jenkins' remote API: when the request carries a
+// tree= query only the named fields are returned (see filterTree). The
+// Pipeline REST API (wfapi) ignores tree= on a real Jenkins and so does the
+// fake: those handlers call writeJSON.
+func writeTree(w http.ResponseWriter, r *http.Request, v any) {
+	spec := r.URL.Query().Get("tree")
+	if spec == "" {
+		writeJSON(w, v)
+		return
+	}
+	tree, err := parseTree(spec)
+	if err != nil {
+		http.Error(w, "bad tree: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	raw, err := json.Marshal(v)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	dec := json.NewDecoder(strings.NewReader(string(raw)))
+	dec.UseNumber() // keep timestamps exact
+	var generic any
+	if err := dec.Decode(&generic); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, filterTree(generic, tree))
+}
+
+// treeProp is one property of a tree= expression: a name, an optional nested
+// tree in [...] and an optional {M,N} range for list values.
+type treeProp struct {
+	name     string
+	sub      []treeProp
+	hasRange bool
+	from, to int // M inclusive, N exclusive; to < 0 means no upper bound
+}
+
+// parseTree parses a Jenkins tree= expression such as
+// "name,builds[number,result]{0,5},jobs[name,jobs[name]]". "*" names every field.
+func parseTree(spec string) ([]treeProp, error) {
+	p := &treeParser{s: spec}
+	props, err := p.props(false)
+	if err != nil {
+		return nil, err
+	}
+	if p.i < len(p.s) {
+		return nil, fmt.Errorf("unexpected %q at %d", p.s[p.i], p.i)
+	}
+	return props, nil
+}
+
+type treeParser struct {
+	s string
+	i int
+}
+
+func (p *treeParser) props(nested bool) ([]treeProp, error) {
+	var out []treeProp
+	for {
+		start := p.i
+		for p.i < len(p.s) && !strings.ContainsRune(",[]{}", rune(p.s[p.i])) {
+			p.i++
+		}
+		prop := treeProp{name: p.s[start:p.i]}
+		if prop.name == "" {
+			return nil, fmt.Errorf("empty property name at %d", start)
+		}
+		if p.i < len(p.s) && p.s[p.i] == '[' {
+			p.i++
+			sub, err := p.props(true)
+			if err != nil {
+				return nil, err
+			}
+			prop.sub = sub
+		}
+		if p.i < len(p.s) && p.s[p.i] == '{' {
+			end := strings.IndexByte(p.s[p.i:], '}')
+			if end < 0 {
+				return nil, fmt.Errorf("unterminated range at %d", p.i)
+			}
+			if err := prop.setRange(p.s[p.i+1 : p.i+end]); err != nil {
+				return nil, err
+			}
+			p.i += end + 1
+		}
+		out = append(out, prop)
+		switch {
+		case p.i < len(p.s) && p.s[p.i] == ',':
+			p.i++
+		case nested && p.i < len(p.s) && p.s[p.i] == ']':
+			p.i++
+			return out, nil
+		case !nested && p.i >= len(p.s):
+			return out, nil
+		default:
+			return nil, fmt.Errorf("unexpected end or character at %d", p.i)
+		}
+	}
+}
+
+// setRange parses "M,N", "M,", ",N" or "M" (just the M-th item).
+func (t *treeProp) setRange(r string) error {
+	lo, hi, two := strings.Cut(r, ",")
+	t.hasRange, t.from, t.to = true, 0, -1
+	var err error
+	if lo = strings.TrimSpace(lo); lo != "" {
+		if t.from, err = strconv.Atoi(lo); err != nil {
+			return fmt.Errorf("bad range %q", r)
+		}
+	}
+	switch hi = strings.TrimSpace(hi); {
+	case !two:
+		t.to = t.from + 1
+	case hi != "":
+		if t.to, err = strconv.Atoi(hi); err != nil {
+			return fmt.Errorf("bad range %q", r)
+		}
+	}
+	return nil
+}
+
+// filterTree keeps only what the tree names, like Jenkins: unnamed fields are
+// dropped, "_class" always stays, lists are filtered element by element and a
+// {M,N} range slices the list it follows. A property whose value is not an
+// object or list is returned whole even if the tree names sub-fields.
+func filterTree(v any, tree []treeProp) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		if c, ok := x["_class"]; ok {
+			out["_class"] = c
+		}
+		for _, prop := range tree {
+			if prop.name == "*" {
+				for k, val := range x {
+					out[k] = applyProp(val, prop)
+				}
+				continue
+			}
+			if val, ok := x[prop.name]; ok {
+				out[prop.name] = applyProp(val, prop)
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			out[i] = filterTree(e, tree)
+		}
+		return out
+	}
+	return v
+}
+
+func applyProp(val any, prop treeProp) any {
+	if list, ok := val.([]any); ok && prop.hasRange {
+		lo := min(max(prop.from, 0), len(list))
+		hi := len(list)
+		if prop.to >= 0 {
+			hi = min(prop.to, len(list))
+		}
+		val = list[lo:max(lo, hi)]
+	}
+	if prop.sub == nil {
+		return val
+	}
+	return filterTree(val, prop.sub)
+}
+
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -600,7 +771,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 		if s.crumbSession {
 			http.SetCookie(w, &http.Cookie{Name: "JSESSIONID", Value: "fake-session", Path: "/"})
 		}
-		writeJSON(w, map[string]any{
+		writeTree(w, r, map[string]any{
 			"_class": "hudson.security.csrf.DefaultCrumbIssuer", "crumb": s.crumb, "crumbRequestField": CrumbHeaderName,
 		})
 		return
@@ -618,7 +789,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case len(segs) == 3 && segs[0] == "me" && segs[1] == "api":
-		writeJSON(w, map[string]any{"_class": "hudson.model.User", "fullName": "Me Myself", "id": s.user})
+		writeTree(w, r, map[string]any{"_class": "hudson.model.User", "fullName": "Me Myself", "id": s.user})
 		return
 	case len(segs) >= 2 && segs[0] == "queue":
 		s.serveQueue(w, r, segs)
@@ -650,7 +821,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 	}
 	switch {
 	case len(rest) == 2 && rest[0] == "api" && rest[1] == "json" && r.Method == http.MethodGet:
-		writeJSON(w, s.itemJSON(full, n))
+		writeTree(w, r, s.itemJSON(full, n))
 	case r.Method == http.MethodPost && len(rest) == 1 && (rest[0] == "build" || rest[0] == "buildWithParameters") && !n.folder:
 		if rj, ok := s.rejects[full]; ok {
 			http.Error(w, rj.body, rj.status)
@@ -667,7 +838,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, s.buildJSON(full, b))
+		writeTree(w, r, s.buildJSON(full, b))
 	case len(rest) == 2 && rest[1] == "stop" && r.Method == http.MethodPost:
 		b := n.find(rest[0])
 		if n.folder || b == nil {
@@ -683,7 +854,7 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		writeJSON(w, testReportJSON(n.report(b)))
+		writeTree(w, r, testReportJSON(n.report(b)))
 	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
 		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
 			http.NotFound(w, r)
@@ -992,12 +1163,12 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 				items = append(items, toJSON(q))
 			}
 		}
-		writeJSON(w, map[string]any{"_class": "hudson.model.Queue", "items": items})
+		writeTree(w, r, map[string]any{"_class": "hudson.model.Queue", "items": items})
 	case len(segs) == 5 && segs[1] == "item" && segs[3] == "api" && segs[4] == "json":
 		id, _ := strconv.Atoi(segs[2])
 		for _, q := range s.queue {
 			if q.ID == id {
-				writeJSON(w, toJSON(q))
+				writeTree(w, r, toJSON(q))
 				return
 			}
 		}

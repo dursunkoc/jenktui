@@ -170,7 +170,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 go vet ./... && go test ./...
 ```
 
-CI runs the same plus `gofmt` and `-race` (`.github/workflows/ci.yml`). Tests run against a fake Jenkins in `internal/jenkins/jenkinstest`; it ignores the `tree=` query that real Jenkins honours, so check changes to queries against a real server. Read [docs/HANDOFF.md](docs/HANDOFF.md) first if you are new to the code. The screenshots above are generated from invented data; see HANDOFF for how to regenerate them.
+CI runs the same plus `gofmt` and `-race` (`.github/workflows/ci.yml`). Tests run against a fake Jenkins in `internal/jenkins/jenkinstest`; it honours the `tree=` query as real Jenkins does (unnamed fields are omitted, `{M,N}` ranges work, the Pipeline REST API ignores it), so a query that names too few fields fails in tests. Still check new queries and endpoints against a real server. Read [docs/HANDOFF.md](docs/HANDOFF.md) first if you are new to the code. The screenshots above are generated from invented data; see HANDOFF for how to regenerate them.
 
 ## License
 

@@ -2,9 +2,11 @@ package jenkinstest_test
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -279,4 +281,150 @@ func TestStopAndCancelNeedCrumb(t *testing.T) {
 	if len(s.Stops()) != 1 || len(s.Cancels()) != 1 {
 		t.Fatal("calls with a crumb must be recorded")
 	}
+}
+
+func keys(m map[string]any) []string {
+	var out []string
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func TestTreeFilter(t *testing.T) {
+	s := jenkinstest.New(t)
+	ts := time.UnixMilli(1700000000123)
+	s.Job("f/x").Builds(
+		jenkinstest.Build{Number: 1, Result: "SUCCESS", Timestamp: ts},
+		jenkinstest.Build{Number: 2, Result: "FAILURE", Timestamp: ts},
+		jenkinstest.Build{Number: 3, Result: "SUCCESS", Timestamp: ts,
+			Causes:  []jenkinstest.Cause{{Description: "by Ada", User: "ada"}},
+			Changes: []jenkinstest.Change{{Commit: "c1", Author: "Ada", Message: "m"}}},
+	)
+	q := func(tree string) map[string]any {
+		t.Helper()
+		code, m := getJSON(t, s, "/job/f/job/x/api/json?tree="+url.QueryEscape(tree))
+		if code != 200 {
+			t.Fatalf("%s: %d", tree, code)
+		}
+		return m
+	}
+
+	t.Run("unnamed fields are omitted but _class stays", func(t *testing.T) {
+		m := q("name,color")
+		if got := strings.Join(keys(m), ","); got != "_class,color,name" {
+			t.Fatalf("keys %s", got)
+		}
+	})
+	t.Run("unknown fields are ignored", func(t *testing.T) {
+		m := q("name,nosuchfield,builds[nosuch]")
+		if _, has := m["nosuchfield"]; has {
+			t.Fatalf("%v", m)
+		}
+		for _, b := range m["builds"].([]any) {
+			if got := strings.Join(keys(b.(map[string]any)), ","); got != "_class" {
+				t.Fatalf("build keys %s", got)
+			}
+		}
+	})
+	t.Run("nested lists and objects", func(t *testing.T) {
+		m := q("builds[number,actions[causes[shortDescription,userId]],changeSets[items[commitId,author[fullName],msg]]]")
+		b := m["builds"].([]any)[0].(map[string]any) // newest first: #3
+		if b["number"] != float64(3) {
+			t.Fatalf("%v", b)
+		}
+		if _, has := b["result"]; has {
+			t.Fatalf("result not asked for: %v", b)
+		}
+		var causes map[string]any
+		for _, a := range b["actions"].([]any) {
+			if am, ok := a.(map[string]any); ok && am["causes"] != nil {
+				causes = am["causes"].([]any)[0].(map[string]any)
+			}
+		}
+		if causes == nil || causes["userId"] != "ada" || causes["shortDescription"] != "by Ada" {
+			t.Fatalf("actions %v", b["actions"])
+		}
+		if _, has := causes["_class"]; !has {
+			t.Fatalf("_class should stay: %v", causes)
+		}
+		item := b["changeSets"].([]any)[0].(map[string]any)["items"].([]any)[0].(map[string]any)
+		if item["commitId"] != "c1" || item["author"].(map[string]any)["fullName"] != "Ada" {
+			t.Fatalf("%v", item)
+		}
+		if _, has := item["kind"]; has {
+			t.Fatalf("%v", item)
+		}
+		// null entries in a list stay null.
+		sawNull := false
+		for _, a := range b["actions"].([]any) {
+			sawNull = sawNull || a == nil
+		}
+		if !sawNull {
+			t.Fatalf("null action dropped: %v", b["actions"])
+		}
+	})
+	t.Run("ranges", func(t *testing.T) {
+		nums := func(tree string) []float64 {
+			var out []float64
+			for _, b := range q(tree)["builds"].([]any) {
+				out = append(out, b.(map[string]any)["number"].(float64))
+			}
+			return out
+		}
+		for tree, want := range map[string][]float64{
+			"builds[number]":       {3, 2, 1},
+			"builds[number]{0,2}":  {3, 2},
+			"builds[number]{1,3}":  {2, 1},
+			"builds[number]{1,}":   {2, 1},
+			"builds[number]{,1}":   {3},
+			"builds[number]{2}":    {1},
+			"builds[number]{0,99}": {3, 2, 1},
+			"builds[number]{5,9}":  {},
+		} {
+			if got := nums(tree); fmt.Sprint(got) != fmt.Sprint(want) {
+				t.Errorf("%s: got %v want %v", tree, got, want)
+			}
+		}
+	})
+	t.Run("large numbers stay exact", func(t *testing.T) {
+		resp := req(t, s, "GET", "/job/f/job/x/3/api/json?tree=timestamp", nil, "")
+		b, _ := io.ReadAll(resp.Body)
+		if !strings.Contains(string(b), "1700000000123") {
+			t.Fatal(string(b))
+		}
+	})
+	t.Run("folders and other endpoints", func(t *testing.T) {
+		code, m := getJSON(t, s, "/job/f/api/json?tree=jobs[name]")
+		if code != 200 || len(m["jobs"].([]any)) != 1 {
+			t.Fatalf("%d %v", code, m)
+		}
+		if _, has := m["fullName"]; has {
+			t.Fatalf("%v", m)
+		}
+		if _, m := getJSON(t, s, "/me/api/json?tree=fullName"); strings.Join(keys(m), ",") != "_class,fullName" {
+			t.Fatalf("%v", m)
+		}
+		if _, m := getJSON(t, s, "/queue/api/json?tree=items[id]"); strings.Join(keys(m), ",") != "_class,items" {
+			t.Fatalf("%v", m)
+		}
+	})
+	t.Run("without tree everything is served; malformed tree is a 400", func(t *testing.T) {
+		if _, m := getJSON(t, s, "/job/f/job/x/api/json"); m["color"] == nil || m["builds"] == nil {
+			t.Fatalf("%v", keys(m))
+		}
+		for _, bad := range []string{"builds[number", "a,,b", "builds[number]{x}", "]"} {
+			if code, _ := getJSON(t, s, "/job/f/job/x/api/json?tree="+url.QueryEscape(bad)); code != 400 {
+				t.Errorf("%q: %d", bad, code)
+			}
+		}
+	})
+	t.Run("wfapi ignores tree like Jenkins", func(t *testing.T) {
+		s.Job("p").Pipeline(jenkinstest.Stage{Name: "Build", Status: jenkinstest.StageSuccess}).LastBuild(jenkinstest.Build{Number: 1, Result: "SUCCESS"})
+		_, m := getJSON(t, s, "/job/p/1/wfapi/describe?tree=id")
+		if m["stages"] == nil {
+			t.Fatalf("%v", m)
+		}
+	})
 }
