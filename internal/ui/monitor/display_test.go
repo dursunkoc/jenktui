@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -222,8 +223,8 @@ func TestHistoryDotsFetchedOncePerFinishedBuild(t *testing.T) {
 	for _, r := range ansi.Strip(m.dots(m.runs[0])) {
 		got += string(r)
 	}
-	if got != "●○●●●" {
-		t.Fatalf("dots = %q, want oldest-to-newest ●○●●●", got)
+	if got != "●○◐✕●" {
+		t.Fatalf("dots = %q, want oldest-to-newest ●○◐✕●", got)
 	}
 	poll()
 	poll()
@@ -234,11 +235,15 @@ func TestHistoryDotsFetchedOncePerFinishedBuild(t *testing.T) {
 
 func TestDotColoursAndRunning(t *testing.T) {
 	m, _ := mdModel(nil, jenkins.BuildContext{})
-	for res, col := range map[string]lipgloss.AdaptiveColor{
-		"SUCCESS": m.th.OK, "FAILURE": m.th.Fail, "UNSTABLE": m.th.Warn,
+	type dd struct {
+		col   lipgloss.AdaptiveColor
+		glyph string
+	}
+	for res, d := range map[string]dd{
+		"SUCCESS": {m.th.OK, "●"}, "FAILURE": {m.th.Fail, "✕"}, "UNSTABLE": {m.th.Warn, "◐"},
 	} {
-		want := lipgloss.NewStyle().Foreground(col).Render("●")
-		if got := m.dot(jenkins.Build{Result: res}); got != want || ansi.Strip(got) != "●" {
+		want := lipgloss.NewStyle().Foreground(d.col).Render(d.glyph)
+		if got := m.dot(jenkins.Build{Result: res}); got != want || ansi.Strip(got) != d.glyph {
 			t.Errorf("%s dot = %q", res, got)
 		}
 	}
@@ -248,8 +253,14 @@ func TestDotColoursAndRunning(t *testing.T) {
 	// A newer running build is appended on the right of the fetched history.
 	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 5, Result: "FAILURE"}, {Number: 4, Result: "SUCCESS"}}}
 	m.runs[0].phase, m.runs[0].num = phRunning, 6
-	if got := ansi.Strip(m.dots(m.runs[0])); got != "●●●" {
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "●✕●" {
 		t.Fatalf("dots with running = %q", got)
+	}
+	// History that already lists the running build must not get a second dot.
+	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 6, Building: true}, {Number: 5, Result: "SUCCESS"}, {Number: 4, Result: "FAILURE"}}}
+	m.runs[0].num = 6
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "✕●●" {
+		t.Fatalf("running build listed in history: %q", got)
 	}
 }
 
@@ -293,13 +304,87 @@ func TestNoChangesShowsNoCommitBlock(t *testing.T) {
 	}
 }
 
-func TestStaleHistoryDroppedAfterExit(t *testing.T) {
-	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{})
-	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
-	cmd := m.fetchHistory(m.runs[0])
-	m.epoch++
-	run(m, cmd)
-	if len(m.md.hist) != 0 || c.histN["a"] != 1 {
-		t.Fatal("a result from a previous epoch must be dropped")
+func TestFetchOutlivingTheScreenStillApplies(t *testing.T) {
+	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "x"}}})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	h, cx := m.fetchHistory(st), m.fetchContext(st)
+	m.epoch++ // the screen was left and reopened mid-fetch
+	run(m, h)
+	run(m, cx)
+	if len(m.md.hist) != 1 || len(m.md.ctx) != 1 {
+		t.Fatal("results of a finished build are valid whatever the epoch")
+	}
+	if m.fetchHistory(st) != nil || m.fetchContext(st) != nil || c.histN["a"] != 1 {
+		t.Fatal("applied data must not be fetched again")
+	}
+}
+
+func TestRunningContextRefetchedWhenBuildFinishes(t *testing.T) {
+	m, c := mdModel(nil, jenkins.BuildContext{})
+	running := runState{run: Run{Job: "a"}, phase: phRunning, num: 5, build: jenkins.Build{Number: 5, Building: true}}
+	m.runs[0] = running
+	run(m, m.fetchContext(running))
+	if c.ctxN["a"] != 1 {
+		t.Fatal("first fetch")
+	}
+	// Opening the details of the still-running build fetches again.
+	run(m, m.onDetailsOpen(0))
+	if c.ctxN["a"] != 2 {
+		t.Fatalf("running context is not final: %d fetches", c.ctxN["a"])
+	}
+	// The poll that sees it finish refetches once more, then it is final.
+	c.bc["a"] = jenkins.BuildContext{Changes: []jenkins.Change{{ID: "abc1234", Author: "bob", Message: "late"}}}
+	fin := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = fin
+	run(m, m.onResult(0, running))
+	if c.ctxN["a"] != 3 || len(m.contextLines(fin)) != 1 {
+		t.Fatalf("finish must refetch: %d fetches, lines %v", c.ctxN["a"], m.contextLines(fin))
+	}
+	run(m, m.onDetailsOpen(0))
+	run(m, m.onResult(0, fin))
+	if c.ctxN["a"] != 3 {
+		t.Fatal("a finished build's context is final")
+	}
+}
+
+type errClient struct {
+	*mdClient
+	err error
+	n   int
+}
+
+func (e *errClient) BuildHistory(context.Context, string, int) ([]jenkins.Build, error) {
+	e.n++
+	return nil, e.err
+}
+
+func TestHistoryRetriesStop(t *testing.T) {
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	for _, tc := range []struct {
+		err  error
+		want int
+	}{{jenkins.ErrAuth, 1}, {jenkins.ErrForbidden, 1}, {errors.New("boom"), maxTries}} {
+		m, c := mdModel(nil, jenkins.BuildContext{})
+		e := &errClient{mdClient: c, err: tc.err}
+		m.deps.Client = e
+		m.runs[0] = st
+		for i := 0; i < 10; i++ {
+			run(m, m.onResult(0, st))
+		}
+		if e.n != tc.want {
+			t.Errorf("%v: %d attempts, want %d", tc.err, e.n, tc.want)
+		}
+	}
+}
+
+func TestCauseNewlinesBecomeSpaces(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Started by\nupstream\n"}}})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	run(m, m.fetchContext(st))
+	l := m.contextLines(st)
+	if len(l) != 1 || ansi.Strip(l[0]) != "Started by upstream" {
+		t.Fatalf("%q", l)
 	}
 }

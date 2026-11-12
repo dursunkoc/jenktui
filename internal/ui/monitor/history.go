@@ -2,6 +2,7 @@ package monitor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,22 +25,32 @@ type contexter interface {
 const (
 	dotCount   = 5
 	maxCommits = 5
+	maxTries   = 3 // fetch attempts per build after transient errors
 )
+
+// permanent reports errors that retrying cannot fix.
+func permanent(err error) bool {
+	return errors.Is(err, jenkins.ErrAuth) || errors.Is(err, jenkins.ErrForbidden)
+}
 
 // histMsg delivers a job's recent results.
 type histMsg struct {
-	epoch  int
 	key    buildKey
 	builds []jenkins.Build
 	err    error
 }
 
+// apply stores the result whatever the epoch: the results of a finished
+// build number never change, so a fetch that outlived the screen is still good.
 func (h histMsg) apply(m *model) tea.Cmd {
-	if h.epoch != m.epoch {
-		return nil
-	}
 	if h.err != nil {
-		delete(m.md.histBusy, h.key) // try again on the next poll
+		if m.md.histTries == nil {
+			m.md.histTries = map[buildKey]int{}
+		}
+		m.md.histTries[h.key]++
+		if !permanent(h.err) && m.md.histTries[h.key] < maxTries {
+			delete(m.md.histBusy, h.key) // try again on the next poll
+		}
 		return nil
 	}
 	if m.md.hist == nil {
@@ -51,24 +62,30 @@ func (h histMsg) apply(m *model) tea.Cmd {
 
 // ctxMsg delivers a build's causes and changes.
 type ctxMsg struct {
-	epoch int
-	key   buildKey
-	bc    jenkins.BuildContext
-	err   error
+	key     buildKey
+	bc      jenkins.BuildContext
+	running bool // fetched while the build ran: commits may still be missing
+	err     error
 }
 
 func (c ctxMsg) apply(m *model) tea.Cmd {
-	if c.epoch != m.epoch {
-		return nil
-	}
 	if c.err != nil {
-		delete(m.md.ctxBusy, c.key)
+		if m.md.ctxTries == nil {
+			m.md.ctxTries = map[buildKey]int{}
+		}
+		m.md.ctxTries[c.key]++
+		if !permanent(c.err) && m.md.ctxTries[c.key] < maxTries {
+			delete(m.md.ctxBusy, c.key)
+		}
 		return nil
 	}
 	if m.md.ctx == nil {
 		m.md.ctx = map[buildKey]jenkins.BuildContext{}
 	}
 	m.md.ctx[c.key] = c.bc
+	if c.running {
+		delete(m.md.ctxBusy, c.key) // not final: the next open or the finish refetches
+	}
 	return nil
 }
 
@@ -86,12 +103,12 @@ func (m *model) fetchHistory(st runState) tea.Cmd {
 		m.md.histBusy = map[buildKey]bool{}
 	}
 	m.md.histBusy[k] = true
-	epoch, timeout := m.epoch, m.deps.PollTimeout
+	timeout := m.deps.PollTimeout
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		b, err := h.BuildHistory(ctx, k.job, dotCount)
-		return histMsg{epoch: epoch, key: k, builds: b, err: err}
+		return histMsg{key: k, builds: b, err: err}
 	}
 }
 
@@ -109,12 +126,12 @@ func (m *model) fetchContext(st runState) tea.Cmd {
 		m.md.ctxBusy = map[buildKey]bool{}
 	}
 	m.md.ctxBusy[k] = true
-	epoch, timeout := m.epoch, m.deps.PollTimeout
+	timeout, running := m.deps.PollTimeout, st.phase != phFinished
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
 		bc, err := c.BuildContext(ctx, k.job, k.num)
-		return ctxMsg{epoch: epoch, key: k, bc: bc, err: err}
+		return ctxMsg{key: k, bc: bc, running: running, err: err}
 	}
 }
 
@@ -131,7 +148,7 @@ func (m *model) dots(st runState) string {
 	if len(hist) == 0 {
 		return ""
 	}
-	if st.phase == phRunning && st.num > newest {
+	if st.phase == phRunning && (hist[0].Number < st.num) {
 		hist = append([]jenkins.Build{{Number: st.num, Building: true}}, hist...)
 	}
 	if len(hist) > dotCount {
@@ -145,6 +162,7 @@ func (m *model) dots(st runState) string {
 }
 
 func (m *model) dot(b jenkins.Build) string {
+	// The glyph carries the meaning too, for terminals without colour.
 	glyph, col := "●", m.th.Muted
 	switch {
 	case b.Building:
@@ -152,9 +170,9 @@ func (m *model) dot(b jenkins.Build) string {
 	case b.Result == "SUCCESS":
 		col = m.th.OK
 	case b.Result == "FAILURE":
-		col = m.th.Fail
+		glyph, col = "✕", m.th.Fail
 	case b.Result == "UNSTABLE":
-		col = m.th.Warn
+		glyph, col = "◐", m.th.Warn
 	default: // aborted, not built, unknown
 		glyph = "○"
 	}
@@ -170,8 +188,8 @@ func (m *model) contextLines(st runState) []string {
 	}
 	var out []string
 	for _, c := range bc.Causes {
-		if c.Text != "" {
-			out = append(out, m.th.MutedTxt.Render(c.Text))
+		if t := strings.Join(strings.Fields(c.Text), " "); t != "" {
+			out = append(out, m.th.MutedTxt.Render(t))
 		}
 	}
 	for i, c := range bc.Changes {

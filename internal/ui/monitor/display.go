@@ -17,6 +17,8 @@ type mdState struct {
 	histBusy map[buildKey]bool            // fetched or in flight
 	ctx      map[buildKey]jenkins.BuildContext
 	ctxBusy  map[buildKey]bool
+	// failed attempts per key; permanent errors and maxTries stop the retries
+	histTries, ctxTries map[buildKey]int
 }
 
 type buildKey struct {
@@ -27,7 +29,16 @@ type buildKey struct {
 // onResult runs after a poll result replaced row i; prev is the row before.
 // MD starts its once-per-finished-build history fetch here.
 func (m *model) onResult(i int, prev runState) tea.Cmd {
-	return m.fetchHistory(m.runs[i])
+	st := m.runs[i]
+	if prev.phase != phFinished && st.phase == phFinished {
+		// The build just finished: a context fetched while it ran may lack its commits.
+		k := buildKey{st.run.Job, st.num}
+		if _, had := m.md.ctx[k]; had {
+			delete(m.md.ctxBusy, k)
+			return tea.Batch(m.fetchHistory(st), m.fetchContext(st))
+		}
+	}
+	return m.fetchHistory(st)
 }
 
 // onDetailsOpen runs when the details view opens on row i.
