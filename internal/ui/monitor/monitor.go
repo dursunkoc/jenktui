@@ -397,12 +397,14 @@ func (m *model) Keys() []key.Binding {
 		return m.logKeys()
 	}
 	if m.details {
-		return []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll,
+		ks := []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll}
+		ks = append(ks, m.actionKeys()...)
+		return append(ks,
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "hide details")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
-			core.KeyQuit}
+			core.KeyQuit)
 	}
-	return []key.Binding{keyDetails, keyShow, keyRefresh, core.KeyBack}
+	return append([]key.Binding{keyDetails, keyShow, keyRefresh}, append(m.actionKeys(), core.KeyBack)...)
 }
 
 var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details"))
@@ -415,7 +417,7 @@ func (m *model) FullHelp() []core.HelpGroup {
 	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Run Monitor", Keys: []key.Binding{keyDetails, keyShow, keyRefresh}},
+		{Title: "Run Monitor", Keys: append([]key.Binding{keyDetails, keyShow, keyRefresh}, m.actionKeys()...)},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -519,6 +521,9 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 	switch {
 	case m.confirm != nil:
 		return m, m.confirmKey(msg)
+	case key.Matches(msg, keyOpen, keyCopy):
+		cmd, _ := m.actionKey(msg)
+		return m, cmd
 	case key.Matches(msg, keyLog) && m.details:
 		return m, m.openLog(m.stageLines() > 0) // the selected stage or step when there are stages
 	case key.Matches(msg, keyLogAll) && m.details:
