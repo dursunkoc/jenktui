@@ -46,3 +46,13 @@ func TestFilterWildcards(t *testing.T) {
 		}
 	}
 }
+
+func TestGlobKeepsSpacesAndMatchesNothingWhenEmpty(t *testing.T) {
+	if Glob("") != nil {
+		t.Fatal("empty is nil")
+	}
+	re := Glob(" a_c ")
+	if !re.MatchString("x a-c y") || re.MatchString("xa-cy") {
+		t.Fatal("spaces are literal, _ is one character")
+	}
+}

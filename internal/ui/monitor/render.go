@@ -13,6 +13,9 @@ import (
 )
 
 func (m *model) View() string {
+	if m.log != nil {
+		return m.logView()
+	}
 	if len(m.runs) == 0 {
 		return m.th.NoticeView("Nothing to monitor", "This collection has no jobs. esc to go back.")
 	}
@@ -57,7 +60,7 @@ func (m *model) View() string {
 // Subtitle is the status line shown on the title row while the runs list is
 // on screen (not over the details view, a notice or the first-load modal).
 func (m *model) Subtitle() string {
-	if len(m.runs) == 0 || m.details || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
+	if len(m.runs) == 0 || m.details || m.log != nil || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
 		return ""
 	}
 	return m.header()
@@ -289,10 +292,13 @@ func (m *model) detailView() string {
 	head = append(head, "")
 	switch {
 	case len(st.stages) > 0:
+		n := 0
 		for _, s := range st.stages {
-			head = append(head, m.fit(m.detailLine(s, "")))
+			head = append(head, m.fit(m.detailLine(s, "", n == m.stageCur)))
+			n++
 			for _, c := range s.Children {
-				head = append(head, m.fit(m.detailLine(c, "    ")))
+				head = append(head, m.fit(m.detailLine(c, "    ", n == m.stageCur)))
+				n++
 			}
 		}
 	case st.noStages:
@@ -303,7 +309,17 @@ func (m *model) detailView() string {
 		head = append(head, m.th.MutedTxt.Render("No stage information yet."))
 	}
 	if m.h > 0 && len(head) > m.h {
-		head = head[:m.h]
+		// Keep the highlighted stage on screen: drop lines after the header.
+		top := len(head) - m.stageLines()
+		if top < 0 {
+			top = 0
+		}
+		off := max(top+m.stageCur-(m.h-top-1), top)
+		off = min(off, len(head)-1)
+		if off > top {
+			head = append(append([]string{}, head[:top]...), head[off:]...)
+		}
+		head = head[:min(len(head), m.h)]
 	}
 	return strings.Join(head, "\n")
 }
@@ -315,12 +331,16 @@ func numSuffix(st runState) string {
 	return ""
 }
 
-func (m *model) detailLine(s jenkins.Stage, indent string) string {
+func (m *model) detailLine(s jenkins.Stage, indent string, cur bool) string {
 	d := ""
 	if s.Duration > 0 {
 		d = "  " + m.th.MutedTxt.Render(fmtDur(s.Duration))
 	}
-	return "  " + indent + m.stageText(jenkins.Stage{Name: s.Name, Status: s.Status}) + d
+	lead := "  "
+	if cur {
+		lead = m.th.Selected.Render("▸ ")
+	}
+	return lead + indent + m.stageText(jenkins.Stage{Name: s.Name, Status: s.Status}) + d
 }
 
 // jobName is how job is shown: from SetNames when known, otherwise relative

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -96,6 +97,7 @@ type Stage struct {
 	Status   string
 	Duration time.Duration
 	Children []Stage
+	Log      string // console output of this node, served by wfapi/log
 }
 
 // QueueItem is an entry in the build queue.
@@ -127,6 +129,7 @@ type node struct {
 	disabled bool
 	pipeline bool
 	stages   []Stage
+	log      string // console output of the last build
 }
 
 // Server is a fake Jenkins.
@@ -354,6 +357,23 @@ func (j *Job) Disabled() *Job {
 	return j
 }
 
+// Log sets the console output of the job's last build (the fake serves it
+// through logText/progressiveText; X-More-Data is true while it is building).
+func (j *Job) Log(text string) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.log = text
+	return j
+}
+
+// AppendLog adds to the console output of the job's last build.
+func (j *Job) AppendLog(text string) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.log += text
+	return j
+}
+
 // Pipeline marks the job as a pipeline with the given stages for its last
 // build; wfapi endpoints then answer instead of 404.
 func (j *Job) Pipeline(stages ...Stage) *Job {
@@ -512,6 +532,43 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, s.buildJSON(full, n.last))
+	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
+		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		start, _ := strconv.Atoi(r.URL.Query().Get("start"))
+		start = max(0, min(start, len(n.log)))
+		w.Header().Set("Content-Type", "text/plain;charset=UTF-8")
+		w.Header().Set("X-Text-Size", strconv.Itoa(len(n.log)))
+		if n.last.Building {
+			w.Header().Set("X-More-Data", "true")
+		}
+		_, _ = io.WriteString(w, n.log[start:])
+	case len(rest) == 6 && rest[1] == "execution" && rest[2] == "node" && rest[4] == "wfapi" && rest[5] == "describe":
+		if !n.pipeline || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		st, ok := findStage(n.stages, rest[3])
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, stageJSON(mustAtoi(rest[3]), st))
+	case len(rest) == 6 && rest[1] == "execution" && rest[2] == "node" && rest[4] == "wfapi" && rest[5] == "log":
+		if !n.pipeline || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		st, ok := findStage(n.stages, rest[3])
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		text := `<span class="pipeline-new-node">[Pipeline] ` + html.EscapeString(st.Name) + `</span>` + "\n" +
+			`<span class="pipeline-node-` + rest[3] + `">` + html.EscapeString(st.Log) + `</span>`
+		writeJSON(w, map[string]any{"nodeId": rest[3], "nodeStatus": st.Status, "length": len(text), "hasMore": false, "text": text})
 	case len(rest) == 2 && rest[0] == "wfapi" && rest[1] == "runs":
 		if !n.pipeline {
 			http.NotFound(w, r)
@@ -739,6 +796,23 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 		http.NotFound(w, r)
 	}
 }
+
+// findStage looks up a stage or flow node by the ids stageJSON hands out.
+func findStage(stages []Stage, id string) (Stage, bool) {
+	for i, st := range stages {
+		if strconv.Itoa(i+1) == id {
+			return st, true
+		}
+		for j, c := range st.Children {
+			if strconv.Itoa((i+1)*100+j+1) == id {
+				return c, true
+			}
+		}
+	}
+	return Stage{}, false
+}
+
+func mustAtoi(s string) int { n, _ := strconv.Atoi(s); return n }
 
 func lastSeg(p string) string {
 	if i := strings.LastIndex(p, "/"); i >= 0 {

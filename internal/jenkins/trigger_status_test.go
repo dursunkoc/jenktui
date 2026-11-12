@@ -201,15 +201,15 @@ func TestStages(t *testing.T) {
 	c := newTestClient(t, s)
 
 	want := []Stage{
-		{Name: "Build", Status: StageSuccess, Duration: 2 * time.Second},
-		{Name: "Test", Status: StageRunning, Children: []Stage{
-			{Name: "unit", Status: StageSuccess, Duration: time.Second},
-			{Name: "integ", Status: StageRunning},
+		{ID: "1", Name: "Build", Status: StageSuccess, Duration: 2 * time.Second},
+		{ID: "2", Name: "Test", Status: StageRunning, Children: []Stage{
+			{ID: "201", Name: "unit", Status: StageSuccess, Duration: time.Second},
+			{ID: "202", Name: "integ", Status: StageRunning},
 		}},
-		{Name: "Approve", Status: StagePaused},
-		{Name: "Deploy", Status: StageNotExecuted},
-		{Name: "Odd", Status: StageUnknown},
-		{Name: "Bad", Status: StageFailed},
+		{ID: "3", Name: "Approve", Status: StagePaused},
+		{ID: "4", Name: "Deploy", Status: StageNotExecuted},
+		{ID: "5", Name: "Odd", Status: StageUnknown},
+		{ID: "6", Name: "Bad", Status: StageFailed},
 	}
 	for _, num := range []int{0, 4} {
 		got, err := c.Stages(context.Background(), "pipe", num)

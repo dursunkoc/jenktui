@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -16,15 +17,22 @@ import (
 )
 
 type fakeClient struct {
-	queue    map[int]jenkins.QueueStatus
-	queueErr map[int]error
-	builds   map[string]map[int]jenkins.Build // job -> number (0 = last)
-	buildErr error
-	stages   []jenkins.Stage
-	stageErr error
-	deadline bool
-	buildN   map[string]int // BuildStatus calls per job
-	stageN   map[string]int // Stages calls per job
+	queue     map[int]jenkins.QueueStatus
+	queueErr  map[int]error
+	builds    map[string]map[int]jenkins.Build // job -> number (0 = last)
+	buildErr  error
+	stages    []jenkins.Stage
+	stageErr  error
+	deadline  bool
+	log       string // console output served by ConsoleText
+	logMore   bool
+	logErr    error
+	logStarts []int64
+	stageLogs map[string]string          // node id -> output
+	stageLogN []string                   // node ids asked for
+	steps     map[string][]jenkins.Stage // stage id -> its steps (StageSteps)
+	buildN    map[string]int             // BuildStatus calls per job
+	stageN    map[string]int             // Stages calls per job
 }
 
 func (f *fakeClient) ResolveQueue(ctx context.Context, r jenkins.QueueRef) (jenkins.QueueStatus, error) {
@@ -56,6 +64,33 @@ func (f *fakeClient) Stages(_ context.Context, job string, _ int) ([]jenkins.Sta
 	}
 	f.stageN[job]++
 	return f.stages, f.stageErr
+}
+
+func (f *fakeClient) ConsoleText(_ context.Context, _ string, _ int, start int64) (jenkins.LogChunk, error) {
+	if f.logErr != nil {
+		return jenkins.LogChunk{}, f.logErr
+	}
+	f.logStarts = append(f.logStarts, start)
+	return jenkins.LogChunk{Text: f.log[min(int(start), len(f.log)):], Next: int64(len(f.log)), More: f.logMore}, nil
+}
+
+func (f *fakeClient) StageSteps(_ context.Context, _ string, _ int, id string) ([]jenkins.Stage, error) {
+	if s, ok := f.steps[id]; ok {
+		return s, nil
+	}
+	return nil, jenkins.ErrNoStages
+}
+
+func (f *fakeClient) StageLog(_ context.Context, _ string, _ int, id string) (string, error) {
+	f.stageLogN = append(f.stageLogN, id)
+	if f.logErr != nil {
+		return "", f.logErr
+	}
+	txt, ok := f.stageLogs[id]
+	if !ok {
+		return "", jenkins.ErrNoStages
+	}
+	return txt, nil
 }
 
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -866,5 +901,444 @@ func TestTitleNamesParent(t *testing.T) {
 		if got := m.Title(); got != tc.want {
 			t.Errorf("Title(parent %q, name %q) = %q, want %q", tc.parent, tc.name, got, tc.want)
 		}
+	}
+}
+
+// In the details view the arrow keys move between stages, not jobs.
+func TestDetailsArrowsMoveStages(t *testing.T) {
+	m := &model{th: core.NewTheme(), details: true, cursor: 0}
+	m.runs = []runState{{run: Run{Job: "a"}, phase: phFinished, result: "FAILURE", stages: []jenkins.Stage{
+		{Name: "Build", Status: jenkins.StageSuccess},
+		{Name: "Test", Status: jenkins.StageFailed, Children: []jenkins.Stage{{Name: "unit", Status: jenkins.StageFailed}}},
+	}}, {run: Run{Job: "b"}, phase: phFinished, result: "FAILURE"}}
+	down := tea.KeyMsg{Type: tea.KeyDown}
+	for range 5 {
+		m.Update(down)
+	}
+	if m.cursor != 0 || m.stageCur != 2 {
+		t.Fatalf("job cursor %d, stage cursor %d", m.cursor, m.stageCur)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "▸     ✘ unit") {
+		t.Fatalf("marker missing:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.stageCur != 1 {
+		t.Fatalf("stage cursor %d", m.stageCur)
+	}
+}
+
+func logTail(t *testing.T) (*model, *fakeClient) {
+	t.Helper()
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown}) // b: failed build with stages
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	return m, c
+}
+
+func pressL(m *model) tea.Cmd { return pressKey(m, 'L') }
+
+func pressKey(m *model, r rune) tea.Cmd {
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	return cmd
+}
+
+func TestLogOpensFromDetailsOnly(t *testing.T) {
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	if pressL(m) != nil || m.log != nil {
+		t.Fatal("l does nothing in the runs list")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	c.log = "line one\nline two\n"
+	cmd := pressL(m)
+	if m.log == nil || cmd == nil {
+		t.Fatal("l in details opens the log and fetches it")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "loading…") {
+		t.Fatalf("before the first chunk:\n%s", v)
+	}
+	m.Update(cmd())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "line one") || !strings.Contains(v, "line two") || !strings.Contains(v, "finished") {
+		t.Fatalf("log:\n%s", v)
+	}
+	if st := m.Subtitle(); st != "" {
+		t.Fatalf("no subtitle over the log: %q", st)
+	}
+	// esc closes the log and stays in the details view; a second esc leaves details.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.log != nil || !m.details {
+		t.Fatalf("esc should return to details (log=%v details=%v)", m.log != nil, m.details)
+	}
+}
+
+func TestLogFollowsGrowingOutput(t *testing.T) {
+	m, c := logTail(t)
+	c.log, c.logMore = "a\nb", true
+	m.Update(pressL(m)())
+	if !m.log.more || m.log.part != "b" || len(m.log.lines) != 1 {
+		t.Fatalf("partial line must wait for its newline: %+v", m.log)
+	}
+	// A later chunk continues from the returned offset and completes the line.
+	c.log, c.logMore = "a\nbc\nd\n", false
+	m.Update(logTickMsg{gen: m.logGen})
+	_, _ = m.Update(m.fetchLog(m.log.next)())
+	if got := strings.Join(m.log.all(), "|"); got != "a|bc|d" || m.log.more {
+		t.Fatalf("lines %q more=%v", got, m.log.more)
+	}
+	if want := []int64{0, 3}; !(len(c.logStarts) >= 2 && c.logStarts[0] == want[0] && c.logStarts[1] == want[1]) {
+		t.Fatalf("offsets %v", c.logStarts)
+	}
+}
+
+func TestLogScrollPausesFollowAndGResumes(t *testing.T) {
+	m, c := logTail(t)
+	m.h = 9 // 5 log lines inside the modal
+	var sb strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&sb, "row %d\n", i)
+	}
+	c.log, c.logMore = sb.String(), true
+	m.Update(pressL(m)())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "row 20") || strings.Contains(v, "row 15") || !strings.Contains(v, "following") {
+		t.Fatalf("follows the tail:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if v = ansi.Strip(m.View()); m.log.follow || !strings.Contains(v, "row 15") || strings.Contains(v, "row 20") || !strings.Contains(v, "paused") {
+		t.Fatalf("up pauses:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "│ row 1 ") {
+		t.Fatalf("g goes to the top:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	if v = ansi.Strip(m.View()); !m.log.follow || !strings.Contains(v, "row 20") {
+		t.Fatalf("G follows again:\n%s", v)
+	}
+	// Scrolling down to the end resumes following too.
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !m.log.follow {
+		t.Fatal("paging back to the end follows")
+	}
+}
+
+func TestLogCleansConsoleText(t *testing.T) {
+	lv := &logView{}
+	lv.append("\x1b[32mgreen\x1b[0m\r\n\x1b[8mha:////4abc==\x1b[0mx ok\nprogress 10%\rprogress 90%")
+	if got := strings.Join(lv.all(), "|"); got != "green|x ok|progress 90%" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestLogErrorsAndLifecycle(t *testing.T) {
+	m, c := logTail(t)
+	c.logErr = jenkins.ErrBuildNotFound
+	cmd := pressL(m)
+	if _, next := m.Update(cmd()); next != nil {
+		t.Fatal("a vanished build is not retried")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "error:") {
+		t.Fatalf("error shown:\n%s", v)
+	}
+	// Messages of a closed log are dropped.
+	gen := m.logGen
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	c.logErr = nil
+	m.Update(logMsg{gen: gen, chunk: jenkins.LogChunk{Text: "late\n"}})
+	if m.log != nil {
+		t.Fatal("stale chunk must not reopen the log")
+	}
+	// Leaving the monitor while the log is open closes it.
+	pressL(m)
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})                            // closes log
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); cmd != nil { // leaves details
+		t.Fatal("esc from details does not pop")
+	}
+}
+
+func typeKeys(m *model, text string) {
+	for _, r := range text {
+		if r == ' ' {
+			m.Update(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+			continue
+		}
+		m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+	}
+}
+
+// numberedLog opens a log of the given lines in a modal with a 5-line page.
+func numberedLog(t *testing.T, lines ...string) *model {
+	t.Helper()
+	m, c := logTail(t)
+	m.h, m.w = 9, 60
+	c.log = strings.Join(lines, "\n") + "\n"
+	m.Update(pressL(m)())
+	return m
+}
+
+func TestLogIsABorderedModalWithLineNumbers(t *testing.T) {
+	m := numberedLog(t, "alpha", "beta", "gamma")
+	v := ansi.Strip(m.View())
+	rows := strings.Split(v, "\n")
+	if len(rows) != m.h || !strings.HasPrefix(rows[0], "╭") || !strings.HasPrefix(rows[len(rows)-1], "╰") {
+		t.Fatalf("modal should fill the body (%d rows):\n%s", len(rows), v)
+	}
+	for _, want := range []string{"1 │ alpha", "2 │ beta", "3 │ gamma", "lines 1-3 of 3"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("missing %q:\n%s", want, v)
+		}
+	}
+}
+
+func TestLogGoToLine(t *testing.T) {
+	var ls []string
+	for i := 1; i <= 40; i++ {
+		ls = append(ls, fmt.Sprintf("row %d", i))
+	}
+	m := numberedLog(t, ls...)
+	typeKeys(m, ":")
+	if m.log.prompt != promptGoto {
+		t.Fatal(": opens the go-to prompt")
+	}
+	typeKeys(m, "x2q") // letters are ignored, and q does not quit
+	if m.log.input != "2" {
+		t.Fatalf("input %q", m.log.input)
+	}
+	typeKeys(m, "5")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	v := ansi.Strip(m.View())
+	if m.log.prompt != promptNone || m.log.focus != 24 || !strings.Contains(v, "25 │ row 25") || m.log.follow {
+		t.Fatalf("goto 25 (focus %d):\n%s", m.log.focus, v)
+	}
+	// Past the end clamps to the last line and says so.
+	typeKeys(m, ":999")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "40 │ row 40") || !strings.Contains(v, "past the end") {
+		t.Fatalf("goto past end:\n%s", v)
+	}
+	// Esc cancels the prompt without leaving the log.
+	typeKeys(m, ":1")
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.log == nil || m.log.prompt != promptNone {
+		t.Fatal("esc closes only the prompt")
+	}
+}
+
+func TestLogFindWildcardsAndNavigation(t *testing.T) {
+	m := numberedLog(t,
+		"start", "Compile my_job ok", "noise", "compile myXjob ok", "noise", "error: a.b failed", "noise", "ERROR again", "end")
+	find := func(q string) {
+		typeKeys(m, "/"+q)
+		m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	}
+	// _ is one character, matching case-insensitively.
+	find("my_job")
+	if m.log.focus != 1 || !strings.Contains(m.log.status, "match 1 of 2") {
+		t.Fatalf("focus %d status %q", m.log.focus, m.log.status)
+	}
+	typeKeys(m, "n")
+	if m.log.focus != 3 {
+		t.Fatalf("n goes to the next match, focus %d", m.log.focus)
+	}
+	typeKeys(m, "n")
+	if m.log.focus != 1 || !strings.Contains(m.log.status, "wrapped") {
+		t.Fatalf("n wraps, focus %d %q", m.log.focus, m.log.status)
+	}
+	typeKeys(m, "N")
+	if m.log.focus != 3 || !strings.Contains(m.log.status, "wrapped") {
+		t.Fatalf("N wraps backwards, focus %d %q", m.log.focus, m.log.status)
+	}
+	// An escaped underscore is literal, so it matches only my_job.
+	find(`my\_job`)
+	if m.log.focus != 1 || !strings.Contains(m.log.status, "match 1 of 1") {
+		t.Fatalf("escaped _: focus %d %q", m.log.focus, m.log.status)
+	}
+	// * is any run of characters.
+	find("error*failed")
+	if m.log.focus != 5 {
+		t.Fatalf("error*failed: focus %d %q", m.log.focus, m.log.status)
+	}
+	find("zzz*")
+	if m.log.focus != -1 || !strings.Contains(m.log.status, "no match") {
+		t.Fatalf("no match: %d %q", m.log.focus, m.log.status)
+	}
+	find("error")
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "6 │ error: a.b failed") {
+		t.Fatalf("view:\n%s", v)
+	}
+	// Spaces are part of the pattern.
+	find("my_job ok")
+	if m.log.focus != 1 {
+		t.Fatalf("space in pattern: %d", m.log.focus)
+	}
+}
+
+func TestLogFindHighlightsAndPromptTakesKeys(t *testing.T) {
+	m := numberedLog(t, "one", "two needle three")
+	typeKeys(m, "/q ?") // q and ? are text while the prompt is open
+	if m.log == nil || m.log.input != "q ?" {
+		t.Fatalf("prompt text %q", m.log.input)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "find (* any text, _ one char): q ?") {
+		t.Fatalf("prompt not shown:\n%s", v)
+	}
+	if got := m.Keys(); len(got) != 2 {
+		t.Fatalf("prompt help is enter/esc: %v", got)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	m.Update(tea.KeyMsg{Type: tea.KeyBackspace})
+	typeKeys(m, "need*")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if hl := highlight("two needle three", m.log.re); ansi.Strip(hl) != "two needle three" {
+		t.Fatalf("highlight must not change the text: %q", hl)
+	}
+	if m.log.focus != 1 {
+		t.Fatalf("focus %d", m.log.focus)
+	}
+	// n without a search says so.
+	m2 := numberedLog(t, "x")
+	typeKeys(m2, "n")
+	if !strings.Contains(m2.log.status, "press / first") {
+		t.Fatalf("status %q", m2.log.status)
+	}
+}
+
+func TestLogLineNumbersSurviveTrimming(t *testing.T) {
+	lv := &logView{focus: -1}
+	var sb strings.Builder
+	for i := 1; i <= maxLogLines+5; i++ {
+		fmt.Fprintf(&sb, "l%d\n", i)
+	}
+	lv.append(sb.String())
+	if lv.dropped != 5 || len(lv.lines) != maxLogLines || lv.lines[0] != "l6" {
+		t.Fatalf("dropped %d len %d first %q", lv.dropped, len(lv.lines), lv.lines[0])
+	}
+	lv.gotoLine("2", len(lv.lines), 5)
+	if !strings.Contains(lv.status, "dropped") || lv.focus != 0 {
+		t.Fatalf("goto a dropped line: %q focus %d", lv.status, lv.focus)
+	}
+	lv.gotoLine("100", len(lv.lines), 5)
+	if lv.focus != 94 {
+		t.Fatalf("line 100 is index 94, got %d", lv.focus)
+	}
+}
+
+// stagedLog opens the details of a failed build with a parallel-less stage
+// that has two steps, and a plain stage.
+func stagedLog(t *testing.T) (*model, *fakeClient) {
+	t.Helper()
+	m, c := logTail(t)
+	c.stageLogs = map[string]string{"11": "step one out\n", "12": "step two out", "2": "plain stage out\n"}
+	m.runs[1].stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageFailed, Children: []jenkins.Stage{
+			{ID: "11", Name: "sh one", Status: jenkins.StageSuccess}, {ID: "12", Name: "sh two", Status: jenkins.StageFailed}}},
+		{ID: "2", Name: "Deploy", Status: jenkins.StageNotExecuted},
+	}
+	m.h, m.w = 12, 70
+	return m, c
+}
+
+func TestStageLogOfSelectedStageStepAndWholeBuild(t *testing.T) {
+	m, c := stagedLog(t)
+	// Line 0 is the stage "Build": its steps' output, each under a heading.
+	m.Update(pressKey(m, 'l')())
+	v := ansi.Strip(m.View())
+	for _, want := range []string{"stage Build", "── sh one ──", "step one out", "── sh two ──", "step two out"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("stage log missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Join(c.stageLogN, ",") != "11,12" || len(c.logStarts) != 0 {
+		t.Fatalf("fetched %v / %v", c.stageLogN, c.logStarts)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// Line 1 is the step "sh two": only its own output, named with its stage.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	v = ansi.Strip(m.View())
+	if !strings.Contains(v, "step sh two (Build)") || !strings.Contains(v, "step two out") || strings.Contains(v, "step one out") {
+		t.Fatalf("step log:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// A stage without steps shows its own node.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "plain stage out") {
+		t.Fatalf("plain stage:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// L is always the whole console log.
+	c.log = "whole build\n"
+	m.Update(pressKey(m, 'L')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "whole build") || strings.Contains(v, "›") {
+		t.Fatalf("full log:\n%s", v)
+	}
+}
+
+func TestStageLogFallsBackAndReportsErrors(t *testing.T) {
+	// No stages known: l shows the whole build log.
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.runs[1].stages, m.runs[1].noStages = nil, true
+	c.log = "everything\n"
+	m.Update(pressKey(m, 'l')())
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "everything") {
+		t.Fatalf("no stages => whole log:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// A node Jenkins does not know is an error and is not retried.
+	m, c = stagedLog(t)
+	c.stageLogs = nil
+	_, next := m.Update(pressKey(m, 'l')())
+	if v := ansi.Strip(m.View()); next != nil || !strings.Contains(v, "error:") {
+		t.Fatalf("unknown node:\n%s", v)
+	}
+}
+
+func TestStageLogRefetchesWhileBuildRuns(t *testing.T) {
+	m, c := stagedLog(t)
+	m.runs[1].phase = phRunning
+	m.Update(pressKey(m, 'l')())
+	if !m.log.more {
+		t.Fatal("a running build keeps polling its stage log")
+	}
+	c.stageLogs["11"] = "step one out\nmore\n"
+	m.Update(logTickMsg{gen: m.logGen})
+	m.Update(m.fetchLog(0)())
+	if got := strings.Join(m.log.lines, "|"); !strings.Contains(got, "more") || strings.Count(got, "step one out") != 1 {
+		t.Fatalf("content is replaced, not appended: %q", got)
+	}
+}
+
+// Real Jenkins lists stages without steps in the run describe: the stage is
+// asked for its steps, and its own node is the fallback.
+func TestStageLogLooksUpStepsOfAStageWithoutChildren(t *testing.T) {
+	m, c := logTail(t)
+	m.h, m.w = 12, 70
+	c.stageLogs = map[string]string{"21": "from step 21\n", "22": "from step 22\n", "3": "own node\n"}
+	c.steps = map[string][]jenkins.Stage{"2": {{ID: "21", Name: "git"}, {ID: "22", Name: "sh"}}}
+	m.runs[1].stages = []jenkins.Stage{
+		{ID: "2", Name: "Build", Status: jenkins.StageFailed},
+		{ID: "3", Name: "Deploy", Status: jenkins.StageNotExecuted},
+	}
+	m.Update(pressKey(m, 'l')())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "── git ──") || !strings.Contains(v, "from step 22") {
+		t.Fatalf("steps of the stage:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "own node") {
+		t.Fatalf("no steps => the stage's own node:\n%s", v)
 	}
 }
