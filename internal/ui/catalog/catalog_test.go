@@ -439,7 +439,7 @@ func TestOpenKeyOpensHighlightedJob(t *testing.T) {
 	if len(o.urls) != 2 || o.urls[0] != "http://j/job/a/" || o.urls[1] != "http://j/job/b/" {
 		t.Fatalf("opened %v", o.urls)
 	}
-	if v := shown(s); !strings.Contains(v, "opened http://j/job/b/") {
+	if v := shown(s); !strings.Contains(v, "opened in browser") {
 		t.Errorf("no success notice:\n%s", v)
 	}
 	if !strings.Contains(helpText(s), "open in browser") {
@@ -451,15 +451,23 @@ func TestOpenKeyPlaceholderAndMissingURLDoNothing(t *testing.T) {
 	o := &recOpener{}
 	s := openScreen(t, o, jenkins.Job{FullName: "nourl"})
 	press(s, "o") // job without URL
-	press(s, "down")
-	press(s, "o") // placeholder row ("empty" project) or end of list
+	for i := 0; i < 3; i++ {
+		if it, ok := s.list.Cursor(); ok && it.Disabled {
+			break
+		}
+		press(s, "down")
+	}
+	if it, ok := s.list.Cursor(); !ok || !it.Disabled {
+		t.Fatalf("cursor not on the placeholder row: %+v", it)
+	}
+	press(s, "o")
 	if len(o.urls) != 0 {
 		t.Fatalf("opened %v", o.urls)
 	}
 }
 
 func TestOpenKeyErrorShowsNotice(t *testing.T) {
-	o := &recOpener{err: errors.New("no display")}
+	o := &recOpener{err: errors.New("sysint: no display")}
 	s := openScreen(t, o, jenkins.Job{FullName: "a", URL: "http://j/job/a/"})
 	press(s, "o")
 	if v := shown(s); !strings.Contains(v, "could not open: no display") {
@@ -491,4 +499,14 @@ func helpText(s *Screen) string {
 		}
 	}
 	return b.String()
+}
+
+func TestOpenKeyTypesInFilterBox(t *testing.T) {
+	o := &recOpener{}
+	s := openScreen(t, o, jenkins.Job{FullName: "foo", URL: "http://j/job/foo/"})
+	press(s, "/")
+	press(s, "o")
+	if len(o.urls) != 0 || s.list.Filter() != "o" {
+		t.Fatalf("opened %v, filter %q", o.urls, s.list.Filter())
+	}
 }

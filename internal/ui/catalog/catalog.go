@@ -45,9 +45,9 @@ func OpenCmd(o Opener, url string) tea.Cmd {
 // OpenNotice is the status text for the result of an open.
 func OpenNotice(m OpenedMsg) string {
 	if m.Err != nil {
-		return "could not open: " + m.Err.Error()
+		return "could not open: " + strings.TrimPrefix(m.Err.Error(), "sysint: ")
 	}
-	return "opened " + m.URL
+	return "opened in browser"
 }
 
 // KeyOpen opens the highlighted job in the browser.
@@ -213,7 +213,9 @@ func (s *Screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 		}
 		return s, nil
 	case OpenedMsg:
-		s.notice = OpenNotice(m)
+		if !s.editing { // the editor draws the notice as an error
+			s.notice = OpenNotice(m)
+		}
 		return s, nil
 	case tea.KeyMsg:
 		return s.key(m)

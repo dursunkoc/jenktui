@@ -574,7 +574,7 @@ func TestViewOpenKey(t *testing.T) {
 	v := open(pushed(t, navs))
 
 	v = pressOpen(v)
-	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" || !strings.Contains(shown(v), "opened http://j/job/a/") {
+	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" || !strings.Contains(shown(v), "opened in browser") {
 		t.Fatalf("opened %v\n%s", o.urls, shown(v))
 	}
 	v, _ = send(v, "down")
@@ -586,7 +586,7 @@ func TestViewOpenKey(t *testing.T) {
 	}
 	_ = s
 
-	o.err = errors.New("no display")
+	o.err = errors.New("sysint: no display")
 	v, _ = send(v, "up", "up")
 	v = pressOpen(v)
 	if !strings.Contains(shown(v), "could not open: no display") {
@@ -605,5 +605,20 @@ func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
 		if k.Help().Desc == "open in browser" {
 			t.Error("o shown without an opener")
 		}
+	}
+}
+
+func TestViewOpenKeyTypesInFilterBox(t *testing.T) {
+	o := &recOpener{}
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "foo", URL: "http://j/job/foo/"}}}, config.Collection{Name: "C", Jobs: []string{"foo"}})
+	r.deps.Opener = o
+	_, navs := send(New(r.deps), "enter")
+	v := open(pushed(t, navs))
+	v, _ = send(v, "/", "o")
+	if len(o.urls) != 0 || !strings.Contains(shown(v), "o") {
+		t.Fatalf("opened %v", o.urls)
+	}
+	if vs := v.(*viewScreen); vs.list.Filter() != "o" {
+		t.Fatalf("filter %q", vs.list.Filter())
 	}
 }

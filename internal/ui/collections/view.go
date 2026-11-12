@@ -303,11 +303,11 @@ func (s *viewScreen) Subtitle() string {
 	if n := len(s.missing()); n > 0 {
 		head += fmt.Sprintf(" · %d missing", n)
 	}
-	if s.notice != "" {
-		head += " · " + s.notice
-	}
 	if s.loading || s.load.Active() {
 		head += " · " + s.load.View("refreshing…")
+	}
+	if s.notice != "" {
+		head += " · " + s.notice
 	}
 	return head
 }
