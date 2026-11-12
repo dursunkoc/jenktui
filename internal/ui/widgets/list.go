@@ -74,6 +74,7 @@ func NewList(theme core.Theme, opts Options) *List {
 	ti.Cursor.SetMode(cursor.CursorStatic) // no blink: no timer commands
 	ti.Cursor.Style = lipgloss.NewStyle().Reverse(true)
 	ti.CharLimit = 0
+	ti.KeyMap.Paste.SetEnabled(false) // no clipboard access
 	return &List{opts: opts, theme: theme, selected: map[string]bool{}, input: ti, w: 80, h: 10}
 }
 
@@ -294,8 +295,8 @@ func (l *List) clamp() {
 	l.offset = max(min(l.offset, max(n-l.rows(), 0)), 0)
 }
 
-// Update handles key messages. The returned command is currently always nil
-// and exists so the widget can grow async behaviour without API churn.
+// Update handles key messages. The returned command comes from the filter
+// input (nil unless it has work to do; the cursor is static, so no blink).
 func (l *List) Update(msg tea.Msg) tea.Cmd {
 	km, ok := msg.(tea.KeyMsg)
 	if !ok {
