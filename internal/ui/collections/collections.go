@@ -156,6 +156,8 @@ func badge(color string) core.Status {
 func newInput(placeholder, value string) textinput.Model {
 	ti := textinput.New()
 	ti.Placeholder = placeholder
+	ph := core.NewTheme().Placeholder
+	ti.PlaceholderStyle, ti.CompletionStyle = ph, ph
 	ti.CharLimit = 80
 	ti.SetValue(value)
 	ti.Focus()

@@ -9,7 +9,6 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
@@ -110,7 +109,7 @@ func (m *model) testSection(st runState) []string {
 func (m *model) countsLine(r jenkins.TestReport) string {
 	failed := fmt.Sprintf("%d failed", r.FailCount)
 	if r.FailCount > 0 {
-		failed = lipgloss.NewStyle().Foreground(m.th.Fail).Render(failed)
+		failed = m.th.FailTxt.Render(failed)
 	}
 	return failed + m.th.MutedTxt.Render(fmt.Sprintf(" · %d passed · %d skipped", r.PassCount, r.SkipCount))
 }

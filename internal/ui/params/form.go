@@ -61,6 +61,7 @@ func NewForm(title string, defs []jenkins.ParamDef, opts Options) *Form {
 			in := textinput.New()
 			in.Prompt, in.CharLimit, in.Width = "", 4096, 40
 			in.Placeholder = fd.ph
+			in.PlaceholderStyle, in.CompletionStyle = f.th.Placeholder, f.th.Placeholder
 			in.SetValue(val)
 			if d.Type == "password" {
 				in.EchoMode, in.EchoCharacter = textinput.EchoPassword, '•'

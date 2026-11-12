@@ -32,7 +32,11 @@ func NewSetup(sess *core.Session, deps Deps) *Setup {
 	u.Focus()
 	p := textinput.New()
 	p.Prompt, p.Placeholder, p.CharLimit, p.Width = "", "optional, e.g. team/app", 256, 44
-	return &Setup{sess: sess, deps: deps, th: core.NewTheme(), url: u, parent: p}
+	th := core.NewTheme()
+	for _, in := range []*textinput.Model{&u, &p} {
+		in.PlaceholderStyle, in.CompletionStyle = th.Placeholder, th.Placeholder
+	}
+	return &Setup{sess: sess, deps: deps, th: th, url: u, parent: p}
 }
 
 func (s *Setup) Init() tea.Cmd { return textinput.Blink }
@@ -113,7 +117,7 @@ func (s *Setup) View() string {
 	case s.busy:
 		lines = append(lines, "", s.th.MutedTxt.Render("checking connection..."))
 	case s.errMsg != "":
-		lines = append(lines, "", lipgloss.NewStyle().Foreground(s.th.Fail).Render(s.errMsg))
+		lines = append(lines, "", s.th.FailTxt.Render(s.errMsg))
 	}
 	return lipgloss.Place(s.width, s.height, lipgloss.Center, lipgloss.Center, s.th.Box.Render(strings.Join(lines, "\n")))
 }

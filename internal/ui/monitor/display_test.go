@@ -249,19 +249,19 @@ func TestDotColoursAndRunning(t *testing.T) {
 			t.Errorf("%s dot = %q", res, got)
 		}
 	}
-	if ansi.Strip(m.dot(jenkins.Build{Building: true})) != "●" || ansi.Strip(m.dot(jenkins.Build{Result: "ABORTED"})) != "○" {
-		t.Error("running is a filled dot, aborted a hollow one")
+	if ansi.Strip(m.dot(jenkins.Build{Building: true})) != "◌" || ansi.Strip(m.dot(jenkins.Build{Result: "ABORTED"})) != "○" {
+		t.Error("running is a dotted circle, aborted a hollow one")
 	}
 	// A newer running build is appended on the right of the fetched history.
 	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 5, Result: "FAILURE"}, {Number: 4, Result: "SUCCESS"}}}
 	m.runs[0].phase, m.runs[0].num = phRunning, 6
-	if got := ansi.Strip(m.dots(m.runs[0])); got != "●✕●" {
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "●✕◌" {
 		t.Fatalf("dots with running = %q", got)
 	}
 	// History that already lists the running build must not get a second dot.
 	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 6, Building: true}, {Number: 5, Result: "SUCCESS"}, {Number: 4, Result: "FAILURE"}}}
 	m.runs[0].num = 6
-	if got := ansi.Strip(m.dots(m.runs[0])); got != "✕●●" {
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "✕●◌" {
 		t.Fatalf("running build listed in history: %q", got)
 	}
 }
