@@ -175,3 +175,24 @@ func newRawServer(t *testing.T, body string) string {
 	t.Cleanup(ts.Close)
 	return ts.URL
 }
+
+func TestQueuedJobsCountsItemsPerJob(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("team/a")
+	srv.Job("team/b")
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/a", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/a", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/b", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/b", Cancelled: true})
+	c, err := New(Options{BaseURL: srv.URL, Username: srv.User(), Token: srv.Token(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.QueuedJobs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, map[string]int{"team/a": 2, "team/b": 1}) {
+		t.Fatalf("queued = %v", got)
+	}
+}

@@ -23,6 +23,7 @@ type Deps struct {
 	ConfigDir   string        // directory holding config.toml
 	Collections Factory       // nil -> "coming soon" placeholder
 	Catalog     Factory       // nil -> "coming soon" placeholder
+	Overview    Factory       // nil -> "coming soon" placeholder
 	MinSplash   time.Duration // 0 -> 1.5s
 	// OpenCollection returns the command that opens the named Collection's Run
 	// Monitor (the Session's StartCollection); it yields a Start. nil ignores

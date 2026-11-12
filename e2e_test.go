@@ -157,7 +157,7 @@ func TestFirstRunSetupLoginMenu(t *testing.T) {
 	h.expectNot(testToken)
 	h.expect("Signed in as Me Myself")
 
-	// the menu has exactly three entries.
+	// the menu has exactly four entries.
 	var entries []string
 	for _, l := range strings.Split(h.screenText(), "\n") {
 		if i := strings.Index(l, "│"); i >= 0 {
@@ -166,7 +166,7 @@ func TestFirstRunSetupLoginMenu(t *testing.T) {
 			}
 		}
 	}
-	if want := []string{"> Collections", "Job Catalog", "Quit"}; !reflect.DeepEqual(entries, want) {
+	if want := []string{"> Collections", "Job Catalog", "Overview", "Quit"}; !reflect.DeepEqual(entries, want) {
 		t.Fatalf("menu entries = %q, want %q\n%s", entries, want, h.screenText())
 	}
 
@@ -206,7 +206,7 @@ func TestMenuQuit(t *testing.T) {
 		keys []string
 	}{
 		{"q", []string{"q"}},
-		{"entry", []string{"down", "down", "enter"}},
+		{"entry", []string{"down", "down", "down", "enter"}},
 		{"ctrl+c", []string{"ctrl+c"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1896,4 +1896,37 @@ func TestStartCollectionMarksMissingJobs(t *testing.T) {
 	h.loginNoMenu()
 	h.expectTitle("Run Monitor: Mix")
 	h.expectRow("team/gone", "MISSING")
+}
+
+// ---- Overview (CORE3) ----
+
+func TestOverviewShowsCountsAndOpensTheMonitor(t *testing.T) {
+	f := mixFixture(t)
+	f.AddQueueItem(jenkinstest.QueueItem{Job: "team/web/build", Why: "busy"})
+	toml := collectionsTOML("Mix", mixJobs...) + collectionsTOML("Calm", "team/api/build")
+	h := newApp(t, f, withCollections(toml))
+	h.loginOK()
+	h.menuTo(2)
+	h.expectTitle("Overview")
+	h.expect("Mix", "1 failed · 1 running · 1 queued", "Calm", "nothing failed or running")
+
+	// Enter opens the highlighted Collection's monitor; esc returns and polling resumes.
+	h.key("down", "enter")
+	h.expectTitle("Run Monitor: Calm")
+	h.key("esc")
+	h.expectTitle("Overview")
+	f.Job("team/api/build").LastBuild(jenkinstest.Build{Number: 13, Result: "FAILURE", Timestamp: now()})
+	h.key("R")
+	h.expect("Calm", "1 failed")
+
+	h.key("up", "enter")
+	h.expectTitle("Run Monitor: Mix")
+	h.expectRow("team/api/deploy", "FAILED", "#7")
+}
+
+func TestOverviewWithoutCollections(t *testing.T) {
+	h := newApp(t, mixFixture(t))
+	h.loginOK()
+	h.menuTo(2)
+	h.expect("No Collections yet")
 }

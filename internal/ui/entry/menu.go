@@ -10,7 +10,7 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
-// Menu is the main menu: Collections, Job Catalog, Quit.
+// Menu is the main menu: Collections, Job Catalog, Overview, Quit.
 type Menu struct {
 	sess          *core.Session
 	deps          Deps
@@ -25,7 +25,7 @@ type Menu struct {
 // noticeWidth keeps a long error inside the menu box.
 const noticeWidth = 40
 
-var menuItems = []string{"Collections", "Job Catalog", "Quit"}
+var menuItems = []string{"Collections", "Job Catalog", "Overview", "Quit"}
 
 // NewMenu returns the main menu; user is shown as "signed in as".
 func NewMenu(sess *core.Session, deps Deps, user string) *Menu {
@@ -77,6 +77,8 @@ func (m *Menu) activate() tea.Cmd {
 		return core.Cmd(core.Push{Screen: build(m.deps.Collections, m.sess, "Collections")})
 	case 1:
 		return core.Cmd(core.Push{Screen: build(m.deps.Catalog, m.sess, "Job Catalog")})
+	case 2:
+		return core.Cmd(core.Push{Screen: build(m.deps.Overview, m.sess, "Overview")})
 	}
 	return core.Cmd(core.Quit{})
 }
