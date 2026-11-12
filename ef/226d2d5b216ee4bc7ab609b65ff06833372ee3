@@ -1,0 +1,21 @@
+internal/ui/core/loading.go
+  s_1c16aed3d161c7::t_7bbf27e8f2d1f1 23-25,78-83
+internal/ui/core/loading_test.go
+  s_1c16aed3d161c7::t_b293c3a3395f91 108-128
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "ef226d2d5b216ee4bc7ab609b65ff06833372ee3",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
