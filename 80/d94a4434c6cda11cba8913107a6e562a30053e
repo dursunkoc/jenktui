@@ -1,0 +1,21 @@
+internal/jenkins/jenkinstest/server.go
+  s_1c16aed3d161c7::t_e1688148bdb08c 85,92-114,817-854
+internal/jenkins/jenkinstest/server_test.go
+  s_1c16aed3d161c7::t_0886e530228c3a 10,125-178
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "80d94a4434c6cda11cba8913107a6e562a30053e",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
