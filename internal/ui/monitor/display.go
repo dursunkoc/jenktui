@@ -14,9 +14,10 @@ import (
 // causes, commits), keyed by job and build number.
 type mdState struct {
 	hist     map[buildKey][]jenkins.Build // last results, newest first
-	histBusy map[buildKey]bool            // fetched or in flight
+	histBusy map[buildKey]int             // epoch a fetch started in; older ones were lost with the screen
 	ctx      map[buildKey]jenkins.BuildContext
-	ctxBusy  map[buildKey]bool
+	ctxBusy  map[buildKey]int
+	ctxDone  map[buildKey]bool // a context fetched after the build finished (final)
 	// failed attempts per key; permanent errors and maxTries stop the retries
 	histTries, ctxTries map[buildKey]int
 }

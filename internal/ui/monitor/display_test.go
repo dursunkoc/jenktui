@@ -7,11 +7,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
 // MD1: the header spinner shows for the first load and for R only.
@@ -386,5 +388,67 @@ func TestCauseNewlinesBecomeSpaces(t *testing.T) {
 	l := m.contextLines(st)
 	if len(l) != 1 || ansi.Strip(l[0]) != "Started by upstream" {
 		t.Fatalf("%q", l)
+	}
+}
+
+// pane is a stand-in root screen for the Router test.
+type pane struct{ got []tea.Msg }
+
+func (p *pane) Init() tea.Cmd { return nil }
+func (p *pane) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
+	p.got = append(p.got, msg)
+	return p, nil
+}
+func (p *pane) View() string        { return "" }
+func (p *pane) Title() string       { return "root" }
+func (p *pane) Keys() []key.Binding { return nil }
+
+func TestReplyLostWhileLeftIsFetchedAgain(t *testing.T) {
+	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{})
+	r := core.NewRouter(&core.Session{}, &pane{})
+	r.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	r.Update(core.Push{Screen: m})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	reply := m.fetchHistory(st) // a fetch in flight
+	_, cmd := r.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	r.Update(cmd().(tea.Msg)) // core.Pop
+	if r.Depth() != 1 {
+		t.Fatal("esc must pop the monitor")
+	}
+	r.Update(reply()) // the router sends it to the root screen: lost
+	if len(m.md.hist) != 0 {
+		t.Fatal("the reply must not reach the popped monitor")
+	}
+	r.Update(core.Push{Screen: m})
+	_, cmd = r.Update(tickMsg{gen: m.gen})
+	feed := func(cmd tea.Cmd) {
+		if cmd == nil {
+			return
+		}
+		var walk func(tea.Cmd)
+		walk = func(c tea.Cmd) {
+			if c == nil {
+				return
+			}
+			switch msg := c().(type) {
+			case nil:
+			case tea.BatchMsg:
+				for _, x := range msg {
+					walk(x)
+				}
+			default:
+				_, next := r.Update(msg)
+				walk(next)
+			}
+		}
+		walk(cmd)
+	}
+	feed(cmd)
+	if c.histN["a"] != 2 || len(m.md.hist) != 1 {
+		t.Fatalf("fetches = %d, hist = %v: the lost fetch must be repeated", c.histN["a"], m.md.hist)
+	}
+	if ansi.Strip(m.dots(m.runs[0])) != "●" {
+		t.Fatal("dots must appear")
 	}
 }

@@ -48,9 +48,10 @@ func (h histMsg) apply(m *model) tea.Cmd {
 			m.md.histTries = map[buildKey]int{}
 		}
 		m.md.histTries[h.key]++
-		if !permanent(h.err) && m.md.histTries[h.key] < maxTries {
-			delete(m.md.histBusy, h.key) // try again on the next poll
+		if permanent(h.err) {
+			m.md.histTries[h.key] = maxTries
 		}
+		delete(m.md.histBusy, h.key) // try again on the next poll, up to maxTries
 		return nil
 	}
 	if m.md.hist == nil {
@@ -74,17 +75,22 @@ func (c ctxMsg) apply(m *model) tea.Cmd {
 			m.md.ctxTries = map[buildKey]int{}
 		}
 		m.md.ctxTries[c.key]++
-		if !permanent(c.err) && m.md.ctxTries[c.key] < maxTries {
-			delete(m.md.ctxBusy, c.key)
+		if permanent(c.err) {
+			m.md.ctxTries[c.key] = maxTries
 		}
+		delete(m.md.ctxBusy, c.key)
 		return nil
 	}
 	if m.md.ctx == nil {
 		m.md.ctx = map[buildKey]jenkins.BuildContext{}
 	}
 	m.md.ctx[c.key] = c.bc
-	if c.running {
-		delete(m.md.ctxBusy, c.key) // not final: the next open or the finish refetches
+	delete(m.md.ctxBusy, c.key)
+	if !c.running { // a running build's context is not final: the next open or the finish refetches
+		if m.md.ctxDone == nil {
+			m.md.ctxDone = map[buildKey]bool{}
+		}
+		m.md.ctxDone[c.key] = true
 	}
 	return nil
 }
@@ -96,13 +102,17 @@ func (m *model) fetchHistory(st runState) tea.Cmd {
 		return nil
 	}
 	k := buildKey{st.run.Job, st.num}
-	if m.md.histBusy[k] {
+	if _, have := m.md.hist[k]; have || m.md.histTries[k] >= maxTries {
+		return nil
+	}
+	// A busy entry from an earlier epoch is a reply lost when the screen was left.
+	if e, busy := m.md.histBusy[k]; busy && e == m.epoch {
 		return nil
 	}
 	if m.md.histBusy == nil {
-		m.md.histBusy = map[buildKey]bool{}
+		m.md.histBusy = map[buildKey]int{}
 	}
-	m.md.histBusy[k] = true
+	m.md.histBusy[k] = m.epoch
 	timeout := m.deps.PollTimeout
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
@@ -119,13 +129,16 @@ func (m *model) fetchContext(st runState) tea.Cmd {
 		return nil
 	}
 	k := buildKey{st.run.Job, st.num}
-	if m.md.ctxBusy[k] {
+	if m.md.ctxDone[k] || m.md.ctxTries[k] >= maxTries {
+		return nil
+	}
+	if e, busy := m.md.ctxBusy[k]; busy && e == m.epoch {
 		return nil
 	}
 	if m.md.ctxBusy == nil {
-		m.md.ctxBusy = map[buildKey]bool{}
+		m.md.ctxBusy = map[buildKey]int{}
 	}
-	m.md.ctxBusy[k] = true
+	m.md.ctxBusy[k] = m.epoch
 	timeout, running := m.deps.PollTimeout, st.phase != phFinished
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
