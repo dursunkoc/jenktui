@@ -1471,7 +1471,8 @@ func TestMonitorStageLog(t *testing.T) {
 	h.key("m")
 	h.key("enter")
 	h.expect("team/api/deploy #7", "Build", "Deploy")
-	h.key("down", "down") // Build, compile, Deploy
+	// The marker starts on the failed step (sh); up goes to the Deploy stage.
+	h.key("up")
 	h.key("l")
 	h.expect("stage Deploy", "kubectl: connection refused")
 	h.expectNot("compiled fine", "whole build output")

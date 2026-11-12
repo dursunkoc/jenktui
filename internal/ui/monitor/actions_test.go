@@ -170,8 +170,9 @@ func TestKeysIgnoredBehindModalLogAndOverlay(t *testing.T) {
 	if !(m.load.Active() && m.unpolled()) {
 		t.Fatal("setup: modal expected")
 	}
-	pressKey(m, 'o')
-	pressKey(m, 'y')
+	if pressKey(m, 'o') != nil || pressKey(m, 'y') != nil {
+		t.Fatal("o and y must return no command behind the modal")
+	}
 
 	// While the log is open o and y act on the log (LV4; see logview_test.go).
 
@@ -190,3 +191,181 @@ type stubOverlay struct{}
 func (stubOverlay) view(int, int) string           { return "" }
 func (stubOverlay) key(tea.KeyMsg) (tea.Cmd, bool) { return nil, false }
 func (stubOverlay) keys() []key.Binding            { return nil }
+
+func failClient() *fakeClient {
+	return &fakeClient{
+		builds: map[string]map[int]jenkins.Build{
+			"a": {0: {Number: 3, Result: "SUCCESS"}},
+			"b": {0: {Number: 9, Result: "FAILURE"}},
+			"c": {0: {Number: 4, Result: "FAILURE"}},
+		},
+		stages: []jenkins.Stage{
+			{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+			{ID: "2", Name: "Test", Status: jenkins.StageFailed},
+			{ID: "3", Name: "Deploy", Status: jenkins.StageNotExecuted},
+		},
+		log: "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n",
+	}
+}
+
+func failModel(c *fakeClient) *model {
+	m := NewCollection(Deps{Client: c, Now: (&clock{t: t0}).now}, "N", []string{"a", "b", "c"}, nil).(*model)
+	wire(m)
+	m.w, m.h = 80, 10
+	cycle(m)
+	return m
+}
+
+func TestFNextFailedRowWraps(t *testing.T) {
+	m := failModel(failClient())
+	pressKey(m, 'f')
+	if m.cursor != 1 {
+		t.Fatalf("cursor %d", m.cursor)
+	}
+	pressKey(m, 'f')
+	pressKey(m, 'f') // wraps past a (success) to b
+	if m.cursor != 1 {
+		t.Fatalf("cursor %d after wrap", m.cursor)
+	}
+	m.cursor = 0
+	m2 := failModel(&fakeClient{builds: map[string]map[int]jenkins.Build{"a": {0: ok(1)}, "b": {0: ok(1)}, "c": {0: ok(1)}}})
+	pressKey(m2, 'f')
+	if m2.cursor != 0 {
+		t.Fatal("no failed row: cursor stays")
+	}
+}
+
+func TestEnterOnFailedBuildMarksFailedStage(t *testing.T) {
+	m := failModel(failClient())
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd) // stages arrive after the details opened
+	if m.stageCur != 1 {
+		t.Fatalf("marker on line %d, want the Test stage (1)", m.stageCur)
+	}
+}
+
+func TestMovingFirstKeepsTheUsersMarker(t *testing.T) {
+	c := failClient()
+	c.stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+		{ID: "2", Name: "Test", Status: jenkins.StageSuccess},
+		{ID: "3", Name: "Deploy", Status: jenkins.StageFailed},
+	}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ma.focusFailed || m.stageCur != 0 {
+		t.Fatal("waiting for stages")
+	}
+	m.runs[1].stages = c.stages // loaded, marker not placed yet
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.stageCur != 1 || m.ma.focusFailed {
+		t.Fatalf("down moved to %d, focusFailed=%v", m.stageCur, m.ma.focusFailed)
+	}
+	deliver(m, cmd) // the stages arrive late
+	if m.stageCur != 1 {
+		t.Fatalf("marker jumped to %d after the user moved", m.stageCur)
+	}
+}
+
+func TestUnstableBuildMarksUnstableStageAndLogEnds(t *testing.T) {
+	c := failClient()
+	c.builds["b"][0] = jenkins.Build{Number: 9, Result: "UNSTABLE"}
+	c.stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+		{ID: "2", Name: "Test", Status: jenkins.StageUnstable},
+	}
+	c.stageLogs = map[string]string{"2": "s1\ns2\ns3\ns4\ns5\ns6\ns7\ns8\ns9\ns10\ns11\ns12\n"}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	if m.stageCur != 1 {
+		t.Fatalf("marker %d, want the unstable stage", m.stageCur)
+	}
+	if cmd := pressKey(m, 'l'); cmd != nil {
+		m.Update(cmd())
+	}
+	if m.log == nil || m.log.follow {
+		t.Fatal("log at end, not following")
+	}
+	all := m.log.all()
+	if len(all) == 0 || m.log.start(len(all), m.logPage()) != len(all)-m.logPage() {
+		t.Fatalf("not at the end: %d lines", len(all))
+	}
+}
+
+func TestFailedStageWinsOverUnstable(t *testing.T) {
+	st := []jenkins.Stage{
+		{Name: "A", Status: jenkins.StageUnstable},
+		{Name: "B", Status: jenkins.StageFailed},
+	}
+	if got := failedLine(st); got != 1 {
+		t.Fatalf("got %d", got)
+	}
+}
+
+func TestFailedChildIsTheDeepestMarker(t *testing.T) {
+	st := []jenkins.Stage{
+		{Name: "Build", Status: jenkins.StageSuccess},
+		{Name: "Test", Status: jenkins.StageFailed, Children: []jenkins.Stage{
+			{Name: "unit", Status: jenkins.StageSuccess}, {Name: "it", Status: jenkins.StageFailed}}},
+	}
+	if got := failedLine(st); got != 3 {
+		t.Fatalf("got %d, want 3", got)
+	}
+	if failedLine(st[:1]) != -1 {
+		t.Fatal("no failed stage")
+	}
+}
+
+func TestLOpensFailedBuildLogAtEndNotFollowing(t *testing.T) {
+	c := failClient()
+	c.stages[1].Children = nil
+	c.steps = map[string][]jenkins.Stage{}
+	c.stageLogs = map[string]string{"2": "s1\ns2\ns3\ns4\ns5\ns6\ns7\ns8\ns9\ns10\ns11\ns12\n"}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	if cmd := pressKey(m, 'l'); cmd != nil {
+		m.Update(cmd())
+	}
+	if m.log == nil || m.log.follow {
+		t.Fatal("log open and not following")
+	}
+	all := m.log.all()
+	if got := m.log.start(len(all), m.logPage()); got != len(all)-m.logPage() {
+		t.Fatalf("start %d of %d", got, len(all))
+	}
+}
+
+func TestFreestyleFailureOpensFullLogAtEnd(t *testing.T) {
+	c := failClient()
+	c.stageErr = jenkins.ErrNoStages
+	c.stages = nil
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	pressKey(m, 'l')
+	if m.log == nil || m.log.nodes != nil {
+		t.Fatal("full build log expected")
+	}
+	m.Update(m.fetchLog(0)())
+	all := m.log.all()
+	if m.log.follow || m.log.start(len(all), m.logPage()) != max(len(all)-m.logPage(), 0) {
+		t.Fatalf("not at end: follow=%v", m.log.follow)
+	}
+}
+
+func TestLOnSuccessKeepsFollowing(t *testing.T) {
+	m := failModel(failClient())
+	m.cursor = 0
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	pressKey(m, 'L')
+	if m.log == nil || !m.log.follow {
+		t.Fatal("whole-log L unchanged")
+	}
+}

@@ -404,7 +404,7 @@ func (m *model) Keys() []key.Binding {
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit)
 	}
-	return append([]key.Binding{keyDetails, keyShow, keyRefresh}, append(m.actionKeys(), core.KeyBack)...)
+	return append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, append(m.actionKeys(), core.KeyBack)...)
 }
 
 var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "details"))
@@ -417,7 +417,7 @@ func (m *model) FullHelp() []core.HelpGroup {
 	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Run Monitor", Keys: append([]key.Binding{keyDetails, keyShow, keyRefresh}, m.actionKeys()...)},
+		{Title: "Run Monitor", Keys: append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...)},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -474,6 +474,7 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			prev := m.runs[i]
 			m.runs[i] = msg.st
 			m.restoreCursor(keep)
+			m.focusFailedStage()
 			hook = m.hooks.result(i, prev)
 		}
 		if m.pending <= 0 {
@@ -491,6 +492,7 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			} else {
 				m.runs[i].stages, m.runs[i].stagesFinal = msg.stages, m.runs[i].phase == phFinished
 			}
+			m.focusFailedStage()
 		}
 	case applier:
 		return m, msg.apply(m)
@@ -525,7 +527,11 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		cmd, _ := m.actionKey(msg)
 		return m, cmd
 	case key.Matches(msg, keyLog) && m.details:
-		return m, m.openLog(m.stageLines() > 0) // the selected stage or step when there are stages
+		return m, m.openFailedLog() // the selected stage or step when there are stages
+	case key.Matches(msg, keyFailed) && !m.details:
+		if !(m.load.Active() && m.unpolled()) {
+			m.nextFailed()
+		}
 	case key.Matches(msg, keyLogAll) && m.details:
 		return m, m.openLog(false)
 	case key.Matches(msg, core.KeyBack):
@@ -545,12 +551,14 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		m.load.StopNow()
 		return m, core.Cmd(core.Quit{})
 	case key.Matches(msg, core.KeyUp):
+		m.ma.focusFailed = false
 		if m.details {
 			m.stageCur = max(m.stageCur-1, 0)
 		} else if m.cursor > 0 {
 			m.cursor--
 		}
 	case key.Matches(msg, core.KeyDown):
+		m.ma.focusFailed = false
 		if m.details {
 			m.stageCur = max(min(m.stageCur+1, m.stageLines()-1), 0)
 		} else if m.cursor < len(m.visible())-1 {
@@ -574,6 +582,8 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		}
 		m.details = !m.details
 		m.stageCur = 0
+		m.ma.focusFailed = m.details && m.runs[m.selected()].failed()
+		m.focusFailedStage()
 		if m.details {
 			return m, tea.Batch(m.detailStages(), m.hooks.detailsOpen(m.selected()))
 		}

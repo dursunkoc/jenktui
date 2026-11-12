@@ -6,16 +6,23 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/sysint"
 )
 
 // maState is the Monitor Actions lane's per-monitor state (test reports,
 // notified builds). Owned by lane MA; keyed by job and build number.
-type maState struct{}
+type maState struct {
+	// focusFailed: the details view was just opened on a failed build and the
+	// stage marker has not been placed yet (stages may still be loading). Any
+	// movement key clears it.
+	focusFailed bool
+}
 
 var (
-	keyOpen = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser"))
-	keyCopy = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy URL"))
+	keyOpen   = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser"))
+	keyFailed = key.NewBinding(key.WithKeys("f"), key.WithHelp("f", "next failed"))
+	keyCopy   = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy URL"))
 )
 
 // urler is the optional client part that gives browser URLs built from the
@@ -115,4 +122,73 @@ func (m *model) actionKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		}, true
 	}
 	return nil, false
+}
+
+// failed reports a finished build that did not succeed (FAILURE or UNSTABLE;
+// an abort is not a failure to chase).
+func (s runState) failed() bool {
+	return s.phase == phFinished && (s.result == "FAILURE" || s.result == "UNSTABLE")
+}
+
+// nextFailed moves the cursor to the next failed visible row after it,
+// wrapping round; it stays put when there is none.
+func (m *model) nextFailed() {
+	v := m.visible()
+	for d := 1; d <= len(v); d++ {
+		vi := (m.cursor + d) % len(v)
+		if m.runs[v[vi]].failed() {
+			m.cursor = vi
+			return
+		}
+	}
+}
+
+// failedLine is the details line of the first failed stage, or of its deepest
+// failed child when it has parallel children; without a failed stage, the same
+// for the first unstable one; -1 when neither exists.
+func failedLine(stages []jenkins.Stage) int {
+	if l := lineWith(stages, jenkins.StageFailed); l >= 0 {
+		return l
+	}
+	return lineWith(stages, jenkins.StageUnstable)
+}
+
+func lineWith(stages []jenkins.Stage, status jenkins.StageStatus) int {
+	n := 0
+	for _, s := range stages {
+		if s.Status == status {
+			for j, c := range s.Children {
+				if c.Status == status {
+					return n + 1 + j
+				}
+			}
+			return n
+		}
+		n += 1 + len(s.Children)
+	}
+	return -1
+}
+
+// focusFailedStage puts the details marker on the failed stage when the
+// details view was opened on a failed build and the user has not moved yet.
+func (m *model) focusFailedStage() {
+	i := m.selected()
+	if !m.ma.focusFailed || !m.details || i < 0 {
+		return
+	}
+	if l := failedLine(m.runs[i].stages); l >= 0 {
+		m.stageCur, m.ma.focusFailed = l, false
+	}
+}
+
+// openFailedLog opens the stage log (or the full log without stages) and, for
+// a failed build, shows the end of it without following.
+func (m *model) openFailedLog() tea.Cmd {
+	i := m.selected()
+	failed := i >= 0 && m.runs[i].failed()
+	cmd := m.openLog(m.stageLines() > 0)
+	if failed && m.log != nil {
+		m.log.follow, m.log.top = false, 1<<30 // clamped to the last page
+	}
+	return cmd
 }
