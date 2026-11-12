@@ -32,9 +32,14 @@ func (m *model) durText(st runState, d time.Duration) string {
 	return t + " / ~" + fmtEst(st.build.EstimatedDuration)
 }
 
-// fmtEst is an estimate without the noise of zero seconds: ~4m, ~1h05m, ~45s.
+// fmtEst is an estimate in whole minutes without trailing zeros: 4m, 1h, 1h05m, 45s.
 func fmtEst(d time.Duration) string {
-	return strings.TrimSuffix(fmtDur(d), "00s")
+	if d >= time.Minute {
+		// Jenkins' estimate is a millisecond average; whole minutes read better.
+		s := fmtDur(d.Round(time.Minute))
+		return strings.TrimSuffix(strings.TrimSuffix(s, "00s"), "00m")
+	}
+	return fmtDur(d)
 }
 
 // ageText says how long ago a finished build started (empty otherwise).
