@@ -1429,6 +1429,28 @@ func TestMonitorOpensHidingSuccessAndToggles(t *testing.T) {
 	h.expect("4 jobs")
 }
 
+// l in the details view shows the build's console log; esc returns to details.
+func TestMonitorConsoleLog(t *testing.T) {
+	f := mixFixture(t)
+	f.Job("team/api/deploy").Log("Started by user me\n[Pipeline] sh\n+ ./deploy.sh\nERROR: deploy failed\n")
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Mix")
+	h.key("m")
+	h.expectTitle("Run Monitor: Mix")
+	h.key("l") // no effect in the list
+	h.expectNot("Started by user me")
+	h.key("enter")
+	h.key("l")
+	h.expect("team/api/deploy #7", "Started by user me", "ERROR: deploy failed", "finished")
+	h.key("esc")
+	h.expect("team/api/deploy #7", "No pipeline stages for this job.")
+	h.expectNot("Started by user me")
+	h.key("esc")
+	h.expect("hiding 2 successful")
+}
+
 // The Run Monitor's status line is on the title row, and the job list starts
 // one blank line under it.
 func TestMonitorBlankLineAboveJobs(t *testing.T) {

@@ -32,6 +32,7 @@ type Client interface {
 	ResolveQueue(ctx context.Context, ref jenkins.QueueRef) (jenkins.QueueStatus, error)
 	BuildStatus(ctx context.Context, fullName string, number int) (jenkins.Build, error)
 	Stages(ctx context.Context, fullName string, number int) ([]jenkins.Stage, error)
+	ConsoleText(ctx context.Context, fullName string, number int, start int64) (jenkins.LogChunk, error)
 }
 
 // Deps are the monitor's dependencies. Zero durations get defaults.
@@ -125,7 +126,9 @@ type model struct {
 	hideSuccess bool
 	cursor      int // index into the visible rows
 	details     bool
-	stageCur    int // highlighted line (stage or parallel child) in the details view
+	log         *logView // the console log over the details view, when open
+	logGen      int      // bumped when a log opens or closes; drops stale log messages
+	stageCur    int      // highlighted line (stage or parallel child) in the details view
 	w, h        int
 
 	gen     int          // bumped on every poll cycle start and on exit; stale msgs are dropped
@@ -348,8 +351,11 @@ var keyRefresh = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh"))
 var keyShow = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "show/hide successful"))
 
 func (m *model) Keys() []key.Binding {
+	if m.log != nil {
+		return []key.Binding{core.KeyUp, core.KeyDown, keyLogEnd, keyLogBack, core.KeyQuit}
+	}
 	if m.details {
-		return []key.Binding{core.KeyUp, core.KeyDown,
+		return []key.Binding{core.KeyUp, core.KeyDown, keyLog,
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "hide details")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit}
@@ -362,7 +368,7 @@ var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "de
 // FullHelp groups every key of the runs list for the help panel. The
 // details view has few keys and shows them all in the help bar.
 func (m *model) FullHelp() []core.HelpGroup {
-	if m.details {
+	if m.details || m.log != nil {
 		return nil
 	}
 	return []core.HelpGroup{
@@ -438,6 +444,8 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 				m.runs[i].stages, m.runs[i].stagesFinal = msg.stages, m.runs[i].phase == phFinished
 			}
 		}
+	case logMsg, logTickMsg:
+		return m, m.updateLog(msg)
 	case tea.KeyMsg:
 		return m.key(msg)
 	}
@@ -445,7 +453,14 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 }
 
 func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
+	if m.log != nil {
+		if cmd, ok := m.logKey(msg); ok {
+			return m, cmd
+		}
+	}
 	switch {
+	case key.Matches(msg, keyLog) && m.details:
+		return m, m.openLog()
 	case key.Matches(msg, core.KeyBack):
 		if m.details {
 			m.details = false // esc in the details view returns to the runs list
@@ -453,11 +468,13 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		}
 		m.gen++ // invalidate in-flight ticks/results; builds keep running on Jenkins
 		m.epoch++
+		m.closeLog()
 		m.load.StopNow()
 		return m, core.Cmd(core.Pop{})
 	case key.Matches(msg, core.KeyQuit):
 		m.gen++
 		m.epoch++
+		m.closeLog()
 		m.load.StopNow()
 		return m, core.Cmd(core.Quit{})
 	case key.Matches(msg, core.KeyUp):

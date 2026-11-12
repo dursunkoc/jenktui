@@ -127,6 +127,7 @@ type node struct {
 	disabled bool
 	pipeline bool
 	stages   []Stage
+	log      string // console output of the last build
 }
 
 // Server is a fake Jenkins.
@@ -354,6 +355,23 @@ func (j *Job) Disabled() *Job {
 	return j
 }
 
+// Log sets the console output of the job's last build (the fake serves it
+// through logText/progressiveText; X-More-Data is true while it is building).
+func (j *Job) Log(text string) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.log = text
+	return j
+}
+
+// AppendLog adds to the console output of the job's last build.
+func (j *Job) AppendLog(text string) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	j.n.log += text
+	return j
+}
+
 // Pipeline marks the job as a pipeline with the given stages for its last
 // build; wfapi endpoints then answer instead of 404.
 func (j *Job) Pipeline(stages ...Stage) *Job {
@@ -512,6 +530,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, s.buildJSON(full, n.last))
+	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
+		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		start, _ := strconv.Atoi(r.URL.Query().Get("start"))
+		start = max(0, min(start, len(n.log)))
+		w.Header().Set("Content-Type", "text/plain;charset=UTF-8")
+		w.Header().Set("X-Text-Size", strconv.Itoa(len(n.log)))
+		if n.last.Building {
+			w.Header().Set("X-More-Data", "true")
+		}
+		_, _ = io.WriteString(w, n.log[start:])
 	case len(rest) == 2 && rest[0] == "wfapi" && rest[1] == "runs":
 		if !n.pipeline {
 			http.NotFound(w, r)

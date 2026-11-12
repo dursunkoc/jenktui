@@ -13,6 +13,9 @@ import (
 )
 
 func (m *model) View() string {
+	if m.log != nil {
+		return m.logView()
+	}
 	if len(m.runs) == 0 {
 		return m.th.NoticeView("Nothing to monitor", "This collection has no jobs. esc to go back.")
 	}
@@ -57,7 +60,7 @@ func (m *model) View() string {
 // Subtitle is the status line shown on the title row while the runs list is
 // on screen (not over the details view, a notice or the first-load modal).
 func (m *model) Subtitle() string {
-	if len(m.runs) == 0 || m.details || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
+	if len(m.runs) == 0 || m.details || m.log != nil || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
 		return ""
 	}
 	return m.header()

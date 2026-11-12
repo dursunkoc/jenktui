@@ -3,6 +3,7 @@ package monitor
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -16,15 +17,19 @@ import (
 )
 
 type fakeClient struct {
-	queue    map[int]jenkins.QueueStatus
-	queueErr map[int]error
-	builds   map[string]map[int]jenkins.Build // job -> number (0 = last)
-	buildErr error
-	stages   []jenkins.Stage
-	stageErr error
-	deadline bool
-	buildN   map[string]int // BuildStatus calls per job
-	stageN   map[string]int // Stages calls per job
+	queue     map[int]jenkins.QueueStatus
+	queueErr  map[int]error
+	builds    map[string]map[int]jenkins.Build // job -> number (0 = last)
+	buildErr  error
+	stages    []jenkins.Stage
+	stageErr  error
+	deadline  bool
+	log       string // console output served by ConsoleText
+	logMore   bool
+	logErr    error
+	logStarts []int64
+	buildN    map[string]int // BuildStatus calls per job
+	stageN    map[string]int // Stages calls per job
 }
 
 func (f *fakeClient) ResolveQueue(ctx context.Context, r jenkins.QueueRef) (jenkins.QueueStatus, error) {
@@ -56,6 +61,14 @@ func (f *fakeClient) Stages(_ context.Context, job string, _ int) ([]jenkins.Sta
 	}
 	f.stageN[job]++
 	return f.stages, f.stageErr
+}
+
+func (f *fakeClient) ConsoleText(_ context.Context, _ string, _ int, start int64) (jenkins.LogChunk, error) {
+	if f.logErr != nil {
+		return jenkins.LogChunk{}, f.logErr
+	}
+	f.logStarts = append(f.logStarts, start)
+	return jenkins.LogChunk{Text: f.log[min(int(start), len(f.log)):], Next: int64(len(f.log)), More: f.logMore}, nil
 }
 
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -889,5 +902,137 @@ func TestDetailsArrowsMoveStages(t *testing.T) {
 	m.Update(tea.KeyMsg{Type: tea.KeyUp})
 	if m.stageCur != 1 {
 		t.Fatalf("stage cursor %d", m.stageCur)
+	}
+}
+
+func logTail(t *testing.T) (*model, *fakeClient) {
+	t.Helper()
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown}) // b: failed build with stages
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	return m, c
+}
+
+func pressL(m *model) tea.Cmd {
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+	return cmd
+}
+
+func TestLogOpensFromDetailsOnly(t *testing.T) {
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	if pressL(m) != nil || m.log != nil {
+		t.Fatal("l does nothing in the runs list")
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	c.log = "line one\nline two\n"
+	cmd := pressL(m)
+	if m.log == nil || cmd == nil {
+		t.Fatal("l in details opens the log and fetches it")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "loading…") {
+		t.Fatalf("before the first chunk:\n%s", v)
+	}
+	m.Update(cmd())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "line one") || !strings.Contains(v, "line two") || !strings.Contains(v, "finished") {
+		t.Fatalf("log:\n%s", v)
+	}
+	if st := m.Subtitle(); st != "" {
+		t.Fatalf("no subtitle over the log: %q", st)
+	}
+	// esc closes the log and stays in the details view; a second esc leaves details.
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.log != nil || !m.details {
+		t.Fatalf("esc should return to details (log=%v details=%v)", m.log != nil, m.details)
+	}
+}
+
+func TestLogFollowsGrowingOutput(t *testing.T) {
+	m, c := logTail(t)
+	c.log, c.logMore = "a\nb", true
+	m.Update(pressL(m)())
+	if !m.log.more || m.log.part != "b" || len(m.log.lines) != 1 {
+		t.Fatalf("partial line must wait for its newline: %+v", m.log)
+	}
+	// A later chunk continues from the returned offset and completes the line.
+	c.log, c.logMore = "a\nbc\nd\n", false
+	m.Update(logTickMsg{gen: m.logGen})
+	_, _ = m.Update(m.fetchLog(m.log.next)())
+	if got := strings.Join(m.log.all(), "|"); got != "a|bc|d" || m.log.more {
+		t.Fatalf("lines %q more=%v", got, m.log.more)
+	}
+	if want := []int64{0, 3}; !(len(c.logStarts) >= 2 && c.logStarts[0] == want[0] && c.logStarts[1] == want[1]) {
+		t.Fatalf("offsets %v", c.logStarts)
+	}
+}
+
+func TestLogScrollPausesFollowAndGResumes(t *testing.T) {
+	m, c := logTail(t)
+	m.h = 7 // 5 log lines
+	var sb strings.Builder
+	for i := 1; i <= 20; i++ {
+		fmt.Fprintf(&sb, "row %d\n", i)
+	}
+	c.log, c.logMore = sb.String(), true
+	m.Update(pressL(m)())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "row 20") || strings.Contains(v, "row 15\n") || !strings.Contains(v, "following") {
+		t.Fatalf("follows the tail:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if v = ansi.Strip(m.View()); m.log.follow || !strings.Contains(v, "row 15") || strings.Contains(v, "row 20") || !strings.Contains(v, "paused") {
+		t.Fatalf("up pauses:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}})
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "row 1\n") {
+		t.Fatalf("g goes to the top:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'G'}})
+	if v = ansi.Strip(m.View()); !m.log.follow || !strings.Contains(v, "row 20") {
+		t.Fatalf("G follows again:\n%s", v)
+	}
+	// Scrolling down to the end resumes following too.
+	m.Update(tea.KeyMsg{Type: tea.KeyPgUp})
+	m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	if !m.log.follow {
+		t.Fatal("paging back to the end follows")
+	}
+}
+
+func TestLogCleansConsoleText(t *testing.T) {
+	lv := &logView{}
+	lv.append("\x1b[32mgreen\x1b[0m\r\n\x1b[8mha:////4abc==\x1b[0mx ok\nprogress 10%\rprogress 90%")
+	if got := strings.Join(lv.all(), "|"); got != "green|x ok|progress 90%" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestLogErrorsAndLifecycle(t *testing.T) {
+	m, c := logTail(t)
+	c.logErr = jenkins.ErrBuildNotFound
+	cmd := pressL(m)
+	if _, next := m.Update(cmd()); next != nil {
+		t.Fatal("a vanished build is not retried")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "error:") {
+		t.Fatalf("error shown:\n%s", v)
+	}
+	// Messages of a closed log are dropped.
+	gen := m.logGen
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	c.logErr = nil
+	m.Update(logMsg{gen: gen, chunk: jenkins.LogChunk{Text: "late\n"}})
+	if m.log != nil {
+		t.Fatal("stale chunk must not reopen the log")
+	}
+	// Leaving the monitor while the log is open closes it.
+	pressL(m)
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})                            // closes log
+	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc}); cmd != nil { // leaves details
+		t.Fatal("esc from details does not pop")
 	}
 }

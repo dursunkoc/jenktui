@@ -54,7 +54,7 @@ Splash → Login → Menu (Collections, Job Catalog, Quit).
 Job names are shown relative to the parent job: under `parent_job = "team"`, `team/app/build` is shown as `app/build` (in the catalog, Collections and the Run Monitor). A job outside the parent keeps its full name. Job lists have three aligned columns, titled Pipeline, Branch and Status: the job (for a Multibranch Project, the project) with its folders separated by a grey `›` (`team › api › build`), the branch, decoded (`feature/login` rather than `feature%2Flogin`), and the status. The Run Monitor and the trigger screen show a branch as `digital-ui › feature/login`.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them.
 - **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
-- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
+- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. `Enter` opens a build's details and `l` there shows its console log, following new output while the build runs (`↑`/`↓`/`PgUp`/`PgDn` scroll, `g` top, `G` follow again, `Esc` back). Leaving it keeps its state for the session.
 
 ## Filtering
 
@@ -84,7 +84,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
-| Run Monitor | `Enter` details (`↑`/`↓` move between stages), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
+| Run Monitor | `Enter` details (`↑`/`↓` move between stages, `l` console log), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
 
 A Collection member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
 
@@ -92,7 +92,7 @@ A Collection member that no longer exists in Jenkins stays in the Collection, ma
 
 In: job catalog, Collections (create/edit/rename/delete/reorder), triggering with parameters (common + per-job), per-Collection Run Monitor with stages, Branch Filter.
 
-Out of v1: console log streaming, abort/rerun, multiple servers, credential storage.
+Out of v1: abort/rerun, multiple servers, credential storage.
 
 ## Development
 
