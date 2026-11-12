@@ -52,6 +52,7 @@ type appCfg struct {
 	configExtra string // appended to the generated config.toml
 	configURL   string // overrides the fake's URL
 	collections string // initial collections.toml
+	start       string // Collection named on the command line
 }
 
 type appOpt func(*appCfg)
@@ -59,6 +60,7 @@ type appOpt func(*appCfg)
 func withoutConfig() appOpt           { return func(c *appCfg) { c.noConfig = true } }
 func withConfigExtra(s string) appOpt { return func(c *appCfg) { c.configExtra += s + "\n" } }
 func withConfigURL(u string) appOpt   { return func(c *appCfg) { c.configURL = u } }
+func withStart(name string) appOpt    { return func(c *appCfg) { c.start = name } }
 func withCollections(toml string) appOpt {
 	return func(c *appCfg) { c.collections = toml }
 }
@@ -86,7 +88,7 @@ func newApp(t *testing.T, fake *jenkinstest.Server, opts ...appOpt) *harness {
 	}
 	deps := newDeps(dir)
 	deps.MinSplash = time.Millisecond
-	sess := &core.Session{}
+	sess := &core.Session{StartCollection: c.start}
 	h := &harness{t: t, fake: fake, dir: dir, sess: sess}
 	h.router = core.NewRouter(sess, entry.NewSplash(sess, deps))
 	return h
@@ -408,6 +410,14 @@ func (h *harness) loginOK() {
 	h.submitLogin(h.fake.User(), h.fake.Token())
 	h.expectTitle("jenktui")
 	h.expect("Collections", "Job Catalog", "Quit")
+}
+
+// loginNoMenu logs in without expecting the menu, for runs that start on a
+// Collection's monitor.
+func (h *harness) loginNoMenu() {
+	h.t.Helper()
+	h.boot()
+	h.submitLogin(h.fake.User(), h.fake.Token())
 }
 
 // menuTo selects a menu entry (0 Collections, 1 Job Catalog) and opens it.

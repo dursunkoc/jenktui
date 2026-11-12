@@ -34,7 +34,7 @@ The help bar never runs past the terminal width: keys that do not fit are droppe
 ## Session
 
 ```go
-type Session struct { Config config.Config; Client JenkinsClient }
+type Session struct { Config config.Config; Client JenkinsClient; StartCollection string }
 type JenkinsClient interface { // implemented by *jenkins.Client
     Ping(ctx context.Context) (string, error)
     ListJobs(ctx context.Context, parent string) ([]jenkins.Job, error)
@@ -42,7 +42,7 @@ type JenkinsClient interface { // implemented by *jenkins.Client
 }
 ```
 
-Pass `*Session` to screen constructors. `Client` is nil until login succeeds; the login screen sets it. Credentials live only inside the client, in memory.
+Pass `*Session` to screen constructors. `Client` is nil until login succeeds; the login screen sets it. Credentials live only inside the client, in memory. `StartCollection` is the Collection named on the command line (`jenktui [collection]`): the Menu reads and clears it in its first `Init` and, through `entry.Deps.OpenCollection`, runs a command that finds the Collection (case-insensitive), reads the catalog to flag missing jobs and name Multibranch branches, and answers `entry.Start`. `Start.Screen` (built on the UI goroutine) is pushed over the Menu; `Start.Notice` (unknown name, unreadable Collections file) is shown on the Menu until the next key.
 
 ## Router and navigation
 

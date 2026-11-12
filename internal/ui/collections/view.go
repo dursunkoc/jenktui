@@ -208,7 +208,7 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 		for _, k := range s.missing() {
 			missing[k] = true
 		}
-		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing, namesOf(s.members, s.cat, s.deps.Parent))})
+		return s, core.Cmd(core.Push{Screen: s.deps.Monitor(s.name, slices.Clone(s.members), missing, catalog.NamesOf(s.members, s.cat, s.deps.Parent))})
 	case key.Matches(m, keyRemove):
 		if it, ok := s.list.Cursor(); ok && it.Missing {
 			keys := slices.DeleteFunc(slices.Clone(s.members), func(k string) bool { return k == it.Key })
@@ -265,7 +265,7 @@ func (s *viewScreen) trigger() (core.Screen, tea.Cmd) {
 	if len(skipped) > 0 {
 		s.notice = "skipped missing: " + strings.Join(skipped, ", ")
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys, namesOf(s.members, s.cat, s.deps.Parent))})
+	return s, core.Cmd(core.Push{Screen: s.deps.Trigger(s.name, keys, catalog.NamesOf(s.members, s.cat, s.deps.Parent))})
 }
 
 func (s *viewScreen) View() string {

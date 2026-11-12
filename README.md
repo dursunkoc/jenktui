@@ -92,6 +92,8 @@ or build from a checkout with `go build -o jenktui .`. `jenktui --version` print
 3. Choose **Collections**, press `n`, name the Collection, then tick its jobs in the picker with `Space` (`/` filters) and press `Enter` to save.
 4. Open the Collection with `Enter`. Press `t` to trigger and `m` to open its Run Monitor.
 
+To skip the menu, name a Collection on the command line: `jenktui nightly` logs in and opens that Collection's Run Monitor (the name's letter case does not matter). An unknown name shows the menu with a notice. `Esc` in the monitor goes back to the menu.
+
 The [wiki](https://github.com/dursunkoc/jenktui/wiki) walks through each step in more detail.
 
 ## Configuration

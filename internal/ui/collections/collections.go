@@ -359,39 +359,9 @@ func (s *listScreen) monitorLoaded(m loadedMsg) (core.Screen, tea.Cmd) {
 	if m.err != nil {
 		s.notice = "could not check for missing jobs: " + m.err.Error()
 	} else {
-		missing = missingOf(jobs, m.cat)
+		missing = catalog.MissingOf(jobs, m.cat)
 	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing, namesOf(jobs, m.cat, s.deps.Parent))})
-}
-
-// namesOf says how each member found in the catalog is shown.
-func namesOf(members []string, cat jenkins.Catalog, parent string) map[string]core.JobName {
-	in := map[string]bool{}
-	for _, k := range members {
-		in[k] = true
-	}
-	names := map[string]core.JobName{}
-	for _, j := range cat.Jobs {
-		if in[j.FullName] {
-			names[j.FullName] = catalog.JobName(j, parent)
-		}
-	}
-	return names
-}
-
-// missingOf flags the members that are not in the catalog.
-func missingOf(members []string, cat jenkins.Catalog) map[string]bool {
-	have := map[string]bool{}
-	for _, j := range cat.Jobs {
-		have[j.FullName] = true
-	}
-	missing := map[string]bool{}
-	for _, k := range members {
-		if !have[k] {
-			missing[k] = true
-		}
-	}
-	return missing
+	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing, catalog.NamesOf(jobs, m.cat, s.deps.Parent))})
 }
 
 func (s *listScreen) inputKey(m tea.KeyMsg) (core.Screen, tea.Cmd) {

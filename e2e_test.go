@@ -1862,3 +1862,38 @@ func TestRerunCancelReturnsToMonitorAndResumesPolling(t *testing.T) {
 		t.Fatalf("%d builds posted", n)
 	}
 }
+
+// ---- Open a Collection from the command line (CORE2) ----
+
+func TestStartCollectionLandsOnItsMonitorAfterLogin(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withStart("mIx"), withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginNoMenu()
+	h.expectTitle("Run Monitor: Mix")
+	h.expect("hiding 2 successful (s to show)")
+	h.expectRow("team/api/deploy", "FAILED", "#7")
+	// Esc goes back to the menu, and the name is not applied again.
+	h.key("esc")
+	h.expectTitle("jenktui")
+	if h.sess.StartCollection != "" {
+		t.Fatal("StartCollection was not cleared")
+	}
+}
+
+func TestStartCollectionUnknownShowsMenuWithNotice(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withStart("Nope"), withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginNoMenu()
+	h.expectTitle("jenktui")
+	h.expect("no Collection named \"Nope\"", "Collections", "Job Catalog")
+	h.key("down")
+	h.expectNot("no Collection named")
+}
+
+func TestStartCollectionMarksMissingJobs(t *testing.T) {
+	f := mixFixture(t)
+	h := newApp(t, f, withStart("Mix"), withCollections(collectionsTOML("Mix", "team/api/deploy", "team/gone")))
+	h.loginNoMenu()
+	h.expectTitle("Run Monitor: Mix")
+	h.expectRow("team/gone", "MISSING")
+}

@@ -1,11 +1,14 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
@@ -25,9 +28,13 @@ var _ monitor.Sys = sysint.Sys{}
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "jenktui is a terminal UI for Jenkins.\n\nUsage: jenktui [--version]\n\nSettings live in ~/.config/jenktui/config.toml (set JENKTUI_CONFIG_DIR to change the directory).\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "jenktui is a terminal UI for Jenkins.\n\nUsage: jenktui [--version] [collection]\n(flags go before the collection name)\n\nWith a Collection name (any letter case), jenktui opens that Collection's Run Monitor right after login. An unknown name shows the menu with a notice.\n\nSettings live in ~/.config/jenktui/config.toml (set JENKTUI_CONFIG_DIR to change the directory).\n")
 	}
 	flag.Parse()
+	if flag.NArg() > 1 {
+		flag.Usage()
+		os.Exit(2)
+	}
 	if *showVersion {
 		fmt.Println(version.String())
 		return
@@ -38,7 +45,7 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-	sess := &core.Session{}
+	sess := &core.Session{StartCollection: strings.TrimSpace(flag.Arg(0))}
 	core.ApplyColorEnv()
 	p := tea.NewProgram(core.NewRouter(sess, entry.NewSplash(sess, newDeps(dir))), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
@@ -170,8 +177,38 @@ func newDeps(dir string) entry.Deps {
 		}
 	}
 
+	// openByName finds the Collection (case-insensitive), reads the catalog
+	// off the UI goroutine to flag missing members and name Multibranch
+	// branches, and hands back a closure that builds the monitor on it.
+	openByName := func(s *core.Session, name string) tea.Cmd {
+		return func() tea.Msg {
+			cs, err := config.LoadCollections(collectionsPath)
+			if err != nil {
+				return entry.Start{Notice: "cannot read Collections: " + err.Error()}
+			}
+			i := cs.Find(name)
+			if i < 0 {
+				return entry.Start{Notice: fmt.Sprintf("no Collection named %q", name)}
+			}
+			c := cs.Items[i]
+			var missing map[string]bool
+			names := map[string]core.JobName{}
+			if cl := client(s); cl != nil {
+				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+				defer cancel()
+				if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err == nil {
+					names, missing = catalog.NamesOf(c.Jobs, cat, s.Config.ParentJob), catalog.MissingOf(c.Jobs, cat)
+				}
+			}
+			return entry.Start{Screen: func() core.Screen {
+				return openMonitor(s)(c.Name, slices.Clone(c.Jobs), missing, names)
+			}}
+		}
+	}
+
 	return entry.Deps{
-		ConfigDir: dir,
+		ConfigDir:      dir,
+		OpenCollection: openByName,
 		Catalog: func(s *core.Session) core.Screen {
 			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s)))
 		},
