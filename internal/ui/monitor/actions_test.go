@@ -170,8 +170,9 @@ func TestKeysIgnoredBehindModalLogAndOverlay(t *testing.T) {
 	if !(m.load.Active() && m.unpolled()) {
 		t.Fatal("setup: modal expected")
 	}
-	pressKey(m, 'o')
-	pressKey(m, 'y')
+	if pressKey(m, 'o') != nil || pressKey(m, 'y') != nil {
+		t.Fatal("o and y must return no command behind the modal")
+	}
 
 	m = actionModel(sys)
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -253,14 +254,66 @@ func TestEnterOnFailedBuildMarksFailedStage(t *testing.T) {
 	if m.stageCur != 1 {
 		t.Fatalf("marker on line %d, want the Test stage (1)", m.stageCur)
 	}
-	// moving first keeps the user's choice
-	m.details = false
-	m.cursor = 2
-	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+}
+
+func TestMovingFirstKeepsTheUsersMarker(t *testing.T) {
+	c := failClient()
+	c.stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+		{ID: "2", Name: "Test", Status: jenkins.StageSuccess},
+		{ID: "3", Name: "Deploy", Status: jenkins.StageFailed},
+	}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !m.ma.focusFailed || m.stageCur != 0 {
+		t.Fatal("waiting for stages")
+	}
+	m.runs[1].stages = c.stages // loaded, marker not placed yet
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if m.stageCur != 1 || m.ma.focusFailed {
+		t.Fatalf("down moved to %d, focusFailed=%v", m.stageCur, m.ma.focusFailed)
+	}
+	deliver(m, cmd) // the stages arrive late
+	if m.stageCur != 1 {
+		t.Fatalf("marker jumped to %d after the user moved", m.stageCur)
+	}
+}
+
+func TestUnstableBuildMarksUnstableStageAndLogEnds(t *testing.T) {
+	c := failClient()
+	c.builds["b"][0] = jenkins.Build{Number: 9, Result: "UNSTABLE"}
+	c.stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+		{ID: "2", Name: "Test", Status: jenkins.StageUnstable},
+	}
+	c.stageLogs = map[string]string{"2": "s1\ns2\ns3\ns4\ns5\ns6\ns7\ns8\ns9\ns10\ns11\ns12\n"}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	deliver(m, cmd)
-	if m.stageCur != 1 && m.stageCur != 0 {
-		t.Fatalf("unexpected %d", m.stageCur)
+	if m.stageCur != 1 {
+		t.Fatalf("marker %d, want the unstable stage", m.stageCur)
+	}
+	if cmd := pressKey(m, 'l'); cmd != nil {
+		m.Update(cmd())
+	}
+	if m.log == nil || m.log.follow {
+		t.Fatal("log at end, not following")
+	}
+	all := m.log.all()
+	if len(all) == 0 || m.log.start(len(all), m.logPage()) != len(all)-m.logPage() {
+		t.Fatalf("not at the end: %d lines", len(all))
+	}
+}
+
+func TestFailedStageWinsOverUnstable(t *testing.T) {
+	st := []jenkins.Stage{
+		{Name: "A", Status: jenkins.StageUnstable},
+		{Name: "B", Status: jenkins.StageFailed},
+	}
+	if got := failedLine(st); got != 1 {
+		t.Fatalf("got %d", got)
 	}
 }
 

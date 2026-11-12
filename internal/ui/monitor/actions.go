@@ -144,13 +144,21 @@ func (m *model) nextFailed() {
 }
 
 // failedLine is the details line of the first failed stage, or of its deepest
-// failed child when it has parallel children; -1 when no stage failed.
+// failed child when it has parallel children; without a failed stage, the same
+// for the first unstable one; -1 when neither exists.
 func failedLine(stages []jenkins.Stage) int {
+	if l := lineWith(stages, jenkins.StageFailed); l >= 0 {
+		return l
+	}
+	return lineWith(stages, jenkins.StageUnstable)
+}
+
+func lineWith(stages []jenkins.Stage, status jenkins.StageStatus) int {
 	n := 0
 	for _, s := range stages {
-		if s.Status == jenkins.StageFailed {
+		if s.Status == status {
 			for j, c := range s.Children {
-				if c.Status == jenkins.StageFailed {
+				if c.Status == status {
 					return n + 1 + j
 				}
 			}
