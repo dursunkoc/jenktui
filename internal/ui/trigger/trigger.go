@@ -41,6 +41,10 @@ type Deps struct {
 	// branch). A job not in Names is shown relative to Parent.
 	Names  map[string]core.JobName
 	Parent string
+	// Prefill sets the starting value of a parameter of a single job, by name
+	// (a rerun). A name the job no longer defines is ignored and a parameter
+	// not in it keeps its default. Several jobs ignore it.
+	Prefill map[string]string
 	// Next builds the screen shown after triggering (Replace). When nil a
 	// simple result list is shown.
 	Next func(started []Started) core.Screen
@@ -258,7 +262,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 			s.st = stConfirm
 			return s, nil
 		}
-		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{})
+		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{Prefill: s.deps.Prefill})
 		s.st = stForm
 		s.resizeForms()
 		return s, s.form.Init()

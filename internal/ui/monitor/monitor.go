@@ -408,6 +408,9 @@ func (m *model) Keys() []key.Binding {
 		if m.abortable() {
 			ks = append(ks, keyAbort)
 		}
+		if m.rerunnable() {
+			ks = append(ks, keyRerun)
+		}
 		ks = append(ks, m.actionKeys()...)
 		return append(ks,
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "hide details")),
@@ -417,6 +420,9 @@ func (m *model) Keys() []key.Binding {
 	ks := append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...)
 	if m.abortable() {
 		ks = append(ks, keyAbort)
+	}
+	if m.rerunnable() {
+		ks = append(ks, keyRerun)
 	}
 	return append(ks, core.KeyBack)
 }
@@ -431,7 +437,7 @@ func (m *model) FullHelp() []core.HelpGroup {
 	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Run Monitor", Keys: append(append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...), m.abortKeys()...)},
+		{Title: "Run Monitor", Keys: append(append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...), append(m.abortKeys(), m.rerunKeys()...)...)},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -539,6 +545,8 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		return m, m.confirmKey(msg)
 	case key.Matches(msg, keyAbort):
 		return m, m.abortKey()
+	case key.Matches(msg, keyRerun):
+		return m, m.rerunKey()
 	case key.Matches(msg, keyReport) && m.details:
 		return m, m.reportKey()
 	case key.Matches(msg, keyOpen, keyCopy):

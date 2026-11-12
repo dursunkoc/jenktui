@@ -1782,3 +1782,79 @@ func TestTriggerWithCSRFCrumbEndToEnd(t *testing.T) {
 		})
 	}
 }
+
+// ---- Rerun from the Run Monitor (CORE1) ----
+
+func TestRerunFromMonitorPrefillsFormAndTracksNewBuild(t *testing.T) {
+	f := newFixture(t)
+	paramJob(f)
+	f.Job("team/api/deploy").LastBuild(jenkinstest.Build{Number: 7, Result: "FAILURE", Timestamp: now(),
+		Params: []jenkinstest.BuildParam{
+			jenkinstest.StringBuildParam("ENV", "prod"),
+			jenkinstest.BoolBuildParam("DRY_RUN", true),
+			jenkinstest.StringBuildParam("REGION", "ap"),
+			jenkinstest.PasswordBuildParam("API_KEY"),
+			jenkinstest.StringBuildParam("NOTES", "line-9"),
+			jenkinstest.StringBuildParam("REMOVED", "gone"), // no longer defined by the job
+		}})
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/api/deploy")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("m")
+	h.expectTitle("Run Monitor: Ops")
+	h.expectRow("team/api/deploy", "FAILED", "#7")
+	mon := h.router.Top()
+	depth := h.router.Depth()
+
+	h.key("r")
+	h.expectTitle("Trigger")
+	h.expect("team/api/deploy", "prod", "[x]", "‹ ap ›", "line-9")
+	h.expectNot("gone")
+	h.key("enter", "enter", "enter") // ENV, DRY_RUN, REGION
+	h.typeText(secretValue)          // the password is asked for again
+	h.key("enter")
+	h.key("enter") // NOTES -> submit
+	h.expect("Ready to trigger 1 job(s)", "  ENV = prod", "  DRY_RUN = true", "  REGION = ap", "  NOTES = line-9")
+	h.expectNot(secretValue)
+	h.key("y")
+
+	tr := triggerFor(t, f, "team/api/deploy")
+	want := vals("ENV", "prod", "DRY_RUN", "true", "REGION", "ap", "API_KEY", secretValue, "NOTES", "line-9")
+	if !reflect.DeepEqual(tr.Params, want) {
+		t.Fatalf("params = %v, want %v", tr.Params, want)
+	}
+	// The same monitor, once on the stack, now tracks the new build.
+	h.expectTitle("Run Monitor: Ops")
+	if h.router.Top() != mon || h.router.Depth() != depth {
+		t.Fatalf("monitor is not the single top screen: depth %d, want %d", h.router.Depth(), depth)
+	}
+	h.expectRow("team/api/deploy", "QUEUED")
+
+	// The router kept one monitor, so one esc leaves it.
+	h.key("esc")
+	h.expectTitle("Collection · Ops")
+}
+
+func TestRerunCancelReturnsToMonitor(t *testing.T) {
+	f := newFixture(t)
+	paramJob(f)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/api/deploy")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("m")
+	mon := h.router.Top()
+	h.key("r")
+	h.expectTitle("Trigger")
+	h.key("esc")
+	if h.router.Top() != mon {
+		t.Fatal("esc did not return to the monitor")
+	}
+	h.expectTitle("Run Monitor: Ops")
+	if n := len(f.Triggers()); n != 0 {
+		t.Fatalf("%d builds posted", n)
+	}
+	h.key("R")
+	h.expectRow("team/api/deploy", "FAILED", "#7")
+}

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -95,6 +96,12 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return r, c
 	case Replace:
 		r.helpOpen = false
+		for i := len(r.stack) - 2; i >= 0; i-- {
+			if sameScreen(r.stack[i], m.Screen) {
+				r.stack = r.stack[:i+1]
+				break
+			}
+		}
 		s, c := r.enter(m.Screen)
 		r.setTop(s)
 		return r, c
@@ -102,12 +109,25 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.helpOpen = false
 		if len(r.stack) > 1 {
 			r.stack = r.stack[:len(r.stack)-1]
+			if rs, ok := r.Top().(Resumer); ok {
+				return r, rs.Resume()
+			}
 		}
 		return r, nil
 	}
 	s, c := r.Top().Update(msg)
 	r.setTop(s)
 	return r, c
+}
+
+// sameScreen reports whether a and b are the same screen pointer. Screens held
+// by value are never "the same", which also keeps == from panicking on
+// values that cannot be compared.
+func sameScreen(a, b Screen) bool {
+	if a == nil || b == nil || reflect.TypeOf(a).Kind() != reflect.Ptr || reflect.TypeOf(b).Kind() != reflect.Ptr {
+		return false
+	}
+	return a == b
 }
 
 // header renders the title row: the title, then the screen's Subtitle in
