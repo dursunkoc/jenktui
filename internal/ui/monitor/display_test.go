@@ -437,7 +437,7 @@ func TestReplyLostWhileLeftIsFetchedAgain(t *testing.T) {
 				for _, x := range msg {
 					walk(x)
 				}
-			default:
+			case resultMsg, histMsg, ctxMsg: // spinner ticks would chain forever
 				_, next := r.Update(msg)
 				walk(next)
 			}
