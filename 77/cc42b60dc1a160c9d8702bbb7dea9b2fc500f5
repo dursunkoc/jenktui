@@ -1,0 +1,21 @@
+internal/sysint/sysint.go
+  s_1c16aed3d161c7::t_1edabc9571117b 1-152
+internal/sysint/sysint_test.go
+  s_1c16aed3d161c7::t_82b77dbdf80938 1-217
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "77cc42b60dc1a160c9d8702bbb7dea9b2fc500f5",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
