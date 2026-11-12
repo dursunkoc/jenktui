@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
@@ -147,7 +148,7 @@ func TestControlForbiddenCarriesText(t *testing.T) {
 		http.Error(w, "<html><body><h1>HTTP ERROR 403</h1><p>me is missing the Job/Cancel permission</p></body></html>", http.StatusForbidden)
 	}))
 	defer srv.Close()
-	c, _ := New(Options{BaseURL: srv.URL, Username: "me", Token: "tok"})
+	c := mustClient(t, srv.URL, "tok")
 	for name, err := range map[string]error{
 		"stop":   c.StopBuild(context.Background(), "j", 1),
 		"cancel": c.CancelQueue(context.Background(), 1),
@@ -167,7 +168,7 @@ func TestControlUnauthorizedIsAuthFailure(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
-	c, _ := New(Options{BaseURL: srv.URL, Username: "me", Token: "bad"})
+	c := mustClient(t, srv.URL, "bad")
 	if err := c.StopBuild(context.Background(), "j", 1); !errors.Is(err, ErrAuth) {
 		t.Fatalf("stop: %v", err)
 	}
@@ -179,13 +180,13 @@ func TestControlUnauthorizedIsAuthFailure(t *testing.T) {
 // 204 (newer Jenkins) and a 302 whose target errors are both success: the
 // redirect is not followed.
 func TestControlRedirectsAndNoContent(t *testing.T) {
-	var gets int
+	var gets atomic.Int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasPrefix(r.URL.Path, "/crumbIssuer"):
 			http.NotFound(w, r)
 		case r.Method == http.MethodGet:
-			gets++
+			gets.Add(1)
 			http.Error(w, "boom", http.StatusInternalServerError)
 		case strings.HasSuffix(r.URL.Path, "/stop"):
 			http.Redirect(w, r, "/job/j/1/", http.StatusFound)
@@ -194,14 +195,88 @@ func TestControlRedirectsAndNoContent(t *testing.T) {
 		}
 	}))
 	defer srv.Close()
-	c, _ := New(Options{BaseURL: srv.URL, Username: "me", Token: "tok"})
+	c := mustClient(t, srv.URL, "tok")
 	if err := c.StopBuild(context.Background(), "j", 1); err != nil {
 		t.Fatalf("stop with failing redirect target: %v", err)
 	}
 	if err := c.CancelQueue(context.Background(), 5); err != nil {
 		t.Fatalf("cancel with 204: %v", err)
 	}
-	if gets != 0 {
-		t.Fatalf("redirect was followed (%d GETs)", gets)
+	if n := gets.Load(); n != 0 {
+		t.Fatalf("redirect was followed (%d GETs)", n)
+	}
+}
+
+func mustClient(t *testing.T, base, tok string) *Client {
+	t.Helper()
+	c, err := New(Options{BaseURL: base, Username: "me", Token: tok})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// A 3xx to a login page means the request never reached Jenkins' action.
+func TestControlLoginRedirectIsAuthError(t *testing.T) {
+	var gets atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, "/crumbIssuer"):
+			http.NotFound(w, r)
+		case r.Method == http.MethodGet:
+			gets.Add(1)
+		default:
+			http.Redirect(w, r, "/login?from=%2Fjob%2Fj%2F1%2Fstop", http.StatusFound)
+		}
+	}))
+	defer srv.Close()
+	c := mustClient(t, srv.URL, "tok")
+	for name, err := range map[string]error{
+		"stop":   c.StopBuild(context.Background(), "j", 1),
+		"cancel": c.CancelQueue(context.Background(), 1),
+	} {
+		if !errors.Is(err, ErrAuth) || !strings.Contains(err.Error(), "/login") || strings.Contains(err.Error(), "from=") {
+			t.Fatalf("%s: %v", name, err)
+		}
+	}
+	if gets.Load() != 0 {
+		t.Fatal("redirect was followed")
+	}
+}
+
+// Old Jenkins redirects cancelItem to "."; it resolves under /queue/.
+func TestControlRelativeRedirectAccepted(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/crumbIssuer") {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Location", ".")
+		w.WriteHeader(http.StatusFound)
+	}))
+	defer srv.Close()
+	c := mustClient(t, srv.URL, "tok")
+	if err := c.CancelQueue(context.Background(), 1); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestStopBuildMultibranchKeepsEscapedSlash(t *testing.T) {
+	var got string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/crumbIssuer") {
+			http.NotFound(w, r)
+			return
+		}
+		got = r.URL.EscapedPath()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+	c := mustClient(t, srv.URL, "tok")
+	if err := c.StopBuild(context.Background(), "team/app/feature%2Fx", 4); err != nil {
+		t.Fatal(err)
+	}
+	if want := "/job/team/job/app/job/feature%2Fx/4/stop"; got != want {
+		t.Fatalf("path %q want %q", got, want)
 	}
 }

@@ -25,7 +25,7 @@ func (c *Client) StopBuild(ctx context.Context, fullName string, number int) err
 	if number <= 0 {
 		return fmt.Errorf("stop: invalid build number %d", number)
 	}
-	return c.postAction(ctx, jobPath(fullName)+"/"+strconv.Itoa(number)+"/stop", ErrBuildNotFound)
+	return c.postAction(ctx, jobPath(fullName)+"/"+strconv.Itoa(number)+"/stop", ErrBuildNotFound, "/job/")
 }
 
 // CancelQueue removes a waiting item from the build queue. ErrQueueItemNotFound
@@ -34,7 +34,7 @@ func (c *Client) CancelQueue(ctx context.Context, id int) error {
 	if id <= 0 {
 		return fmt.Errorf("cancel: invalid queue id %d", id)
 	}
-	return c.postAction(ctx, "/queue/cancelItem?id="+strconv.Itoa(id), ErrQueueItemNotFound)
+	return c.postAction(ctx, "/queue/cancelItem?id="+strconv.Itoa(id), ErrQueueItemNotFound, "/queue")
 }
 
 // postAction POSTs an empty-bodied control request with the CSRF crumb, as
@@ -45,8 +45,13 @@ func (c *Client) CancelQueue(ctx context.Context, id int) error {
 // the build or queue page (newer versions 204); the action has already
 // happened by then, so a redirect target that errors (a page the user may not
 // view, a proxy login page) must not turn a successful stop into a failure.
-// Any 2xx or 3xx is success and the body is never decoded.
-func (c *Client) postAction(ctx context.Context, path string, notFound error) error {
+// Any 2xx is success and the body is never decoded. A 3xx is success only when
+// its Location (resolved against the request URL) is empty or its path
+// contains landing ("/job/" or "/queue"); anything else is a login or proxy
+// page that swallowed the request, so the action did not happen. Only the
+// path is matched, never the host: a Jenkins with a wrong root URL redirects
+// to an internal host.
+func (c *Client) postAction(ctx context.Context, path string, notFound error, landing string) error {
 	hc := *c.hc // shallow copy: same jar and transport, own redirect policy
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	refresh := false
@@ -90,6 +95,16 @@ func (c *Client) postAction(ctx context.Context, path string, notFound error) er
 			return notFound
 		case resp.StatusCode >= 400:
 			return fmt.Errorf("jenkins returned %s for POST %s", resp.Status, strings.SplitN(path, "?", 2)[0])
+		case resp.StatusCode >= 300:
+			loc := resp.Header.Get("Location")
+			if loc == "" {
+				return nil
+			}
+			u, err := req.URL.Parse(loc)
+			if err != nil || strings.Contains(u.Path, landing) {
+				return nil
+			}
+			return fmt.Errorf("%w (redirected to %s; login or proxy?)", ErrAuth, u.Host+u.Path)
 		}
 		return nil
 	}
