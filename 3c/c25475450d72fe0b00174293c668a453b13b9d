@@ -1,0 +1,33 @@
+README.md
+  s_68aed7bbf4c6d1::t_935cca42571adf 5-28
+.gitignore
+  s_68aed7bbf4c6d1::t_935cca42571adf 5
+screenshots_test.go
+  s_68aed7bbf4c6d1::t_9e02bc24eda595 28-29,109,125
+  s_68aed7bbf4c6d1::t_01e25c09e46ea2 20,71-72,118-119
+  s_68aed7bbf4c6d1::t_75c5b252cbccba 1-19,21-27,30-40,43-70,73-83,85-89,91,93-95,97,99,101-103,108,110-112,114-117,121-124,127,129-132,134
+  s_68aed7bbf4c6d1::t_bf4b71b09e2a8e 90,92,98,100,104
+  s_68aed7bbf4c6d1::t_df07d3c487f8b9 105-107
+  s_68aed7bbf4c6d1::t_bbe6414a52b126 96,113,120,126,128,133
+  s_68aed7bbf4c6d1::t_959324f3c1bc7f 41-42,84
+docs/HANDOFF.md
+  s_68aed7bbf4c6d1::t_935cca42571adf 73-74
+docs/screenshots/render.py
+  s_68aed7bbf4c6d1::t_f00eb8aa025368 1-189
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "3cc25475450d72fe0b00174293c668a453b13b9d",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
