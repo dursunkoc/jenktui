@@ -20,7 +20,7 @@ Requesting a new build of one or more Jobs, optionally supplying build parameter
 Build parameters shared by name and type across the Jobs selected in one Trigger, entered once and applied to all of them. Any Job can override them: in its per-job step, or by editing it from the summary.
 
 **Run Monitor**
-The live screen showing the latest build of every Job in one Collection, with stage information where available. Each Collection has its own Run Monitor, kept for the session. Opened from a Collection it hides successful Jobs by default, and the user can show them again. From a Job's details the user can open the **Console Log** of the whole build or of one stage or step, a modal with line numbers that follows new output while the build runs and can be searched with the same wildcards as a list filter. A Trigger from a Collection adds the new builds to that Collection's Run Monitor.
+The live screen showing the latest build of every Job in one Collection, with stage information where available. A running row shows its elapsed time against the estimate, a finished row how long ago it started. Each Collection has its own Run Monitor, kept for the session. Opened from a Collection it hides successful Jobs by default, and the user can show them again. From a Job's details the user can open the **Console Log** of the whole build or of one stage or step, a modal with line numbers that follows new output while the build runs and can be searched with the same wildcards as a list filter. A Trigger from a Collection adds the new builds to that Collection's Run Monitor.
 
 **Multibranch Project**
 A Jenkins item that owns one Job per source-control branch. The Job Catalog lists its branches as Jobs, not the project itself.

@@ -753,11 +753,11 @@ func TestLoadingModalThenHeaderSpinner(t *testing.T) {
 	if cmd := m.load.Update(spinner.TickMsg{}); cmd != nil {
 		t.Fatal("idle spinner must not tick")
 	}
-	// A later cycle over existing data: header spinner, rows never hidden.
+	// A later automatic cycle over existing data: no spinner (MD1), rows never hidden.
 	m.Update(tickMsg{gen: m.gen})
 	v = ansi.Strip(shown(m))
-	if !strings.Contains(v, "refreshing…") || !strings.Contains(v, "RUNNING") {
-		t.Fatalf("refresh must keep rows and show the spinner:\n%s", v)
+	if strings.Contains(v, "refreshing…") || !strings.Contains(v, "RUNNING") {
+		t.Fatalf("automatic refresh must keep rows and show no spinner:\n%s", v)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	if m.load.Active() {
@@ -858,14 +858,14 @@ func TestRefreshWithNothingPollableSchedulesOnce(t *testing.T) {
 	}
 }
 
-func TestFastAutomaticCycleKeepsSpinnerUntilMinimum(t *testing.T) {
+func TestFastManualCycleKeepsSpinnerUntilMinimum(t *testing.T) {
 	c := collClient()
 	m, clk, _ := collMonitor(c)
 	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	_, cmd := m.Update(tickMsg{gen: m.gen})
+	_, cmd := m.Update(keyR())
 	exec(m, cmd) // cycle finishes instantly
 	if !m.load.Active() || !strings.Contains(ansi.Strip(shown(m)), "refreshing…") {
-		t.Fatal("a fast cycle must still flash the spinner")
+		t.Fatal("a fast manual cycle must still flash the spinner")
 	}
 	clk.t = clk.t.Add(time.Second)
 	if c := m.load.Update(spinner.TickMsg{}); c != nil || m.load.Active() {
