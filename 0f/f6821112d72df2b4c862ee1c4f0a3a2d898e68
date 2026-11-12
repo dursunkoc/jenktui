@@ -1,0 +1,41 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_8929c47ef8d55d 16-18
+README.md
+  s_1c16aed3d161c7::t_424d4cae408503 24,122,160
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_91e1af99cc102f 45,111-112
+e2e_test.go
+  s_1c16aed3d161c7::t_2a1f5f67f1bcca 160,169,209,1900-1932
+internal/jenkins/queuelist.go
+  s_1c16aed3d161c7::t_0331aacd51af92 1-30
+internal/jenkins/status_test.go
+  s_1c16aed3d161c7::t_c02a999196d8fc 178-198
+internal/ui/entry/entry.go
+  s_1c16aed3d161c7::t_4f53009e4a8607 26
+internal/ui/entry/entry_test.go
+  s_1c16aed3d161c7::t_ba90cdd6d29500 318,323-327
+internal/ui/entry/menu.go
+  s_1c16aed3d161c7::t_3a0255e4b3df21 13,28,80-81
+internal/ui/overview/overview.go
+  s_1c16aed3d161c7::t_463ebd8e3dd950 1-327
+internal/ui/overview/overview_test.go
+  s_1c16aed3d161c7::t_a277303c9a2a26 1-246
+main.go
+  s_1c16aed3d161c7::t_1f441de9b2b3c3 22,184-210,213-214,221-242
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0ff6821112d72df2b4c862ee1c4f0a3a2d898e68",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
