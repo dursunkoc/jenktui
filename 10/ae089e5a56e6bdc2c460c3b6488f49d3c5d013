@@ -1,0 +1,67 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_fb69bff35d2afa 23
+README.md
+  s_1c16aed3d161c7::t_0e482f3afd9c18 107,112-113,126,154,156,159,163,165
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_38f2f86f0989a1 94-104
+e2e_test.go
+  s_1c16aed3d161c7::t_94d2f7d869f896 1474-1475
+internal/jenkins/joburl.go
+  s_1c16aed3d161c7::t_6fc0058896f11e 1-13
+internal/jenkins/joburl_test.go
+  s_1c16aed3d161c7::t_bd3e35accd4e5a 1-29
+internal/ui/catalog/catalog.go
+  s_1c16aed3d161c7::t_9cd4aa04c67ea7 29-69,104-106,170-174,183-186,191,218-222,253-260
+internal/ui/catalog/catalog_test.go
+  s_1c16aed3d161c7::t_9a41777c92d085 408-513
+internal/ui/collections/collections.go
+  s_1c16aed3d161c7::t_7e9687a9d3adef 49-54
+internal/ui/collections/collections_test.go
+  s_1c16aed3d161c7::t_6d7e940cf57cf0 5,550-630
+internal/ui/collections/view.go
+  s_1c16aed3d161c7::t_786ea74a0f508e 91-95,104-107,112,138-139,192-198,303-305,308-309
+internal/ui/monitor/abort.go
+  s_1c16aed3d161c7::t_21a03951fabd9b 1-107
+internal/ui/monitor/abort_test.go
+  s_1c16aed3d161c7::t_2fd62409dded98 1-208
+internal/ui/monitor/actions.go
+  s_1c16aed3d161c7::t_2d71df343fbde8 3-12,15-196
+internal/ui/monitor/actions_test.go
+  s_1c16aed3d161c7::t_cc9d9993c0432b 1-371
+internal/ui/monitor/display_test.go
+  s_1c16aed3d161c7::t_d5ec28b87b627c 186,194,198,218,220,283-284,302,315-316,329,334,342,346-347,375,387
+internal/ui/monitor/logsave.go
+  s_1c16aed3d161c7::t_2f46fc250753d7 1-277
+internal/ui/monitor/logview.go
+  s_1c16aed3d161c7::t_e5add5a6f811a6 38-43,52-57,96-100,227,230-236,302-331,334,344,349-359,363-389,397-401,408,439-454,552-597,636,645-685,690-692,698,726,731-741,743,751-752,755
+internal/ui/monitor/logview_test.go
+  s_1c16aed3d161c7::t_4001e36353495d 1-529
+internal/ui/monitor/monitor.go
+  s_1c16aed3d161c7::t_32f31fca645a5a 195,238-240,404-412,415,417-421,434,491-492,509,540-546,548-552,562,569,574,581,605-606,608
+internal/ui/monitor/notify.go
+  s_1c16aed3d161c7::t_ece28494abc39e 1-77
+internal/ui/monitor/notify_test.go
+  s_1c16aed3d161c7::t_debe90f3c600c5 1-151
+internal/ui/monitor/testreport.go
+  s_1c16aed3d161c7::t_696d5e4d0a754d 1-310
+internal/ui/monitor/testreport_test.go
+  s_1c16aed3d161c7::t_982dd15c2bcd33 1-335
+main.go
+  s_1c16aed3d161c7::t_51be2c34563a27 74-82,151,161-162
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "10ae089e5a56e6bdc2c460c3b6488f49d3c5d013",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
