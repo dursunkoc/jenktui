@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
@@ -16,9 +17,13 @@ type Menu struct {
 	th            core.Theme
 	user          string
 	notice        string
+	pending       bool // a command-line Collection is being opened; any key cancels it
 	cursor        int
 	width, height int
 }
+
+// noticeWidth keeps a long error inside the menu box.
+const noticeWidth = 40
 
 var menuItems = []string{"Collections", "Job Catalog", "Quit"}
 
@@ -34,6 +39,7 @@ func (m *Menu) Init() tea.Cmd {
 	if name == "" || m.deps.OpenCollection == nil {
 		return nil
 	}
+	m.pending, m.notice = true, "opening "+name+"…"
 	return m.deps.OpenCollection(m.sess, name)
 }
 
@@ -42,12 +48,15 @@ func (m *Menu) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = v.Width, v.Height
 	case Start:
-		m.notice = v.Notice
-		if v.Screen != nil {
+		// A key press since Init means the user chose something else: only
+		// the notice (an error) is still worth showing.
+		wait := m.pending
+		m.pending, m.notice = false, v.Notice
+		if v.Screen != nil && wait {
 			return m, core.Cmd(core.Push{Screen: v.Screen()})
 		}
 	case tea.KeyMsg:
-		m.notice = ""
+		m.pending, m.notice = false, ""
 		switch {
 		case key.Matches(v, core.KeyUp):
 			m.cursor = (m.cursor + len(menuItems) - 1) % len(menuItems)
@@ -90,7 +99,7 @@ func (m *Menu) View() string {
 	}
 	body := m.th.MutedTxt.Render("Signed in as "+m.user) + "\n\n" + strings.Join(lines, "\n")
 	if m.notice != "" {
-		body += "\n\n" + lipgloss.NewStyle().Foreground(m.th.Warn).Render(m.notice)
+		body += "\n\n" + m.th.WarnTxt.Render(ansi.Truncate(m.notice, noticeWidth, "…"))
 	}
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.th.Box.Render(body))
 }

@@ -28,7 +28,7 @@ var _ monitor.Sys = sysint.Sys{}
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "jenktui is a terminal UI for Jenkins.\n\nUsage: jenktui [--version] [collection]\n\nWith a Collection name (any letter case), jenktui opens that Collection's Run Monitor right after login. An unknown name shows the menu with a notice.\n\nSettings live in ~/.config/jenktui/config.toml (set JENKTUI_CONFIG_DIR to change the directory).\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "jenktui is a terminal UI for Jenkins.\n\nUsage: jenktui [--version] [collection]\n(flags go before the collection name)\n\nWith a Collection name (any letter case), jenktui opens that Collection's Run Monitor right after login. An unknown name shows the menu with a notice.\n\nSettings live in ~/.config/jenktui/config.toml (set JENKTUI_CONFIG_DIR to change the directory).\n")
 	}
 	flag.Parse()
 	if flag.NArg() > 1 {
@@ -46,6 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 	sess := &core.Session{StartCollection: strings.TrimSpace(flag.Arg(0))}
+	core.ApplyColorEnv()
 	p := tea.NewProgram(core.NewRouter(sess, entry.NewSplash(sess, newDeps(dir))), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -196,28 +197,11 @@ func newDeps(dir string) entry.Deps {
 				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 				defer cancel()
 				if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err == nil {
-					have := map[string]bool{}
-					for _, j := range cat.Jobs {
-						have[j.FullName] = true
-						if slices.Contains(c.Jobs, j.FullName) {
-							names[j.FullName] = catalog.JobName(j, s.Config.ParentJob)
-						}
-					}
-					missing = map[string]bool{}
-					for _, k := range c.Jobs {
-						if !have[k] {
-							missing[k] = true
-						}
-					}
+					names, missing = catalog.NamesOf(c.Jobs, cat, s.Config.ParentJob), catalog.MissingOf(c.Jobs, cat)
 				}
 			}
 			return entry.Start{Screen: func() core.Screen {
-				m := monitorFor(s, c.Name)
-				monitor.SetJobs(m, slices.Clone(c.Jobs), missing)
-				monitor.SetNames(m, names)
-				monitorNames[m] = names
-				monitor.HideSuccess(m, true)
-				return m
+				return openMonitor(s)(c.Name, slices.Clone(c.Jobs), missing, names)
 			}}
 		}
 	}

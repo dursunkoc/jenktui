@@ -376,3 +376,64 @@ func TestSplashLogoAndTaglineAligned(t *testing.T) {
 		}
 	}
 }
+
+func startMenu(name string) (*Menu, *core.Session) {
+	sess := &core.Session{StartCollection: name}
+	m := NewMenu(sess, Deps{OpenCollection: func(*core.Session, string) tea.Cmd { return nil }}, "Me")
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	return m, sess
+}
+
+func TestMenuShowsOpeningNoticeAndClearsStartCollection(t *testing.T) {
+	m, sess := startMenu("Nightly")
+	m.Init()
+	if sess.StartCollection != "" {
+		t.Fatal("StartCollection not cleared")
+	}
+	if !strings.Contains(ansi.Strip(m.View()), "opening Nightly…") {
+		t.Fatalf("no opening notice:\n%s", m.View())
+	}
+}
+
+func TestStartReplyPushesItsScreenWhenNoKeyWasPressed(t *testing.T) {
+	m, _ := startMenu("N")
+	m.Init()
+	target := &notice{title: "target", th: core.NewTheme()}
+	_, cmd := m.Update(Start{Screen: func() core.Screen { return target }})
+	if p, ok := runCmd(cmd).(core.Push); !ok || p.Screen != core.Screen(target) {
+		t.Fatalf("cmd = %v", runCmd(cmd))
+	}
+}
+
+func TestStartReplyAfterAKeyPressIsNotPushed(t *testing.T) {
+	m, _ := startMenu("N")
+	m.Init()
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	called := false
+	_, cmd := m.Update(Start{Screen: func() core.Screen { called = true; return nil }})
+	if called || cmd != nil {
+		t.Fatalf("a late Start pushed a screen (called=%v)", called)
+	}
+	if strings.Contains(ansi.Strip(m.View()), "opening") {
+		t.Fatal("the opening notice stays after a key")
+	}
+	// An error notice is still shown.
+	m.Update(Start{Notice: "no Collection named \"N\""})
+	if !strings.Contains(ansi.Strip(m.View()), "no Collection named") {
+		t.Fatal("notice not shown")
+	}
+}
+
+func TestMenuNoticeIsCutToTheBox(t *testing.T) {
+	m, _ := startMenu("N")
+	m.Init()
+	m.Update(Start{Notice: "cannot read Collections: " + strings.Repeat("x", 200)})
+	for _, l := range strings.Split(ansi.Strip(m.View()), "\n") {
+		if lipgloss.Width(l) > 80 {
+			t.Fatalf("line wider than the terminal: %q", l)
+		}
+	}
+	if strings.Contains(ansi.Strip(m.View()), strings.Repeat("x", 100)) {
+		t.Fatal("notice not truncated")
+	}
+}

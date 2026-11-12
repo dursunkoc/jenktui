@@ -65,7 +65,12 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 
 ## Theme
 
-`core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle`.
+`core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle, FailTxt, WarnTxt, Placeholder`. Use `FailTxt` (not a bare `Foreground(th.Fail)`) for text that is only distinguished by the Fail colour: it is the Fail colour, and bold as well under `NO_COLOR`.
+
+**Colour support (checked against lipgloss v1.1.0 / termenv v0.16.0):**
+- Light and dark: `AdaptiveColor` picks `Light` or `Dark` from `lipgloss.HasDarkBackground()`, which termenv detects by querying the terminal (OSC 11), falling back to `COLORFGBG`, then to dark. There is no `theme` setting; detection failing only means the dark variants on a light terminal.
+- `NO_COLOR` (any non-empty value) and `CLICOLOR=0` are honoured automatically: lipgloss asks `EnvColorProfile`, which returns the Ascii profile. **But Ascii drops every escape sequence, bold and reverse video included**, so the cursor row, the log find highlight and bold would vanish. `core.ApplyColorEnv()` (called once in `main.go` before the Router; `NewTheme()` itself has no side effects and only reads what it recorded) therefore, when the environment asks for no colour and stdout is a colour-capable terminal, sets every theme colour to an empty `AdaptiveColor` (no colour sequence) and switches the default renderer to the ANSI profile, so bold and reverse still come out. Piped output stays plain. Bubbles `textinput` has its own grey placeholder and completion colour: set `PlaceholderStyle` and `CompletionStyle` from `th.Placeholder` (the muted colour; faint instead under NO_COLOR) on every text input. Screens must not write `lipgloss.Color(...)` literals.
+- Things that carry meaning without colour: badges (label), history dots (glyphs), the list cursor (reverse, bold, `>`), find highlight (reverse). Error lines, failed counts and error messages use `FailTxt`, the login warning `WarnTxt`; the running history dot is `◌`.
 
 - `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing|Unstable|Aborted)` returns a colored label (Unstable in the warning colour, Aborted muted).
 - `th.ErrorView(title, err, hint)` boxed error with a hint line; `th.NoticeView(title, hint)` neutral box. Map domain errors to a `hint` in your own screen; core does not import `internal/jenkins`.

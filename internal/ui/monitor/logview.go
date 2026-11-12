@@ -660,7 +660,7 @@ func (m *model) logView() string {
 		}
 		base := lipgloss.NewStyle()
 		if isErrorLine(text) {
-			base = base.Foreground(m.th.Fail)
+			base = m.th.FailTxt
 		}
 		for j, piece := range pieces {
 			if len(body) >= page {
