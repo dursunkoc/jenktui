@@ -6,18 +6,41 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 )
 
 // mdState is the Monitor Display lane's per-monitor state (history dots,
-// causes, commits). Owned by lane MD; keyed by job and build number.
-type mdState struct{}
+// causes, commits), keyed by job and build number.
+type mdState struct {
+	hist     map[buildKey][]jenkins.Build // last results, newest first
+	histBusy map[buildKey]int             // epoch a fetch started in; older ones were lost with the screen
+	ctx      map[buildKey]jenkins.BuildContext
+	ctxBusy  map[buildKey]int
+	ctxDone  map[buildKey]bool // a context fetched after the build finished (final)
+	// failed attempts per key; permanent errors and maxTries stop the retries
+	histTries, ctxTries map[buildKey]int
+}
 
 // onResult runs after a poll result replaced row i; prev is the row before.
 // MD starts its once-per-finished-build history fetch here.
-func (m *model) onResult(i int, prev runState) tea.Cmd { return nil }
+func (m *model) onResult(i int, prev runState) tea.Cmd {
+	st := m.runs[i]
+	if prev.phase != phFinished && st.phase == phFinished {
+		// The build just finished: a context fetched while it ran may lack its commits.
+		k := buildKey{st.run.Job, st.num}
+		if _, had := m.md.ctx[k]; had {
+			delete(m.md.ctxBusy, k)
+			return tea.Batch(m.fetchHistory(st), m.fetchContext(st))
+		}
+	}
+	return m.fetchHistory(st)
+}
 
 // onDetailsOpen runs when the details view opens on row i.
-func (m *model) onDetailsOpen(i int) tea.Cmd { return nil }
+func (m *model) onDetailsOpen(i int) tea.Cmd {
+	return m.fetchContext(m.runs[i])
+}
 
 // durText is the elapsed or final duration of a row. A running build with a
 // known estimate reads `1m36s / ~4m`, or `4m12s (over)` once it overruns.

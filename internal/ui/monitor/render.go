@@ -155,6 +155,9 @@ func (m *model) block(vi, i int) []string {
 	if t := m.note(st); t != "" {
 		parts = append(parts, m.th.MutedTxt.Render(t))
 	}
+	if d := m.dots(st); d != "" {
+		parts = append(parts, d)
+	}
 	out := []string{m.fit(cur + strings.Join(parts, "  "))}
 	if row := m.stageRow(st.stages); row != "" && st.phase == phRunning {
 		out = append(out, m.fit("    "+row))
@@ -382,4 +385,4 @@ func (m *model) jobName(job string) string {
 }
 
 // initHooks is where lane MD registers its detail sections; newBase calls it.
-func (m *model) initHooks() {}
+func (m *model) initHooks() { m.addDetailSection(m.contextLines) }

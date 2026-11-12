@@ -1,14 +1,19 @@
 package monitor
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
 // MD1: the header spinner shows for the first load and for R only.
@@ -154,5 +159,307 @@ func TestRowEdgeCases(t *testing.T) {
 	r = row(runState{phase: phRunning, build: jenkins.Build{Building: true, Timestamp: now.Add(-10 * time.Minute), EstimatedDuration: time.Hour + 5*time.Minute}})
 	if !strings.Contains(r, "10m00s / ~1h05m") {
 		t.Errorf("hour estimate: %q", r)
+	}
+}
+
+// mdClient adds the optional history and context calls to fakeClient.
+type mdClient struct {
+	*fakeClient
+	hist  map[string][]jenkins.Build
+	bc    map[string]jenkins.BuildContext
+	histN map[string]int
+	ctxN  map[string]int
+}
+
+func (c *mdClient) BuildHistory(_ context.Context, job string, n int) ([]jenkins.Build, error) {
+	c.histN[job]++
+	return c.hist[job], nil
+}
+
+func (c *mdClient) BuildContext(_ context.Context, job string, _ int) (jenkins.BuildContext, error) {
+	c.ctxN[job]++
+	return c.bc[job], nil
+}
+
+// run executes cmd (flattening batches) and feeds every message to m, so
+// applier messages take effect like in the real program.
+func runMD(m *model, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	switch msg := cmd().(type) {
+	case nil:
+	case tea.BatchMsg:
+		for _, c := range msg {
+			runMD(m, c)
+		}
+	default:
+		_, c := m.Update(msg)
+		runMD(m, c)
+	}
+}
+
+func mdModel(hist []jenkins.Build, bc jenkins.BuildContext) (*model, *mdClient) {
+	fc := &fakeClient{builds: map[string]map[int]jenkins.Build{"a": {0: ok(5)}}}
+	c := &mdClient{fakeClient: fc, histN: map[string]int{}, ctxN: map[string]int{},
+		hist: map[string][]jenkins.Build{"a": hist}, bc: map[string]jenkins.BuildContext{"a": bc}}
+	m, _, _ := newColl(fc, []string{"a"}, nil)
+	m.deps.Client = c
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	return m, c
+}
+
+func TestHistoryDotsFetchedOncePerFinishedBuild(t *testing.T) {
+	hist := []jenkins.Build{ // newest first
+		{Number: 5, Result: "SUCCESS"}, {Number: 4, Result: "FAILURE"}, {Number: 3, Result: "UNSTABLE"},
+		{Number: 2, Result: "ABORTED"}, {Number: 1, Result: "SUCCESS"},
+	}
+	m, c := mdModel(hist, jenkins.BuildContext{})
+	poll := func() { _, cmd := m.Update(tickMsg{gen: m.gen}); runMD(m, cmd) }
+	poll()
+	runMD(m, m.onResult(0, runState{})) // a second hook call for the same build must not refetch
+	if c.histN["a"] != 1 {
+		t.Fatalf("history fetched %d times, want 1", c.histN["a"])
+	}
+	got := ""
+	for _, r := range ansi.Strip(m.dots(m.runs[0])) {
+		got += string(r)
+	}
+	if got != "●○◐✕●" {
+		t.Fatalf("dots = %q, want oldest-to-newest ●○◐✕●", got)
+	}
+	poll()
+	poll()
+	if c.histN["a"] != 1 {
+		t.Fatalf("polls must not refetch history: %d", c.histN["a"])
+	}
+}
+
+func TestDotColoursAndRunning(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{})
+	type dd struct {
+		col   lipgloss.AdaptiveColor
+		glyph string
+	}
+	for res, d := range map[string]dd{
+		"SUCCESS": {m.th.OK, "●"}, "FAILURE": {m.th.Fail, "✕"}, "UNSTABLE": {m.th.Warn, "◐"},
+	} {
+		want := lipgloss.NewStyle().Foreground(d.col).Render(d.glyph)
+		if got := m.dot(jenkins.Build{Result: res}); got != want || ansi.Strip(got) != d.glyph {
+			t.Errorf("%s dot = %q", res, got)
+		}
+	}
+	if ansi.Strip(m.dot(jenkins.Build{Building: true})) != "●" || ansi.Strip(m.dot(jenkins.Build{Result: "ABORTED"})) != "○" {
+		t.Error("running is a filled dot, aborted a hollow one")
+	}
+	// A newer running build is appended on the right of the fetched history.
+	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 5, Result: "FAILURE"}, {Number: 4, Result: "SUCCESS"}}}
+	m.runs[0].phase, m.runs[0].num = phRunning, 6
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "●✕●" {
+		t.Fatalf("dots with running = %q", got)
+	}
+	// History that already lists the running build must not get a second dot.
+	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 6, Building: true}, {Number: 5, Result: "SUCCESS"}, {Number: 4, Result: "FAILURE"}}}
+	m.runs[0].num = 6
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "✕●●" {
+		t.Fatalf("running build listed in history: %q", got)
+	}
+}
+
+func TestContextSectionCausesAndCommits(t *testing.T) {
+	bc := jenkins.BuildContext{
+		Causes: []jenkins.Cause{{Text: "Started by alice", User: "alice"}},
+		Changes: []jenkins.Change{
+			{ID: "abc1234567", Author: "bob", Message: "fix login\n\nlong body"},
+			{ID: "d1", Author: "eve", Message: "two"}, {ID: "d2", Author: "eve", Message: "three"},
+			{ID: "d3", Author: "eve", Message: "four"}, {ID: "d4", Author: "eve", Message: "five"},
+			{ID: "d5", Author: "eve", Message: "six"},
+		},
+	}
+	m, c := mdModel(nil, bc)
+	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "FAILURE", build: jenkins.Build{Number: 5}}
+	m.hideSuccess = false
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // opens the details; the hook fetches
+	runMD(m, cmd)
+	runMD(m, m.onDetailsOpen(0)) // reopening does not refetch
+	if c.ctxN["a"] != 1 {
+		t.Fatalf("context fetched %d times, want 1", c.ctxN["a"])
+	}
+	v := ansi.Strip(m.detailView())
+	for _, want := range []string{"Started by alice", "abc1234 bob: fix login", "… and 1 more commits"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("details lack %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "long body") || strings.Contains(v, "abc12345") || strings.Contains(v, "six") {
+		t.Errorf("only first line, 7-char ids, five commits:\n%s", v)
+	}
+}
+
+func TestNoChangesShowsNoCommitBlock(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Branch indexing"}}})
+	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	runMD(m, m.onDetailsOpen(0))
+	lines := m.contextLines(m.runs[0])
+	if len(lines) != 1 || !strings.Contains(ansi.Strip(lines[0]), "Branch indexing") {
+		t.Fatalf("lines = %q", lines)
+	}
+}
+
+func TestFetchOutlivingTheScreenStillApplies(t *testing.T) {
+	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "x"}}})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	h, cx := m.fetchHistory(st), m.fetchContext(st)
+	m.epoch++ // the screen was left and reopened mid-fetch
+	runMD(m, h)
+	runMD(m, cx)
+	if len(m.md.hist) != 1 || len(m.md.ctx) != 1 {
+		t.Fatal("results of a finished build are valid whatever the epoch")
+	}
+	if m.fetchHistory(st) != nil || m.fetchContext(st) != nil || c.histN["a"] != 1 {
+		t.Fatal("applied data must not be fetched again")
+	}
+}
+
+func TestRunningContextRefetchedWhenBuildFinishes(t *testing.T) {
+	m, c := mdModel(nil, jenkins.BuildContext{})
+	running := runState{run: Run{Job: "a"}, phase: phRunning, num: 5, build: jenkins.Build{Number: 5, Building: true}}
+	m.runs[0] = running
+	runMD(m, m.fetchContext(running))
+	if c.ctxN["a"] != 1 {
+		t.Fatal("first fetch")
+	}
+	// Opening the details of the still-running build fetches again.
+	runMD(m, m.onDetailsOpen(0))
+	if c.ctxN["a"] != 2 {
+		t.Fatalf("running context is not final: %d fetches", c.ctxN["a"])
+	}
+	// The poll that sees it finish refetches once more, then it is final.
+	c.bc["a"] = jenkins.BuildContext{Changes: []jenkins.Change{{ID: "abc1234", Author: "bob", Message: "late"}}}
+	fin := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = fin
+	runMD(m, m.onResult(0, running))
+	if c.ctxN["a"] != 3 || len(m.contextLines(fin)) != 1 {
+		t.Fatalf("finish must refetch: %d fetches, lines %v", c.ctxN["a"], m.contextLines(fin))
+	}
+	runMD(m, m.onDetailsOpen(0))
+	runMD(m, m.onResult(0, fin))
+	if c.ctxN["a"] != 3 {
+		t.Fatal("a finished build's context is final")
+	}
+}
+
+type errClient struct {
+	*mdClient
+	err error
+	n   int
+}
+
+func (e *errClient) BuildHistory(context.Context, string, int) ([]jenkins.Build, error) {
+	e.n++
+	return nil, e.err
+}
+
+func TestHistoryRetriesStop(t *testing.T) {
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	for _, tc := range []struct {
+		err  error
+		want int
+	}{{jenkins.ErrAuth, 1}, {jenkins.ErrForbidden, 1}, {errors.New("boom"), maxTries}} {
+		m, c := mdModel(nil, jenkins.BuildContext{})
+		e := &errClient{mdClient: c, err: tc.err}
+		m.deps.Client = e
+		m.runs[0] = st
+		for i := 0; i < 10; i++ {
+			runMD(m, m.onResult(0, st))
+		}
+		if e.n != tc.want {
+			t.Errorf("%v: %d attempts, want %d", tc.err, e.n, tc.want)
+		}
+	}
+}
+
+func TestCauseNewlinesBecomeSpaces(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Started by\nupstream\n"}}})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	runMD(m, m.fetchContext(st))
+	l := m.contextLines(st)
+	if len(l) != 1 || ansi.Strip(l[0]) != "Started by upstream" {
+		t.Fatalf("%q", l)
+	}
+}
+
+// pane is a stand-in root screen for the Router test.
+type pane struct{ got []tea.Msg }
+
+func (p *pane) Init() tea.Cmd { return nil }
+func (p *pane) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
+	p.got = append(p.got, msg)
+	return p, nil
+}
+func (p *pane) View() string        { return "" }
+func (p *pane) Title() string       { return "root" }
+func (p *pane) Keys() []key.Binding { return nil }
+
+func TestReplyLostWhileLeftIsFetchedAgain(t *testing.T) {
+	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{})
+	r := core.NewRouter(&core.Session{}, &pane{})
+	r.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	r.Update(core.Push{Screen: m})
+	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	m.runs[0] = st
+	reply := m.fetchHistory(st) // a fetch in flight
+	_, cmd := r.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	r.Update(cmd().(tea.Msg)) // core.Pop
+	if r.Depth() != 1 {
+		t.Fatal("esc must pop the monitor")
+	}
+	r.Update(reply()) // the router sends it to the root screen: lost
+	if len(m.md.hist) != 0 {
+		t.Fatal("the reply must not reach the popped monitor")
+	}
+	r.Update(core.Push{Screen: m})
+	_, cmd = r.Update(tickMsg{gen: m.gen})
+	feed := func(cmd tea.Cmd) {
+		if cmd == nil {
+			return
+		}
+		var walk func(tea.Cmd)
+		walk = func(c tea.Cmd) {
+			if c == nil {
+				return
+			}
+			switch msg := c().(type) {
+			case nil:
+			case tea.BatchMsg:
+				for _, x := range msg {
+					walk(x)
+				}
+			case resultMsg, histMsg, ctxMsg: // spinner ticks would chain forever
+				_, next := r.Update(msg)
+				walk(next)
+			}
+		}
+		walk(cmd)
+	}
+	feed(cmd)
+	if c.histN["a"] != 2 || len(m.md.hist) != 1 {
+		t.Fatalf("fetches = %d, hist = %v: the lost fetch must be repeated", c.histN["a"], m.md.hist)
+	}
+	if ansi.Strip(m.dots(m.runs[0])) != "●" {
+		t.Fatal("dots must appear")
+	}
+}
+
+func TestLateRunningReplyDoesNotOverwriteFinalContext(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{})
+	k := buildKey{"a", 5}
+	final := jenkins.BuildContext{Changes: []jenkins.Change{{ID: "abc1234", Author: "bob", Message: "late"}}}
+	ctxMsg{key: k, bc: final}.apply(m)
+	ctxMsg{key: k, bc: jenkins.BuildContext{}, running: true}.apply(m)
+	if len(m.md.ctx[k].Changes) != 1 || !m.md.ctxDone[k] {
+		t.Fatalf("final context was overwritten: %+v", m.md.ctx[k])
 	}
 }
