@@ -1,11 +1,13 @@
 package monitor
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
@@ -154,5 +156,150 @@ func TestRowEdgeCases(t *testing.T) {
 	r = row(runState{phase: phRunning, build: jenkins.Build{Building: true, Timestamp: now.Add(-10 * time.Minute), EstimatedDuration: time.Hour + 5*time.Minute}})
 	if !strings.Contains(r, "10m00s / ~1h05m") {
 		t.Errorf("hour estimate: %q", r)
+	}
+}
+
+// mdClient adds the optional history and context calls to fakeClient.
+type mdClient struct {
+	*fakeClient
+	hist  map[string][]jenkins.Build
+	bc    map[string]jenkins.BuildContext
+	histN map[string]int
+	ctxN  map[string]int
+}
+
+func (c *mdClient) BuildHistory(_ context.Context, job string, n int) ([]jenkins.Build, error) {
+	c.histN[job]++
+	return c.hist[job], nil
+}
+
+func (c *mdClient) BuildContext(_ context.Context, job string, _ int) (jenkins.BuildContext, error) {
+	c.ctxN[job]++
+	return c.bc[job], nil
+}
+
+// run executes cmd (flattening batches) and feeds every message to m, so
+// applier messages take effect like in the real program.
+func run(m *model, cmd tea.Cmd) {
+	if cmd == nil {
+		return
+	}
+	switch msg := cmd().(type) {
+	case nil:
+	case tea.BatchMsg:
+		for _, c := range msg {
+			run(m, c)
+		}
+	default:
+		_, c := m.Update(msg)
+		run(m, c)
+	}
+}
+
+func mdModel(hist []jenkins.Build, bc jenkins.BuildContext) (*model, *mdClient) {
+	fc := &fakeClient{builds: map[string]map[int]jenkins.Build{"a": {0: ok(5)}}}
+	c := &mdClient{fakeClient: fc, histN: map[string]int{}, ctxN: map[string]int{},
+		hist: map[string][]jenkins.Build{"a": hist}, bc: map[string]jenkins.BuildContext{"a": bc}}
+	m, _, _ := newColl(fc, []string{"a"}, nil)
+	m.deps.Client = c
+	m.Update(tea.WindowSizeMsg{Width: 100, Height: 20})
+	return m, c
+}
+
+func TestHistoryDotsFetchedOncePerFinishedBuild(t *testing.T) {
+	hist := []jenkins.Build{ // newest first
+		{Number: 5, Result: "SUCCESS"}, {Number: 4, Result: "FAILURE"}, {Number: 3, Result: "UNSTABLE"},
+		{Number: 2, Result: "ABORTED"}, {Number: 1, Result: "SUCCESS"},
+	}
+	m, c := mdModel(hist, jenkins.BuildContext{})
+	poll := func() { _, cmd := m.Update(tickMsg{gen: m.gen}); run(m, cmd) }
+	poll()
+	run(m, m.onResult(0, runState{})) // a second hook call for the same build must not refetch
+	if c.histN["a"] != 1 {
+		t.Fatalf("history fetched %d times, want 1", c.histN["a"])
+	}
+	got := ""
+	for _, r := range ansi.Strip(m.dots(m.runs[0])) {
+		got += string(r)
+	}
+	if got != "●○●●●" {
+		t.Fatalf("dots = %q, want oldest-to-newest ●○●●●", got)
+	}
+	poll()
+	poll()
+	if c.histN["a"] != 1 {
+		t.Fatalf("polls must not refetch history: %d", c.histN["a"])
+	}
+}
+
+func TestDotColoursAndRunning(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{})
+	for res, col := range map[string]lipgloss.AdaptiveColor{
+		"SUCCESS": m.th.OK, "FAILURE": m.th.Fail, "UNSTABLE": m.th.Warn,
+	} {
+		want := lipgloss.NewStyle().Foreground(col).Render("●")
+		if got := m.dot(jenkins.Build{Result: res}); got != want || ansi.Strip(got) != "●" {
+			t.Errorf("%s dot = %q", res, got)
+		}
+	}
+	if ansi.Strip(m.dot(jenkins.Build{Building: true})) != "●" || ansi.Strip(m.dot(jenkins.Build{Result: "ABORTED"})) != "○" {
+		t.Error("running is a filled dot, aborted a hollow one")
+	}
+	// A newer running build is appended on the right of the fetched history.
+	m.md.hist = map[buildKey][]jenkins.Build{{"a", 5}: {{Number: 5, Result: "FAILURE"}, {Number: 4, Result: "SUCCESS"}}}
+	m.runs[0].phase, m.runs[0].num = phRunning, 6
+	if got := ansi.Strip(m.dots(m.runs[0])); got != "●●●" {
+		t.Fatalf("dots with running = %q", got)
+	}
+}
+
+func TestContextSectionCausesAndCommits(t *testing.T) {
+	bc := jenkins.BuildContext{
+		Causes: []jenkins.Cause{{Text: "Started by alice", User: "alice"}},
+		Changes: []jenkins.Change{
+			{ID: "abc1234567", Author: "bob", Message: "fix login\n\nlong body"},
+			{ID: "d1", Author: "eve", Message: "two"}, {ID: "d2", Author: "eve", Message: "three"},
+			{ID: "d3", Author: "eve", Message: "four"}, {ID: "d4", Author: "eve", Message: "five"},
+			{ID: "d5", Author: "eve", Message: "six"},
+		},
+	}
+	m, c := mdModel(nil, bc)
+	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "FAILURE", build: jenkins.Build{Number: 5}}
+	m.hideSuccess = false
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // opens the details; the hook fetches
+	run(m, cmd)
+	run(m, m.onDetailsOpen(0)) // reopening does not refetch
+	if c.ctxN["a"] != 1 {
+		t.Fatalf("context fetched %d times, want 1", c.ctxN["a"])
+	}
+	v := ansi.Strip(m.detailView())
+	for _, want := range []string{"Started by alice", "abc1234 bob: fix login", "… and 1 more commits"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("details lack %q:\n%s", want, v)
+		}
+	}
+	if strings.Contains(v, "long body") || strings.Contains(v, "abc12345") || strings.Contains(v, "six") {
+		t.Errorf("only first line, 7-char ids, five commits:\n%s", v)
+	}
+}
+
+func TestNoChangesShowsNoCommitBlock(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Branch indexing"}}})
+	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	run(m, m.onDetailsOpen(0))
+	lines := m.contextLines(m.runs[0])
+	if len(lines) != 1 || !strings.Contains(ansi.Strip(lines[0]), "Branch indexing") {
+		t.Fatalf("lines = %q", lines)
+	}
+}
+
+func TestStaleHistoryDroppedAfterExit(t *testing.T) {
+	m, c := mdModel([]jenkins.Build{{Number: 5, Result: "SUCCESS"}}, jenkins.BuildContext{})
+	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
+	cmd := m.fetchHistory(m.runs[0])
+	m.epoch++
+	run(m, cmd)
+	if len(m.md.hist) != 0 || c.histN["a"] != 1 {
+		t.Fatal("a result from a previous epoch must be dropped")
 	}
 }

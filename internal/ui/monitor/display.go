@@ -6,18 +6,34 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 )
 
 // mdState is the Monitor Display lane's per-monitor state (history dots,
-// causes, commits). Owned by lane MD; keyed by job and build number.
-type mdState struct{}
+// causes, commits), keyed by job and build number.
+type mdState struct {
+	hist     map[buildKey][]jenkins.Build // last results, newest first
+	histBusy map[buildKey]bool            // fetched or in flight
+	ctx      map[buildKey]jenkins.BuildContext
+	ctxBusy  map[buildKey]bool
+}
+
+type buildKey struct {
+	job string
+	num int
+}
 
 // onResult runs after a poll result replaced row i; prev is the row before.
 // MD starts its once-per-finished-build history fetch here.
-func (m *model) onResult(i int, prev runState) tea.Cmd { return nil }
+func (m *model) onResult(i int, prev runState) tea.Cmd {
+	return m.fetchHistory(m.runs[i])
+}
 
 // onDetailsOpen runs when the details view opens on row i.
-func (m *model) onDetailsOpen(i int) tea.Cmd { return nil }
+func (m *model) onDetailsOpen(i int) tea.Cmd {
+	return m.fetchContext(m.runs[i])
+}
 
 // durText is the elapsed or final duration of a row. A running build with a
 // known estimate reads `1m36s / ~4m`, or `4m12s (over)` once it overruns.
