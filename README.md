@@ -22,7 +22,7 @@
 
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
 - **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
-- **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides and a summary to confirm.
+- **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
 - **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.
 - **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs.
 - **Branch Filter**: one global list of globs that limits which Multibranch branches are shown.
@@ -116,7 +116,7 @@ Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
-- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
+- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then one step for each job that has parameters of its own (with the Common Parameters it can override), then a summary to confirm. On the summary, `↑`/`↓` pick a job and `e` edits it, so any job, including one with only Common Parameters, can override a Common Parameter. Passwords are shown as `••••`.
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
   - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
   - `l` shows the log of the highlighted stage or step (a stage is its steps' output together); `L` shows the whole build.
@@ -152,6 +152,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
+| Trigger summary (several jobs) | `↑`/`↓` pick a job, `PgUp`/`PgDn` scroll, `e` edit it (`Enter` on the last field applies, `Esc` cancels), `y`/`Enter` trigger, `n`/`Esc` back |
 | Run Monitor | `Enter` details (`↑`/`↓` move between stages, `l` stage log, `L` full log, with `/` find and `:` go to line), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
 
 ## Scope

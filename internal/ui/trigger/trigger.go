@@ -56,6 +56,7 @@ const (
 	stCommon  // many jobs, Common Parameters
 	stJob     // many jobs, per-job form
 	stSummary
+	stEdit // editing one job's form from the summary
 	stTriggering
 	stResult
 )
@@ -85,15 +86,19 @@ type screen struct {
 	form       *params.Form // single-job form
 	commonForm *params.Form
 	commonVals map[string]string
-	jobSeq     []string // jobs with per-job parameters
+	jobSeq     []string // jobs with parameters of their own (they get a per-job step)
 	pos        int
 	jobForms   map[string]*params.Form
 	baseline   map[string]map[string]string // job -> common name -> prefilled value
 	overrides  map[string]map[string]string
 
-	final   map[string]map[string]string
-	summary []string
-	scroll  int
+	final    map[string]map[string]string
+	summary  []string
+	jobStart []int // summary line where each job's block starts
+	cursor   int   // job highlighted on the summary
+	scroll   int
+	editJob  string
+	editForm *params.Form
 
 	started []Started
 	w, h    int
@@ -146,9 +151,17 @@ func (s *screen) Keys() []key.Binding {
 	switch s.st {
 	case stConfirm:
 		return []key.Binding{confirm, no}
-	case stForm, stCommon, stJob:
+	case stForm, stCommon, stJob, stEdit:
 		return []key.Binding{next, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "next/submit")), core.KeyBack}
 	case stSummary:
+		if len(s.jobs) > 1 {
+			paging := key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "scroll"))
+			ks := []key.Binding{confirm, no}
+			if s.canEdit() {
+				ks = append(ks, key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job")))
+			}
+			return append(ks, core.KeyUp, core.KeyDown, paging, core.KeyBack)
+		}
 		return []key.Binding{confirm, no, core.KeyUp, core.KeyDown, core.KeyBack}
 	case stTriggering, stLoading:
 		return nil
@@ -196,6 +209,8 @@ func (s *screen) activeForm() *params.Form {
 		return s.commonForm
 	case stJob:
 		return s.jobForms[s.jobSeq[s.pos]]
+	case stEdit:
+		return s.editForm
 	}
 	return nil
 }
@@ -217,6 +232,9 @@ func (s *screen) allForms() []*params.Form {
 	}
 	for _, f := range s.jobForms {
 		fs = append(fs, f)
+	}
+	if s.editForm != nil {
+		fs = append(fs, s.editForm)
 	}
 	return fs
 }
@@ -243,7 +261,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{})
 		s.st = stForm
 		s.resizeForms()
-		return s, nil
+		return s, s.form.Init()
 	}
 	s.plan = paramsmerge.Build(s.jobs, s.defs)
 	for _, j := range s.jobs {
@@ -252,8 +270,7 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 		}
 	}
 	if len(s.plan.Common) > 0 {
-		s.enterCommon()
-		return s, nil
+		return s, s.enterCommon()
 	}
 	s.commonVals = map[string]string{}
 	return s, s.afterCommon()
@@ -281,7 +298,8 @@ func (s *screen) commonDefs() ([]jenkins.ParamDef, map[string]string) {
 	return defs, ph
 }
 
-func (s *screen) enterCommon() {
+// enterCommon shows the Common Parameters form; the command starts its cursor.
+func (s *screen) enterCommon() tea.Cmd {
 	if s.commonForm == nil {
 		defs, ph := s.commonDefs()
 		s.commonForm = params.NewForm(fmt.Sprintf("Common Parameters (applied to all %d jobs)", len(s.jobs)), defs,
@@ -290,6 +308,7 @@ func (s *screen) enterCommon() {
 	}
 	s.commonForm.Reopen()
 	s.st = stCommon
+	return s.commonForm.Init()
 }
 
 // effectiveCommon is the common value a job would receive without overrides.
@@ -302,7 +321,9 @@ func (s *screen) effectiveCommon(job string) map[string]string {
 	return out
 }
 
-func (s *screen) buildJobForm(job string) *params.Form {
+// buildJobForm builds job's per-job form. A non-nil cur prefills every field
+// with that job's current final values (used when editing from the summary).
+func (s *screen) buildJobForm(job string, cur map[string]string, hint string) *params.Form {
 	var defs []jenkins.ParamDef
 	per := map[string]bool{}
 	for _, p := range s.plan.PerJob[job] {
@@ -332,8 +353,16 @@ func (s *screen) buildJobForm(job string) *params.Form {
 			pre[d.Name] = eff[d.Name]
 		}
 	}
-	idx := slicesIndex(s.jobSeq, job) + 1
-	f := params.NewForm(fmt.Sprintf("%s (%d/%d)", s.name(job), idx, len(s.jobSeq)), defs, params.Options{Prefill: pre})
+	opts := params.Options{Prefill: pre}
+	title := s.name(job)
+	if idx := slicesIndex(s.jobSeq, job); idx >= 0 {
+		title = fmt.Sprintf("%s (%d/%d)", title, idx+1, len(s.jobSeq))
+	}
+	if cur != nil {
+		opts.Prefill = cur
+		opts.Hint = hint
+	}
+	f := params.NewForm(title, defs, opts)
 	f.SetSize(s.w, max(s.h-len(s.notes)-2, 5))
 	return f
 }
@@ -349,6 +378,7 @@ func slicesIndex(a []string, v string) int {
 
 func (s *screen) afterCommon() tea.Cmd {
 	if len(s.jobSeq) == 0 {
+		s.cursor = 0
 		s.enterSummary()
 		return nil
 	}
@@ -360,15 +390,15 @@ func (s *screen) enterJob(i int) tea.Cmd {
 	j := s.jobSeq[i]
 	f := s.jobForms[j]
 	if f == nil {
-		f = s.buildJobForm(j)
+		f = s.buildJobForm(j, nil, "")
 		s.jobForms[j] = f
 	}
 	f.Reopen()
 	s.st = stJob
-	return nil
+	return f.Init()
 }
 
-func (s *screen) collectOverrides(job string) {
+func (s *screen) collectOverrides(job string, vals map[string]string) {
 	if s.overrides == nil {
 		s.overrides = map[string]map[string]string{}
 	}
@@ -377,7 +407,7 @@ func (s *screen) collectOverrides(job string) {
 	for _, p := range s.plan.PerJob[job] {
 		per[p.Name] = true
 	}
-	for n, v := range s.jobForms[job].Values() {
+	for n, v := range vals {
 		if per[n] || v != s.baseline[job][n] {
 			ov[n] = v
 		}
@@ -392,9 +422,11 @@ func (s *screen) enterSummary() {
 	} else {
 		s.final = paramsmerge.Resolve(s.plan, s.commonVals, s.overrides)
 	}
-	s.summary = nil
+	s.summary, s.jobStart = nil, nil
 	for _, j := range s.jobs {
-		s.summary = append(s.summary, s.th.Title.Render(s.name(j)))
+		s.jobStart = append(s.jobStart, len(s.summary))
+		s.summary = append(s.summary, "") // job title, drawn in view
+
 		vals := s.final[j]
 		if len(vals) == 0 {
 			s.summary = append(s.summary, s.th.MutedTxt.Render("  (no parameters)"))
@@ -417,32 +449,82 @@ func (s *screen) enterSummary() {
 			s.summary = append(s.summary, fmt.Sprintf("  %s = %s", n, strings.ReplaceAll(v, "\n", "⏎")))
 		}
 	}
+	s.cursor = min(s.cursor, len(s.jobs)-1)
 	s.st = stSummary
+}
+
+// summaryLines is the summary with the highlighted job marked.
+func (s *screen) summaryLines() []string {
+	lines := append([]string(nil), s.summary...)
+	for i, j := range s.jobs {
+		if len(s.jobs) > 1 && i == s.cursor {
+			lines[s.jobStart[i]] = s.th.Selected.Render("› " + s.name(j))
+		} else if len(s.jobs) > 1 {
+			lines[s.jobStart[i]] = "  " + s.th.Title.Render(s.name(j))
+		} else {
+			lines[s.jobStart[i]] = s.th.Title.Render(s.name(j))
+		}
+	}
+	return lines
+}
+
+// moveCursor moves the highlighted job and scrolls so its block is visible.
+func (s *screen) moveCursor(d int) {
+	s.cursor = max(min(s.cursor+d, len(s.jobs)-1), 0)
+	rows := s.summaryRows()
+	start := s.jobStart[s.cursor]
+	end := len(s.summary)
+	if s.cursor+1 < len(s.jobs) {
+		end = s.jobStart[s.cursor+1]
+	}
+	if start < s.scroll {
+		s.scroll = start
+	}
+	if end > s.scroll+rows {
+		s.scroll = min(end-rows, start)
+	}
+	s.scroll = max(min(s.scroll, max(len(s.summary)-rows, 0)), 0)
+}
+
+// canEdit reports whether the highlighted job has parameters to edit.
+func (s *screen) canEdit() bool {
+	return len(s.jobs) > 1 && len(s.final[s.jobs[s.cursor]]) > 0
+}
+
+// editFromSummary opens the highlighted job's form, prefilled with its
+// current final values.
+func (s *screen) editFromSummary() tea.Cmd {
+	if !s.canEdit() {
+		return nil
+	}
+	s.editJob = s.jobs[s.cursor]
+	s.editForm = s.buildJobForm(s.editJob, s.final[s.editJob], "Editing from the summary: Enter on the last field applies, Esc cancels.")
+	s.editForm.SetSize(s.w, max(s.h-len(s.notes)-2, 5))
+	s.st = stEdit
+	return s.editForm.Init()
 }
 
 func (s *screen) back() (core.Screen, tea.Cmd) {
 	pop := core.Cmd(core.Pop{})
 	switch s.st {
 	case stJob:
-		s.collectOverrides(s.jobSeq[s.pos])
+		s.collectOverrides(s.jobSeq[s.pos], s.jobForms[s.jobSeq[s.pos]].Values())
 		if s.pos > 0 {
 			return s, s.enterJob(s.pos - 1)
 		}
 		if s.commonForm != nil {
-			s.enterCommon()
-			return s, nil
+			return s, s.enterCommon()
 		}
 	case stSummary:
 		switch {
 		case len(s.jobs) == 1:
 			s.form.Reopen()
 			s.st = stForm
-			return s, nil
+			return s, s.form.Init()
 		case len(s.jobSeq) > 0:
 			return s, s.enterJob(len(s.jobSeq) - 1)
 		case s.commonForm != nil:
-			s.enterCommon()
-			return s, nil
+			return s, s.enterCommon()
 		}
 	}
 	return s, pop
@@ -473,14 +555,25 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 		case "n", "N", "esc":
 			return s.back()
 		case "up", "k":
-			s.scroll = max(s.scroll-1, 0)
+			s.moveCursor(-1)
 		case "down", "j":
-			s.scroll = min(s.scroll+1, max(len(s.summary)-s.summaryRows(), 0))
+			s.moveCursor(1)
+		case "pgup":
+			s.scroll = max(s.scroll-s.summaryRows(), 0)
+		case "pgdown":
+			s.scroll = min(s.scroll+s.summaryRows(), max(len(s.summary)-s.summaryRows(), 0))
+		case "e":
+			return s, s.editFromSummary()
 		}
 		return s, nil
 	}
 	// form stages
 	if k.String() == "esc" {
+		if s.st == stEdit { // cancel: back to the summary, unchanged
+			s.editForm = nil
+			s.st = stSummary
+			return s, nil
+		}
 		if s.st == stForm || (s.st == stCommon) {
 			return s, core.Cmd(core.Pop{})
 		}
@@ -493,6 +586,7 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 	}
 	switch s.st {
 	case stForm:
+		s.cursor = 0
 		s.enterSummary()
 	case stCommon:
 		vals := f.Values()
@@ -501,11 +595,22 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 		}
 		s.commonVals = vals
 		return s, s.afterCommon()
+	case stEdit:
+		s.collectOverrides(s.editJob, f.Values())
+		if slicesIndex(s.jobSeq, s.editJob) >= 0 {
+			// Keep "back" consistent with the edit, with the normal form.
+			s.jobForms[s.editJob] = s.buildJobForm(s.editJob, f.Values(), "")
+		}
+		s.editForm = nil
+		scroll := s.scroll
+		s.enterSummary()
+		s.scroll = min(scroll, max(len(s.summary)-s.summaryRows(), 0))
 	case stJob:
-		s.collectOverrides(s.jobSeq[s.pos])
+		s.collectOverrides(s.jobSeq[s.pos], s.jobForms[s.jobSeq[s.pos]].Values())
 		if s.pos+1 < len(s.jobSeq) {
 			return s, s.enterJob(s.pos + 1)
 		}
+		s.cursor = 0
 		s.enterSummary()
 	}
 	return s, nil
@@ -584,17 +689,24 @@ func (s *screen) view() string {
 		return s.th.ErrorView("Cannot trigger", errors.New(strings.Join(s.notes, "\n")), "esc to go back")
 	case stConfirm:
 		return s.banner() + s.th.NoticeView("Trigger "+s.name(s.jobs[0])+"?", "y trigger, n cancel (no parameters)")
-	case stForm, stCommon, stJob:
+	case stForm, stCommon, stJob, stEdit:
 		return s.banner() + s.activeForm().View()
 	case stSummary:
 		rows := s.summaryRows()
 		end := min(s.scroll+rows, len(s.summary))
 		head := s.th.Title.Render(fmt.Sprintf("Ready to trigger %d job(s)", len(s.jobs)))
 		foot := s.th.MutedTxt.Render("y/enter trigger, n/esc back")
-		if len(s.summary) > rows {
-			foot += s.th.MutedTxt.Render(fmt.Sprintf("  (%d-%d of %d lines, up/down scroll)", s.scroll+1, end, len(s.summary)))
+		if len(s.jobs) > 1 {
+			hint := "y/enter trigger, up/down select job, n/esc back"
+			if s.canEdit() {
+				hint = "y/enter trigger, e edit job, up/down select job, n/esc back"
+			}
+			foot = s.th.MutedTxt.Render(hint)
 		}
-		return s.banner() + head + "\n\n" + strings.Join(s.summary[s.scroll:end], "\n") + "\n\n" + foot
+		if len(s.summary) > rows {
+			foot += s.th.MutedTxt.Render(fmt.Sprintf("  (%d-%d of %d lines, pgup/pgdn scroll)", s.scroll+1, end, len(s.summary)))
+		}
+		return s.banner() + head + "\n\n" + strings.Join(s.summaryLines()[s.scroll:end], "\n") + "\n\n" + foot
 	case stResult:
 		var b strings.Builder
 		b.WriteString(s.banner() + s.th.Title.Render("Trigger results") + "\n\n")

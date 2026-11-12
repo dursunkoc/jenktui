@@ -55,6 +55,7 @@ Keys already bound (from `grep -rn 'WithKeys(' internal/ui`). A row marked "new"
 | Console log | `↑↓` `pgup pgdn ctrl+f ctrl+b space` `g home` `G end` `/` `n` `N` `:` `esc` `q` | `e`/`E` next/previous error (LV1) · `w` wrap (LV2) · `S` save to file (LV3) · `y` copy current line (LV4) · `o` open build in browser (LV4) |
 | Opened Collection | list keys (`/ s space a n shift+↑↓`) `t` `m` `e` `x` `R` | `o` open job in browser (UI1) |
 | Job Catalog | list keys, `b` `B` `r` | `o` open job in browser (UI1) |
+| Trigger summary (several jobs) | `y n esc ↑↓ k j` | `e` edit job (G2) · `pgup pgdn` scroll |
 | Any screen | `ctrl+c` | `ctrl+p` jump to (CORE4), handled by the Router |
 
 `y` is also "yes" inside the Collections delete dialog; that dialog takes every key while open, so there is no clash.

@@ -3,6 +3,8 @@ package trigger
 import (
 	"context"
 	"errors"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,10 +22,19 @@ type harness struct {
 	nav []tea.Msg
 }
 
-// pump runs cmd, feeding resulting messages back to the screen (spinner ticks
-// are dropped so the loop terminates).
+// isBlink reports whether c is a cursor-blink command, which only fires after
+// its blink interval and would stall the harness.
+func isBlink(c tea.Cmd) bool {
+	n := runtime.FuncForPC(reflect.ValueOf(c).Pointer()).Name()
+	return n == "github.com/charmbracelet/bubbles/textinput.Blink" ||
+		strings.HasPrefix(n, "github.com/charmbracelet/bubbles/cursor.(*Model).BlinkCmd")
+}
+
+// pump runs cmd, feeding resulting messages back to the screen. Cursor blinks
+// are skipped without running and spinner ticks are dropped, so the loop
+// terminates. A command that does not return fails the test.
 func (h *harness) pump(cmd tea.Cmd) {
-	if cmd == nil {
+	if cmd == nil || isBlink(cmd) {
 		return
 	}
 	ch := make(chan tea.Msg, 1)
@@ -31,8 +42,8 @@ func (h *harness) pump(cmd tea.Cmd) {
 	var msg tea.Msg
 	select {
 	case msg = <-ch:
-	case <-time.After(250 * time.Millisecond): // cursor blink and friends
-		return
+	case <-time.After(5 * time.Second):
+		h.t.Fatalf("command did not return")
 	}
 	switch m := msg.(type) {
 	case nil:
@@ -237,6 +248,108 @@ func TestManyJobsAllCommonSkipsPerJob(t *testing.T) {
 	h.keys("esc")
 	if _, ok := h.nav[len(h.nav)-1].(core.Pop); !ok {
 		t.Fatalf("nav %v", h.nav)
+	}
+}
+
+// triggered returns the parameters sent per job.
+func triggered(srv *jenkinstest.Server) map[string]map[string][]string {
+	out := map[string]map[string][]string{}
+	for _, tr := range srv.Triggers() {
+		out[tr.Job] = tr.Params
+	}
+	return out
+}
+
+// A job with only Common Parameters has no per-job step, but can be edited
+// from the summary to override one.
+func TestSummaryEditJobWithOnlyCommonOverrides(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"), jenkinstest.StringParam("ONLYB", "", "x"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter")       // common ENV = dev
+	h.wantView("b (1/1)") // only b has own parameters
+	h.keys("enter", "enter")
+	h.wantView("Ready to trigger 2 job")
+	h.wantView("e edit job")
+	h.keys("e") // cursor is on a
+	h.wantView("[common")
+	h.wantView("Editing from the summary")
+	for range 3 {
+		h.send(tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	h.keys("qa", "enter")
+	h.wantView("Ready to trigger 2 job")
+	v := h.view()
+	if !strings.Contains(v, "ENV = qa") || !strings.Contains(v, "ENV = dev") {
+		t.Fatalf("summary:\n%s", v)
+	}
+	h.keys("y")
+	got := triggered(srv)
+	if got["a"]["ENV"][0] != "qa" || got["b"]["ENV"][0] != "dev" || got["b"]["ONLYB"][0] != "x" {
+		t.Errorf("triggered: %v", got)
+	}
+}
+
+func TestSummaryEditEscLeavesValues(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter")
+	h.keys("down", "e") // edit b
+	h.wantView("b")
+	h.keys("zzz", "esc")
+	h.wantView("Ready to trigger 2 job")
+	if v := h.view(); strings.Contains(v, "zzz") || strings.Count(v, "ENV = dev") != 2 {
+		t.Fatalf("summary:\n%s", v)
+	}
+	// Reopening starts from the unchanged values, not the cancelled edit.
+	h.keys("e")
+	if strings.Contains(h.view(), "zzz") {
+		t.Fatalf("cancelled edit kept:\n%s", h.view())
+	}
+	h.keys("esc", "y")
+	for j, p := range triggered(srv) {
+		if p["ENV"][0] != "dev" {
+			t.Errorf("%s: %v", j, p)
+		}
+	}
+}
+
+// e on a job without parameters does nothing (and must not crash).
+func TestSummaryEditNoParamsJobIsNoop(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b")
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter") // a's own step (or summary)
+	if !strings.Contains(h.view(), "Ready to trigger") {
+		h.keys("enter")
+	}
+	h.wantView("Ready to trigger 2 job")
+	h.keys("down", "e")
+	h.wantView("Ready to trigger 2 job")
+	if strings.Contains(h.view(), "e edit job") {
+		t.Fatalf("edit hint shown for a job without parameters:\n%s", h.view())
+	}
+}
+
+// Editing a job that has its own parameters keeps them and the earlier
+// overrides, and "back" from the summary shows the edited values.
+func TestSummaryEditJobWithOwnParams(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"), jenkinstest.StringParam("ONLYA", "", "x"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter", "enter", "enter") // common, ONLYA, ENV
+	h.wantView("Ready to trigger 2 job")
+	h.keys("e") // a: ONLYA focused
+	h.keys("1", "enter", "enter")
+	h.wantView("ONLYA = x1")
+	h.keys("y")
+	if got := triggered(srv); got["a"]["ONLYA"][0] != "x1" || got["a"]["ENV"][0] != "dev" {
+		t.Errorf("triggered: %v", got)
 	}
 }
 
