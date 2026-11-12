@@ -26,6 +26,25 @@ type Config struct {
 	InsecureSkipVerify bool   `toml:"insecure_skip_verify"`
 	// BranchFilter holds Branch Filter glob patterns (see package branchfilter).
 	BranchFilter []string `toml:"branch_filter,omitempty"`
+	// Notify is when the Run Monitor rings the bell and sends a desktop
+	// notification for a finished build: NotifyFailures, NotifyAll or
+	// NotifyOff. Empty means NotifyFailures; read it through NotifyMode.
+	Notify string `toml:"notify,omitempty"`
+}
+
+// Values of Config.Notify.
+const (
+	NotifyFailures = "failures"
+	NotifyAll      = "all"
+	NotifyOff      = "off"
+)
+
+// NotifyMode returns Notify with the default (NotifyFailures) applied.
+func (c *Config) NotifyMode() string {
+	if c.Notify == "" {
+		return NotifyFailures
+	}
+	return c.Notify
 }
 
 // Dir returns the jenktui config directory (~/.config/jenktui, or $JENKTUI_CONFIG_DIR).
@@ -55,6 +74,11 @@ func (c *Config) Validate() error {
 		if err := branchfilter.Validate(p); err != nil {
 			return fmt.Errorf("branch_filter[%d]: %w", i, err)
 		}
+	}
+	switch c.Notify {
+	case "", NotifyFailures, NotifyAll, NotifyOff:
+	default:
+		return fmt.Errorf("notify %q must be %q, %q or %q", c.Notify, NotifyFailures, NotifyAll, NotifyOff)
 	}
 	return nil
 }

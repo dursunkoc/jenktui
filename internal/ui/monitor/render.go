@@ -12,7 +12,26 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
+// View is the body; an open confirm prompt takes its last line.
 func (m *model) View() string {
+	v := m.body()
+	if m.confirm == nil {
+		return v
+	}
+	rows := strings.Split(v, "\n")
+	if m.h > 0 {
+		for len(rows) < m.h {
+			rows = append(rows, "")
+		}
+		rows = rows[:m.h-1]
+	}
+	return strings.Join(append(rows, m.fit(m.th.Selected.Render(m.confirm.text)+" "+m.th.MutedTxt.Render("y/n"))), "\n")
+}
+
+func (m *model) body() string {
+	if m.overlay != nil {
+		return m.overlay.view(m.w, m.h)
+	}
 	if m.log != nil {
 		return m.logView()
 	}
@@ -60,6 +79,9 @@ func (m *model) View() string {
 // Subtitle is the status line shown on the title row while the runs list is
 // on screen (not over the details view, a notice or the first-load modal).
 func (m *model) Subtitle() string {
+	if m.noticeShown() {
+		return m.notice
+	}
 	if len(m.runs) == 0 || m.details || m.log != nil || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
 		return ""
 	}
@@ -289,6 +311,9 @@ func (m *model) detailView() string {
 	if t := m.note(st); t != "" {
 		head = append(head, m.fit(m.th.MutedTxt.Render(t)))
 	}
+	for _, l := range m.detailHeader(st) {
+		head = append(head, m.fit(l))
+	}
 	head = append(head, "")
 	switch {
 	case len(st.stages) > 0:
@@ -351,3 +376,6 @@ func (m *model) jobName(job string) string {
 	}
 	return core.RelName(job, m.deps.Parent)
 }
+
+// initHooks is where lane MD registers its detail sections; newBase calls it.
+func (m *model) initHooks() {}

@@ -110,3 +110,32 @@ func TestBranchFilterRoundTripAndValidation(t *testing.T) {
 		}
 	}
 }
+
+func TestNotifyValidationAndDefault(t *testing.T) {
+	if got := (&Config{}).NotifyMode(); got != NotifyFailures {
+		t.Errorf("default = %q", got)
+	}
+	for _, ok := range []string{"", "failures", "all", "off"} {
+		c := &Config{JenkinsURL: "https://j.example.com", Notify: ok}
+		if err := c.Validate(); err != nil {
+			t.Errorf("%q: %v", ok, err)
+		}
+	}
+	if got := (&Config{Notify: "all"}).NotifyMode(); got != "all" {
+		t.Errorf("mode = %q", got)
+	}
+	for _, bad := range []string{"none", "ALL", "true"} {
+		c := &Config{JenkinsURL: "https://j.example.com", Notify: bad}
+		if c.Validate() == nil {
+			t.Errorf("expected error for %q", bad)
+		}
+	}
+	p := filepath.Join(t.TempDir(), "config.toml")
+	if err := os.WriteFile(p, []byte("jenkins_url = \"https://j.example.com\"\nnotify = \"off\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(p)
+	if err != nil || got.Notify != "off" {
+		t.Fatalf("load: %v %v", got, err)
+	}
+}

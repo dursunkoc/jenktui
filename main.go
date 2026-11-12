@@ -10,6 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/sysint"
 	"github.com/dursunkoc/jenktui/internal/ui/catalog"
 	"github.com/dursunkoc/jenktui/internal/ui/collections"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
@@ -18,6 +19,8 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/trigger"
 	"github.com/dursunkoc/jenktui/internal/version"
 )
+
+var _ monitor.Sys = sysint.Sys{}
 
 func main() {
 	showVersion := flag.Bool("version", false, "print the version and exit")
@@ -69,6 +72,7 @@ func newDeps(dir string) entry.Deps {
 	}
 
 	collectionsPath := filepath.Join(dir, "collections.toml")
+	sys := sysint.New(os.Stdout)
 
 	// Each Collection has its own Run Monitor for the session, keyed by the
 	// lower-cased name (config.Collections.Find is case-insensitive). Leaving
@@ -80,7 +84,7 @@ func newDeps(dir string) entry.Deps {
 		if m, ok := monitors[k]; ok {
 			return m
 		}
-		m := monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob}, name, nil, nil)
+		m := monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob, Sys: sys, Notify: s.Config.NotifyMode()}, name, nil, nil)
 		monitors[k] = m
 		return m
 	}
