@@ -811,6 +811,33 @@ func TestBranchFilterCatalog(t *testing.T) {
 	h.expectNoBranch("proj", "develop")
 }
 
+// When parent_job is itself a Multibranch Project its branches are listed as
+// branches, the Branch Filter applies, and the project shows by its own name.
+func TestMultibranchParentJob(t *testing.T) {
+	f := newFixture(t)
+	mb := f.Multibranch("team/app")
+	for _, b := range []string{"main", "feature/x"} {
+		mb.Branch(b).LastBuild(okBuild(1))
+	}
+	h := newApp(t, f, withConfigExtra("parent_job = \"team/app\"\nbranch_filter = [\"main\"]"),
+		withCollections(collectionsTOML("Ops", "team/app/main")))
+	h.loginOK()
+	h.openCatalog()
+	h.expectTitle("Job Catalog · team/app")
+	h.expect("branches: filtered (1 pattern)")
+	h.expectBranch("app", "main")
+	h.expectNoBranch("app", "feature/x")
+	h.key("esc", "up") // back to the menu, cursor on Collections again
+
+	h.openCollections()
+	h.openCollection("Ops")
+	h.expectBranch("app", "main")
+	h.key("m")
+	h.key("s") // the build succeeded: show it
+	h.expectRow("app › main", "SUCCESS")
+	h.expectNot("team/app/main", "%2F")
+}
+
 func TestBranchFilterEditorSavesToConfig(t *testing.T) {
 	f := newBranchFixture(t)
 	h := newApp(t, f, withConfigExtra(branchFilterConfig))

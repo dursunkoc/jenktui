@@ -7,7 +7,7 @@ The complete flat list of buildable Jobs found under the configured Parent Job (
 A buildable item on the Jenkins server, identified by its full path (e.g. `team/app/build`). Folders are not Jobs.
 
 **Parent Job**
-The configured Jenkins folder whose descendants make up the Job Catalog. When not configured, the Jenkins root is used.
+The configured Jenkins folder or Multibranch Project whose descendants make up the Job Catalog. When not configured, the Jenkins root is used.
 
 **Collection**
 A named, ordered group of Jobs curated by the user from the Job Catalog. Builds are triggered from a Collection.

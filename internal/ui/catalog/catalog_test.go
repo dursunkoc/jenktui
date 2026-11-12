@@ -341,6 +341,7 @@ func TestJobName(t *testing.T) {
 		{jenkins.Job{FullName: "ui/PR-2454", Multibranch: "ui", Branch: "PR-2454"}, "", "ui › PR-2454"},
 		// the parent is the Multibranch Project itself: keep its name
 		{jenkins.Job{FullName: "ui/develop", Multibranch: "ui", Branch: "develop"}, "ui", "ui › develop"},
+		{jenkins.Job{FullName: "team/ui/develop", Multibranch: "team/ui", Branch: "develop"}, "team/ui", "ui › develop"},
 	} {
 		if got := JobName(tc.job, tc.parent).String(); got != tc.want {
 			t.Errorf("JobName(%q, %q) = %q, want %q", tc.job.FullName, tc.parent, got, tc.want)
@@ -370,5 +371,37 @@ func TestSubtitleCountSkipsPlaceholder(t *testing.T) {
 	}
 	if sub := s.Subtitle(); !strings.Contains(sub, "0 of 2 jobs") {
 		t.Errorf("text filter on placeholder only: want 0 of 2 jobs, got %q", sub)
+	}
+}
+
+func TestMultibranchParentRowsAndFilter(t *testing.T) {
+	mk := func(b string) jenkins.Job {
+		return jenkins.Job{FullName: "team/app/" + b, Multibranch: "team/app", Branch: b}
+	}
+	f := &fakeCatalog{cat: jenkins.Catalog{
+		Jobs:                []jenkins.Job{mk("main"), mk("feature%2Fx")},
+		MultibranchProjects: []string{"team/app"},
+	}}
+	f.cat.Jobs[1].Branch = "feature/x"
+	s := New(f, "team/app", WithBranchFilter(Settings{Patterns: []string{"main"}}))
+	feed(t, s, s.Init())
+	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	v := shown(s)
+	if !branchRow("app", "main").MatchString(v) || strings.Contains(v, "feature/x") {
+		t.Errorf("want only app / main:\n%s", v)
+	}
+	s.Update(kmsg("b"))
+	if v = shown(s); !branchRow("app", "feature/x").MatchString(v) {
+		t.Errorf("filter off should list feature/x:\n%s", v)
+	}
+	s.Update(kmsg("b"))
+
+	// No branch matches: the placeholder names the project, not an empty row.
+	f2 := &fakeCatalog{cat: jenkins.Catalog{Jobs: []jenkins.Job{mk("dev")}, MultibranchProjects: []string{"team/app"}}}
+	s2 := New(f2, "team/app", WithBranchFilter(Settings{Patterns: []string{"main"}}))
+	feed(t, s2, s2.Init())
+	s2.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	if v := shown(s2); !branchRow("app", "(no matching branches)").MatchString(v) {
+		t.Errorf("missing placeholder:\n%s", v)
 	}
 }
