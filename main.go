@@ -143,13 +143,25 @@ func newDeps(dir string) entry.Deps {
 			monitor.Rename(m, newName)
 		}
 	}
+	// A deleted Collection's monitor is dropped, so a new Collection with the
+	// same name does not inherit its rows.
+	deleted := func(name string) {
+		k := strings.ToLower(name)
+		if m, ok := monitors[k]; ok {
+			delete(monitorNames, m)
+			delete(monitors, k)
+		}
+	}
 	openMonitor := func(s *core.Session) func(string, []string, map[string]bool, map[string]core.JobName) core.Screen {
 		return func(name string, jobKeys []string, missing map[string]bool, names map[string]core.JobName) core.Screen {
+			_, existed := monitors[strings.ToLower(name)]
 			m := monitorFor(s, name)
 			monitor.SetJobs(m, jobKeys, missing)
 			monitor.SetNames(m, names)
 			monitorNames[m] = names
-			monitor.HideSuccess(m, true)
+			if !existed { // a kept monitor keeps the user's show/hide toggle
+				monitor.HideSuccess(m, true)
+			}
 			return m
 		}
 	}
@@ -248,25 +260,26 @@ func newDeps(dir string) entry.Deps {
 		Palette: func(s *core.Session) core.Screen {
 			return palette.New(palette.Deps{
 				Parent: s.Config.ParentJob,
-				Load: func() (palette.Data, error) {
+				Collections: func() ([]string, error) {
 					cs, err := config.LoadCollections(collectionsPath)
 					if err != nil {
-						return palette.Data{}, err
+						return nil, err
 					}
-					var d palette.Data
-					for _, c := range cs.Items {
-						d.Collections = append(d.Collections, c.Name)
+					names := make([]string, len(cs.Items))
+					for i, c := range cs.Items {
+						names[i] = c.Name
 					}
-					if cl := client(s); cl != nil {
-						ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-						defer cancel()
-						if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err != nil {
-							d.Warn = "jobs unavailable: " + err.Error()
-						} else {
-							d.Jobs = cat.Jobs
-						}
+					return names, nil
+				},
+				Jobs: func() ([]jenkins.Job, error) {
+					cl := client(s)
+					if cl == nil {
+						return nil, nil
 					}
-					return d, nil
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					cat, err := cl.ListCatalog(ctx, s.Config.ParentJob)
+					return cat.Jobs, err
 				},
 				OpenCollection: func(name string) tea.Cmd {
 					return func() tea.Msg {
@@ -287,6 +300,7 @@ func newDeps(dir string) entry.Deps {
 				Trigger:      triggerFor(s),
 				Monitor:      openMonitor(s),
 				Renamed:      renamed,
+				Deleted:      deleted,
 				Opener:       sys,
 				JobURL:       jobURL(s),
 				BranchFilter: branchSettings(s),

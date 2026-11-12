@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -54,58 +53,25 @@ func (c *Client) CancelQueue(ctx context.Context, id int) error {
 func (c *Client) postAction(ctx context.Context, path string, notFound error, landing string) error {
 	hc := *c.hc // shallow copy: same jar and transport, own redirect policy
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	refresh := false
-	for attempt := 0; ; attempt++ {
-		field, val, err := c.crumb(ctx, refresh)
-		if err != nil {
-			return err
-		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, nil)
-		if err != nil {
-			return err
-		}
-		if c.user != "" {
-			req.SetBasicAuth(c.user, c.tok)
-		}
-		if field != "" {
-			req.Header.Set(field, val)
-		}
-		resp, err := hc.Do(req)
-		if err != nil {
-			return classify(err)
-		}
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
-		resp.Body.Close()
-		switch {
-		case resp.StatusCode == http.StatusForbidden && strings.Contains(strings.ToLower(string(b)), "crumb") && attempt == 0:
-			refresh = true
-			continue
-		case resp.StatusCode == http.StatusUnauthorized:
-			return ErrAuth
-		case resp.StatusCode == http.StatusForbidden:
-			what := "403 Forbidden"
-			if strings.Contains(strings.ToLower(string(b)), "crumb") {
-				what = "403: CSRF crumb rejected"
-			}
-			if d := serverDetail(b); d != "" {
-				what += ": " + d
-			}
-			return fmt.Errorf("%w (%s)", ErrForbidden, what)
-		case resp.StatusCode == http.StatusNotFound:
-			return notFound
-		case resp.StatusCode >= 400:
-			return fmt.Errorf("jenkins returned %s for POST %s", resp.Status, strings.SplitN(path, "?", 2)[0])
-		case resp.StatusCode >= 300:
-			loc := resp.Header.Get("Location")
-			if loc == "" {
-				return nil
-			}
-			u, err := req.URL.Parse(loc)
-			if err != nil || strings.Contains(u.Path, landing) {
-				return nil
-			}
-			return fmt.Errorf("%w (redirected to %s; login or proxy?)", ErrAuth, u.Host+u.Path)
-		}
-		return nil
+	resp, _, err := c.postWithCrumb(ctx, &hc, path, nil, "")
+	if err != nil {
+		return err
 	}
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return notFound
+	case resp.StatusCode >= 400:
+		return fmt.Errorf("jenkins returned %s for POST %s", resp.Status, strings.SplitN(path, "?", 2)[0])
+	case resp.StatusCode >= 300:
+		loc := resp.Header.Get("Location")
+		if loc == "" {
+			return nil
+		}
+		u, err := resp.Request.URL.Parse(loc)
+		if err != nil || strings.Contains(u.Path, landing) {
+			return nil
+		}
+		return fmt.Errorf("%w (redirected to %s; login or proxy?)", ErrAuth, u.Host+u.Path)
+	}
+	return nil
 }

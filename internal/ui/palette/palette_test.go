@@ -28,10 +28,17 @@ type fixture struct {
 }
 
 func newFixture(t *testing.T, load func() (Data, error)) *fixture {
+	data, derr := load()
 	f := &fixture{}
 	f.s = New(Deps{
 		Parent: "team",
-		Load:   load,
+		Collections: func() ([]string, error) {
+			if derr != nil {
+				return nil, derr
+			}
+			return data.Collections, nil
+		},
+		Jobs: func() ([]jenkins.Job, error) { return data.Jobs, nil },
 		OpenCollection: func(name string) tea.Cmd {
 			f.opened = append(f.opened, name)
 			return func() tea.Msg { return Opened{Screen: func() core.Screen { return &stub{"monitor " + name} }} }
@@ -75,6 +82,13 @@ func (f *fixture) typ(text string) {
 }
 
 func (f *fixture) view() string { return ansi.Strip(f.s.View()) }
+
+// Data is the fixture's content: what both loaders return.
+type Data struct {
+	Collections []string
+	Jobs        []jenkins.Job
+	Warn        string
+}
 
 func sample() (Data, error) {
 	return Data{Collections: []string{"Nightly", "Calm"}, Jobs: []jenkins.Job{{FullName: "team/api/build"}, {FullName: "team/web/test"}}}, nil
@@ -153,9 +167,29 @@ func TestLoadErrorAndWarning(t *testing.T) {
 	if !strings.Contains(f.view(), "bad toml") {
 		t.Fatalf("view:\n%s", f.view())
 	}
-	f = newFixture(t, func() (Data, error) { return Data{Collections: []string{"A"}, Warn: "jobs unavailable: 500"}, nil })
-	f.run(f.s.Init())
-	if v := f.view(); !strings.Contains(v, "◆ A") || !strings.Contains(v, "jobs unavailable") {
+}
+
+func TestCollectionsShowBeforeTheCatalogAndAJobsErrorIsAWarning(t *testing.T) {
+	f := newFixture(t, sample)
+	f.s.Update(collectionsMsg{names: []string{"A"}}) // the catalog has not answered
+	if v := f.view(); !strings.Contains(v, "◆ A") || !strings.Contains(v, "loading jobs…") {
 		t.Fatalf("view:\n%s", v)
+	}
+	f.s.Update(jobsMsg{err: errors.New("500")})
+	if v := f.view(); !strings.Contains(v, "◆ A") || !strings.Contains(v, "jobs unavailable: 500") || strings.Contains(v, "loading jobs") {
+		t.Fatalf("view:\n%s", v)
+	}
+}
+
+func TestNoCheckboxesAndSpaceDoesNotSelect(t *testing.T) {
+	f := newFixture(t, sample)
+	f.run(f.s.Init())
+	if strings.Contains(f.view(), "[ ]") {
+		t.Fatalf("checkbox column shown:\n%s", f.view())
+	}
+	f.press(tea.KeyMsg{Type: tea.KeyDown}) // focus the list
+	f.press(tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}})
+	if strings.Contains(f.view(), "[x]") {
+		t.Fatalf("space selected a row:\n%s", f.view())
 	}
 }

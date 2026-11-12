@@ -450,3 +450,16 @@ func TestCtrlPIsIgnoredWhileTheTopScreenIsBusy(t *testing.T) {
 		t.Fatal("palette did not open once the screen was idle")
 	}
 }
+
+func TestRelNameDecodesBranchSegments(t *testing.T) {
+	for _, tc := range []struct{ full, parent, want string }{
+		{"app/feature%2Fx", "app", "feature/x"},
+		{"app/feature%2Fx", "", "app/feature/x"},
+		{"team/app/release%2F1.0", "team", "app/release/1.0"},
+		{"app/bad%zz", "app", "bad%zz"}, // not valid encoding: left as is
+	} {
+		if got := RelName(tc.full, tc.parent); got != tc.want {
+			t.Errorf("RelName(%q, %q) = %q, want %q", tc.full, tc.parent, got, tc.want)
+		}
+	}
+}

@@ -49,3 +49,21 @@ func TestPauseKeepsAnOpenLogAndResumeRestartsItsPolling(t *testing.T) {
 		t.Fatalf("log lines = %d, want the new line picked up", got)
 	}
 }
+
+func TestTwoMonitorsDoNotAcceptEachOthersMessages(t *testing.T) {
+	ca, cb := &rerunClient{}, &rerunClient{}
+	a := rerunModel(ca, true, new([]map[string]string))
+	b := rerunModel(cb, true, new([]map[string]string))
+	if a.gen == b.gen || a.epoch == b.epoch || a.logGen == b.logGen || a.runs[0].rev == b.runs[0].rev {
+		t.Fatalf("counters overlap: gen %d/%d rev %d/%d", a.gen, b.gen, a.runs[0].rev, b.runs[0].rev)
+	}
+	// A's poll result for the same job reaches B: dropped by its generation/rev guard.
+	_, c := a.Update(tickMsg{gen: a.gen})
+	before := b.runs[0].num
+	cb.fakeClient.builds["api/deploy"] = map[int]jenkins.Build{0: {Number: 99, Result: "SUCCESS"}}
+	ca.fakeClient.builds["api/deploy"] = map[int]jenkins.Build{0: {Number: 98, Result: "SUCCESS"}}
+	deliverAll(b, c) // B receives what A's cycle produced
+	if b.runs[0].num != before {
+		t.Fatalf("B applied A's result: #%d", b.runs[0].num)
+	}
+}

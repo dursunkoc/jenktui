@@ -204,12 +204,13 @@ func TestIntervalChoice(t *testing.T) {
 func TestStaleTickAndResultDropped(t *testing.T) {
 	c := &fakeClient{queue: map[int]jenkins.QueueStatus{1: {State: jenkins.QueueWaiting, Why: "busy"}}}
 	m, rec := newModel(c, Run{Job: "a", Ref: jenkins.QueueRef{ID: 1}})
-	_, cmd := m.Update(tickMsg{gen: 0})
+	g0 := m.gen
+	_, cmd := m.Update(tickMsg{gen: g0})
 	gen := m.gen
-	if gen == 0 || cmd == nil {
+	if gen == g0 || cmd == nil {
 		t.Fatal("tick should start a cycle with a new generation")
 	}
-	if _, c := m.Update(tickMsg{gen: 0}); c != nil || m.gen != gen {
+	if _, c := m.Update(tickMsg{gen: g0}); c != nil || m.gen != gen {
 		t.Fatal("stale tick must be dropped")
 	}
 	m.Update(resultMsg{gen: gen - 1, st: runState{run: Run{Job: "a"}, rev: m.runs[0].rev, phase: phFinished}})

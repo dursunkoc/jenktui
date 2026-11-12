@@ -1,21 +1,40 @@
 package core
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+)
 
 // RelName returns a job's full name relative to the Parent Job, for display:
 // "team/app/build" under parent "team" is "app/build". A name outside the
 // parent (or an empty parent, meaning the Jenkins root) is returned whole,
 // so a job never loses the part that tells it apart. Keys, filters and
-// saved Collections keep using the full name.
+// saved Collections keep using the full name. A Multibranch branch segment
+// (Jenkins forbids '%' in job names, so a '%' means URL-encoded) is shown
+// decoded: "app/feature%2Fx" is "app/feature/x".
 func RelName(full, parent string) string {
 	parent = strings.Trim(parent, "/")
-	if parent == "" {
-		return full
+	rel := full
+	if rest, ok := strings.CutPrefix(full, parent+"/"); parent != "" && ok && rest != "" {
+		rel = rest
 	}
-	if rel, ok := strings.CutPrefix(full, parent+"/"); ok && rel != "" {
-		return rel
+	return decodeSegments(rel)
+}
+
+// decodeSegments decodes the path segments that hold a '%'.
+func decodeSegments(p string) string {
+	if !strings.Contains(p, "%") {
+		return p
 	}
-	return full
+	parts := strings.Split(p, "/")
+	for i, seg := range parts {
+		if strings.Contains(seg, "%") {
+			if d, err := url.PathUnescape(seg); err == nil {
+				parts[i] = d
+			}
+		}
+	}
+	return strings.Join(parts, "/")
 }
 
 // BranchSep separates a Multibranch Project from its branch in a job name.

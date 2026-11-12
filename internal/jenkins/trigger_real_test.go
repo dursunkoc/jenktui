@@ -79,3 +79,15 @@ func TestTriggerUnauthorizedIsAuthFailure(t *testing.T) {
 		t.Fatalf("want ErrAuth, got %v", err)
 	}
 }
+
+func TestTriggerUnknownJobIsErrJobNotFound(t *testing.T) {
+	s := jenkinstest.New(t).EnableCrumb(true)
+	c, err := New(Options{BaseURL: s.URL, Username: s.User(), Token: s.Token()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = c.Trigger(context.Background(), "team/nope", nil)
+	if !errors.Is(err, ErrJobNotFound) || !strings.Contains(err.Error(), "team/nope") {
+		t.Fatalf("err = %v", err)
+	}
+}

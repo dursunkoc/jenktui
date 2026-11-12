@@ -46,6 +46,10 @@ type Deps struct {
 	// Renamed, when set, is told after a Collection was renamed so per-name
 	// state (such as its Run Monitor) can follow it.
 	Renamed func(oldName, newName string)
+	// Deleted, when set, is told after a Collection was deleted so per-name
+	// state (its Run Monitor) is dropped; a Collection created later under
+	// the same name starts fresh.
+	Deleted func(name string)
 	// Opener opens the highlighted job in the browser (`o` in an opened
 	// Collection). May be nil: the key is then hidden.
 	Opener catalog.Opener
@@ -293,6 +297,9 @@ func (s *listScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 					s.notice = "could not delete: " + err.Error()
 				} else {
 					s.notice = fmt.Sprintf("deleted %q", c.Name)
+					if s.deps.Deleted != nil {
+						s.deps.Deleted(c.Name)
+					}
 				}
 				s.reload()
 			}

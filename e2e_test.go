@@ -2021,3 +2021,37 @@ func TestCtrlPIsIgnoredWhileATriggerIsPosting(t *testing.T) {
 		t.Fatalf("%d builds posted, want 1", n)
 	}
 }
+
+// ---- Cleanups (CORE5) ----
+
+func TestKeptMonitorKeepsItsToggleAndADeletedCollectionsMonitorIsDropped(t *testing.T) {
+	f := mixFixture(t)
+	toml := collectionsTOML("Mix", mixJobs...) + collectionsTOML("Other", "team/web/build")
+	h := newApp(t, f, withCollections(toml))
+	h.loginOK()
+	h.openCollections()
+	h.key("m") // from the Collections list
+	h.expectTitle("Run Monitor: Mix")
+	h.expect("hiding 2 successful")
+	h.key("s")
+	h.expect("showing all")
+	h.key("esc")
+	h.key("m") // reopening a kept monitor keeps the toggle
+	h.expect("showing all")
+	h.key("esc")
+
+	h.key("d", "y")
+	h.expect(`deleted "Mix"`)
+	h.key("n")
+	h.typeText("Mix")
+	h.key("enter")
+	h.key("/")
+	h.typeText("team/api/build")
+	h.key("enter", "space", "enter")
+	h.expectTitle("Collections")
+	h.key("down", "m") // Other, then the new Mix
+	h.expectTitle("Run Monitor: Mix")
+	// a new Collection with the old name gets a fresh monitor: successes hidden again.
+	h.expect("All 1 jobs succeeded")
+	h.expectNot("showing all")
+}

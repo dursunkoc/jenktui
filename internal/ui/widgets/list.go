@@ -30,6 +30,9 @@ type Item struct {
 type Options struct {
 	// Reorderable enables shift+up / shift+down to move the cursor item.
 	Reorderable bool
+	// NoSelect hides the checkbox column and ignores space, a and n: the list
+	// is for picking one row (the jump palette), not several.
+	NoSelect bool
 }
 
 var (
@@ -332,6 +335,8 @@ func (l *List) Update(msg tea.Msg) tea.Cmd {
 		l.cursor--
 	case key.Matches(km, core.KeyDown):
 		l.cursor++
+	case l.opts.NoSelect && key.Matches(km, KeySelect, keyAll, keyNone):
+		// no selection in this list
 	case key.Matches(km, KeySelect):
 		if it, ok := l.Cursor(); ok && !it.Missing && !it.Disabled {
 			l.selected[it.Key] = !l.selected[it.Key]
@@ -420,7 +425,11 @@ func (l *List) View() string {
 		}
 		b.WriteString(l.input.View() + hint)
 	default:
-		b.WriteString(l.theme.MutedTxt.Render("press / to filter, s for status"))
+		hint := "press / to filter, s for status"
+		if l.opts.NoSelect {
+			hint = "press / to filter"
+		}
+		b.WriteString(l.theme.MutedTxt.Render(hint))
 	}
 	if l.statusOn {
 		b.WriteString("  " + l.theme.Selected.Render("status: "+StatusName(l.status)) + l.theme.MutedTxt.Render(" (s to change)"))
@@ -442,9 +451,13 @@ func (l *List) View() string {
 		case l.selected[it.Key]:
 			box = "[x]"
 		}
+		lead := box + " " // the checkbox column; none in a NoSelect list
+		if l.opts.NoSelect {
+			lead = ""
+		}
 		// Columns: box, name, branch (only when some row has one), badge.
 		name := cell(nameOf(it), nameW)
-		line := box + " " + name
+		line := lead + name
 		switch {
 		case branchCol && hasBadge(it):
 			line += colGap + cell(it.Branch, branchW)
@@ -478,7 +491,7 @@ func (l *List) View() string {
 			// Plain rows draw the folder separators muted. A styled row keeps
 			// them in its own style: a muted part inside it would reset, and
 			// so cut short, the row's highlight.
-			line = box + " " + strings.ReplaceAll(name, folderSep, l.theme.MutedTxt.Render(folderSep)) + line[len(box)+1+len(name):]
+			line = lead + strings.ReplaceAll(name, folderSep, l.theme.MutedTxt.Render(folderSep)) + line[len(lead)+len(name):]
 		} else {
 			line = style.Render(line)
 		}
@@ -527,10 +540,18 @@ const (
 	headStatus = "Status"
 )
 
+// leadW is the width of the gutter and the checkbox column.
+func (l *List) leadW() int {
+	if l.opts.NoSelect {
+		return 2
+	}
+	return 6
+}
+
 // header is the column titles, each over its column (the gutter and the
 // box take the first 6 columns).
 func (l *List) header(nameW, branchW int, branchCol bool) string {
-	h := strings.Repeat(" ", 6) + cell(headName, nameW)
+	h := strings.Repeat(" ", l.leadW()) + cell(headName, nameW)
 	if branchCol {
 		h += colGap + cell(headBranch, branchW)
 	}
@@ -562,7 +583,7 @@ func (l *List) columns() (nameW, branchW int, branchCol bool) {
 		}
 		badgeW = max(badgeW, lipgloss.Width(l.theme.Badge(st)))
 	}
-	fixed := 2 + 4 // gutter, box and its space
+	fixed := l.leadW() // gutter, box and its space
 	if badgeW > 0 {
 		fixed += len(colGap) + max(badgeW, len(headStatus))
 	}

@@ -16,14 +16,6 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/widgets"
 )
 
-// Data is what the palette lists.
-type Data struct {
-	Collections []string
-	Jobs        []jenkins.Job
-	// Warn is set when part of the data could not be read (the catalog).
-	Warn string
-}
-
 // Opened is the reply to Deps.OpenCollection. Screen is built on the UI
 // goroutine; a Notice (unknown Collection) is shown instead.
 type Opened struct {
@@ -34,8 +26,11 @@ type Opened struct {
 // Deps are the palette's dependencies.
 type Deps struct {
 	Parent string
-	// Load reads the Collections and the catalog; it runs in a command.
-	Load func() (Data, error)
+	// Collections reads the Collections' names; Jobs reads the catalog. Each
+	// runs in its own command, so the Collections show without waiting for
+	// the (slower) catalog.
+	Collections func() ([]string, error)
+	Jobs        func() ([]jenkins.Job, error)
 	// OpenCollection returns the command that opens the named Collection's
 	// Run Monitor and yields an Opened. nil hides Collections' Enter.
 	OpenCollection func(name string) tea.Cmd
@@ -43,10 +38,16 @@ type Deps struct {
 	OpenJob func(fullName string) core.Screen
 }
 
-type loadedMsg struct {
-	data Data
-	err  error
-}
+type (
+	collectionsMsg struct {
+		names []string
+		err   error
+	}
+	jobsMsg struct {
+		jobs []jenkins.Job
+		err  error
+	}
+)
 
 const collectionMark = "◆ "
 
@@ -54,8 +55,11 @@ type screen struct {
 	deps    Deps
 	th      core.Theme
 	list    *widgets.List
-	loaded  bool
-	err     error
+	colls   []string
+	jobs    []jenkins.Job
+	collsOK bool  // the Collections arrived
+	jobsOK  bool  // the catalog answered (with jobs or an error)
+	err     error // the Collections could not be read
 	warn    string
 	notice  string
 	opening bool
@@ -65,7 +69,7 @@ type screen struct {
 // New returns the palette.
 func New(deps Deps) core.Screen {
 	th := core.NewTheme()
-	return &screen{deps: deps, th: th, list: widgets.NewList(th, widgets.Options{}), w: 80, h: 20}
+	return &screen{deps: deps, th: th, list: widgets.NewList(th, widgets.Options{NoSelect: true}), w: 80, h: 20}
 }
 
 func (s *screen) IsPalette() {}
@@ -73,11 +77,16 @@ func (s *screen) IsPalette() {}
 func (s *screen) Title() string { return "Jump to" }
 
 func (s *screen) Init() tea.Cmd {
-	load := s.deps.Load
-	return tea.Batch(s.list.StartFiltering(), func() tea.Msg {
-		d, err := load()
-		return loadedMsg{data: d, err: err}
-	})
+	colls, jobs := s.deps.Collections, s.deps.Jobs
+	return tea.Batch(s.list.StartFiltering(),
+		func() tea.Msg {
+			n, err := colls()
+			return collectionsMsg{names: n, err: err}
+		},
+		func() tea.Msg {
+			j, err := jobs()
+			return jobsMsg{jobs: j, err: err}
+		})
 }
 
 var keyGo = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "jump"))
@@ -91,12 +100,16 @@ func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		s.w, s.h = m.Width, m.Height
 		s.list.SetSize(s.w, max(s.h-2, 1))
-	case loadedMsg:
-		s.loaded, s.err = true, m.err
-		if m.err == nil {
-			s.warn = m.data.Warn
-			s.list.SetItems(items(m.data, s.deps.Parent))
+	case collectionsMsg:
+		s.collsOK, s.err, s.colls = true, m.err, m.names
+		s.refill()
+	case jobsMsg:
+		s.jobsOK, s.jobs = true, m.jobs
+		s.warn = ""
+		if m.err != nil {
+			s.warn = "jobs unavailable: " + m.err.Error()
 		}
+		s.refill()
 	case Opened:
 		wait := s.opening
 		s.opening, s.notice = false, m.Notice
@@ -109,16 +122,18 @@ func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	return s, nil
 }
 
-func items(d Data, parent string) []widgets.Item {
+// refill rebuilds the rows from what has arrived so far.
+func (s *screen) refill() {
 	var out []widgets.Item
-	for _, c := range d.Collections {
+	for _, c := range s.colls {
 		out = append(out, widgets.Item{Key: collectionMark + c, Label: collectionMark + c})
 	}
-	for _, j := range d.Jobs {
-		out = append(out, catalog.Row(j, parent, core.StatusUnknown))
-		out[len(out)-1].ShowBadge = false
+	for _, j := range s.jobs {
+		r := catalog.Row(j, s.deps.Parent, core.StatusUnknown)
+		r.ShowBadge = false
+		out = append(out, r)
 	}
-	return out
+	s.list.SetItems(out)
 }
 
 func (s *screen) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
@@ -155,10 +170,13 @@ func (s *screen) View() string {
 	switch {
 	case s.err != nil:
 		return s.th.ErrTitle.Render("Could not load: " + ansi.Truncate(s.err.Error(), max(s.w-14, 10), "…"))
-	case !s.loaded:
+	case !s.collsOK:
 		return s.list.View() + "\n" + s.th.MutedTxt.Render("Loading…")
 	}
 	out := s.list.View()
+	if !s.jobsOK {
+		out += "\n" + s.th.MutedTxt.Render("loading jobs…")
+	}
 	if s.warn != "" {
 		out += "\n" + s.th.WarnTxt.Render(ansi.Truncate(s.warn, s.w, "…"))
 	}
