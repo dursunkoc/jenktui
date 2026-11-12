@@ -1,0 +1,23 @@
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_6f6bb060b4a686 66
+internal/ui/core/theme.go
+  s_1c16aed3d161c7::t_c7d79adc8d3566 91
+internal/ui/core/theme_test.go
+  s_1c16aed3d161c7::t_957da1dd4e8322 121-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e7fca44f4ee7091d0167072f1099379b782b18cf",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
