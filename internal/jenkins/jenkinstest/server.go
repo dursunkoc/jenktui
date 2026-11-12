@@ -114,6 +114,35 @@ type BuildParam struct {
 	Name, Value string
 }
 
+// Test case statuses as reported by Jenkins' test result API.
+const (
+	CasePassed     = "PASSED"
+	CaseSkipped    = "SKIPPED"
+	CaseFailed     = "FAILED"
+	CaseFixed      = "FIXED"
+	CaseRegression = "REGRESSION"
+)
+
+// TestReport is a build's JUnit test report. When all three counts are zero
+// they are derived from the cases (FAILED and REGRESSION count as failures,
+// PASSED and FIXED as passes, SKIPPED as skips).
+type TestReport struct {
+	FailCount, PassCount, SkipCount int
+	Suites                          []TestSuite
+}
+
+// TestSuite is a group of test cases.
+type TestSuite struct {
+	Name  string
+	Cases []TestCase
+}
+
+// TestCase is one test result.
+type TestCase struct {
+	ClassName, Name, Status       string
+	ErrorDetails, ErrorStackTrace string
+}
+
 // Stage is a pipeline stage; Children model parallel branches.
 type Stage struct {
 	Name     string
@@ -153,7 +182,8 @@ type node struct {
 	disabled bool
 	pipeline bool
 	stages   []Stage
-	log      string // console output of the last build
+	log      string              // console output of the last build
+	reports  map[int]*TestReport // by build number; 0 = whatever build is last
 }
 
 // Server is a fake Jenkins.
@@ -406,6 +436,32 @@ func (n *node) find(ref string) *Build {
 	return nil
 }
 
+// TestReport attaches a test report to the job's last build (resolved when
+// the report is requested, so it follows a later LastBuild or Builds call).
+func (j *Job) TestReport(r TestReport) *Job { return j.TestReportFor(0, r) }
+
+// TestReportFor attaches a test report to build number n.
+func (j *Job) TestReportFor(n int, r TestReport) *Job {
+	j.s.mu.Lock()
+	defer j.s.mu.Unlock()
+	if j.n.reports == nil {
+		j.n.reports = map[int]*TestReport{}
+	}
+	j.n.reports[n] = &r
+	return j
+}
+
+// report returns the test report of build b, if it has one.
+func (n *node) report(b *Build) *TestReport {
+	if r, ok := n.reports[b.Number]; ok {
+		return r
+	}
+	if b == n.last {
+		return n.reports[0]
+	}
+	return nil
+}
+
 // Disabled marks the job disabled (color "disabled").
 func (j *Job) Disabled() *Job {
 	j.s.mu.Lock()
@@ -590,6 +646,13 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, s.buildJSON(full, b))
+	case len(rest) == 4 && rest[1] == "testReport" && rest[2] == "api" && rest[3] == "json" && r.Method == http.MethodGet:
+		b := n.find(rest[0])
+		if n.folder || b == nil || n.report(b) == nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, testReportJSON(n.report(b)))
 	case len(rest) == 3 && rest[1] == "logText" && rest[2] == "progressiveText" && r.Method == http.MethodGet:
 		if n.folder || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
 			http.NotFound(w, r)
@@ -935,6 +998,46 @@ func stageJSON(id int, st Stage) map[string]any {
 		m["stageFlowNodes"] = kids
 	}
 	return m
+}
+
+func testReportJSON(r *TestReport) map[string]any {
+	fail, pass, skip := r.FailCount, r.PassCount, r.SkipCount
+	if fail == 0 && pass == 0 && skip == 0 {
+		for _, su := range r.Suites {
+			for _, c := range su.Cases {
+				switch c.Status {
+				case CaseFailed, CaseRegression:
+					fail++
+				case CaseSkipped:
+					skip++
+				default:
+					pass++
+				}
+			}
+		}
+	}
+	suites := []map[string]any{}
+	for _, su := range r.Suites {
+		cases := []map[string]any{}
+		for _, c := range su.Cases {
+			cm := map[string]any{
+				"className": c.ClassName, "name": c.Name, "status": c.Status, "skipped": c.Status == CaseSkipped,
+				"errorDetails": nil, "errorStackTrace": nil,
+			}
+			if c.ErrorDetails != "" {
+				cm["errorDetails"] = c.ErrorDetails
+			}
+			if c.ErrorStackTrace != "" {
+				cm["errorStackTrace"] = c.ErrorStackTrace
+			}
+			cases = append(cases, cm)
+		}
+		suites = append(suites, map[string]any{"name": su.Name, "cases": cases})
+	}
+	return map[string]any{
+		"_class": "hudson.tasks.junit.TestResult", "failCount": fail, "passCount": pass, "skipCount": skip,
+		"duration": 0.0, "empty": len(suites) == 0, "suites": suites,
+	}
 }
 
 func (s *Server) runJSON(n *node) map[string]any {

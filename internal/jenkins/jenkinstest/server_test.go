@@ -176,3 +176,41 @@ func TestBuildFields(t *testing.T) {
 		t.Fatalf("no estimate should be -1, got %v", y["estimatedDuration"])
 	}
 }
+
+func TestTestReport(t *testing.T) {
+	s := jenkinstest.New(t)
+	s.Job("x").Builds(jenkinstest.Build{Number: 1, Result: "SUCCESS"}, jenkinstest.Build{Number: 2, Result: "UNSTABLE"}).
+		TestReport(jenkinstest.TestReport{Suites: []jenkinstest.TestSuite{{Name: "pkg", Cases: []jenkinstest.TestCase{
+			{ClassName: "A", Name: "ok", Status: jenkinstest.CasePassed},
+			{ClassName: "A", Name: "bad", Status: jenkinstest.CaseFailed, ErrorDetails: "boom", ErrorStackTrace: "at A.bad"},
+			{ClassName: "B", Name: "later", Status: jenkinstest.CaseSkipped},
+			{ClassName: "B", Name: "back", Status: jenkinstest.CaseRegression},
+		}}}})
+	for _, ref := range []string{"2", "lastBuild"} {
+		code, m := getJSON(t, s, "/job/x/"+ref+"/testReport/api/json")
+		if code != 200 {
+			t.Fatalf("%s: %d", ref, code)
+		}
+		if m["failCount"] != float64(2) || m["passCount"] != float64(1) || m["skipCount"] != float64(1) {
+			t.Fatalf("%s counts: %v", ref, m)
+		}
+		cases := m["suites"].([]any)[0].(map[string]any)["cases"].([]any)
+		bad := cases[1].(map[string]any)
+		if bad["className"] != "A" || bad["name"] != "bad" || bad["status"] != "FAILED" || bad["errorDetails"] != "boom" || bad["errorStackTrace"] != "at A.bad" {
+			t.Fatalf("case %v", bad)
+		}
+	}
+	// Build 1 has no report; neither does a job that has none.
+	if code, _ := getJSON(t, s, "/job/x/1/testReport/api/json"); code != 404 {
+		t.Fatalf("build without report: %d", code)
+	}
+	s.Job("y").LastBuild(jenkinstest.Build{Number: 1})
+	if code, _ := getJSON(t, s, "/job/y/1/testReport/api/json"); code != 404 {
+		t.Fatalf("job without report: %d", code)
+	}
+	// Explicit counts win over derived ones, and TestReportFor targets a build.
+	s.Job("y").TestReportFor(1, jenkinstest.TestReport{FailCount: 3, PassCount: 9})
+	if _, m := getJSON(t, s, "/job/y/1/testReport/api/json"); m["failCount"] != float64(3) || m["passCount"] != float64(9) {
+		t.Fatalf("%v", m)
+	}
+}
