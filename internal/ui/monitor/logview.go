@@ -38,6 +38,7 @@ var (
 	keyLogErr  = key.NewBinding(key.WithKeys("e"), key.WithHelp("e/E", "next/prev error"))
 	keyLogErrP = key.NewBinding(key.WithKeys("E"))
 	keyLogWrap = key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "wrap"))
+	keyLogSave = key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "save to file"))
 	keyLogBack = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to details"))
 
 	keyPromptOK  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
@@ -90,6 +91,8 @@ type logView struct {
 	re     *regexp.Regexp // compiled query; nil when no search is active
 	focus  int            // line of the current match or go-to target; -1 none
 	status string         // result of the last find or go-to
+
+	saving bool // S is writing the log to a file
 
 	wrap bool // w: long lines continue on further rows instead of being cut
 	tw   int  // text width the wrapped layout uses; 0 = no wrapping (set by sync)
@@ -389,7 +392,7 @@ func (m *model) logKeys() []key.Binding {
 	if m.log.prompt != promptNone {
 		return []key.Binding{keyPromptOK, keyPromptEsc}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogSave, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 }
 
 // logKey handles the keys of the log view; ok is false for keys it leaves to
@@ -435,6 +438,8 @@ func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		m.syncWrap()
 		lv.scrollTo(cur, n, page)
 		lv.follow = follow || lv.follow
+	case key.Matches(msg, keyLogSave):
+		return m.saveLog(), true
 	case key.Matches(msg, keyLogErrP):
 		lv.nextError(-1, cur, page)
 	default:

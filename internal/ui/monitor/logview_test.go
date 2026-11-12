@@ -1,6 +1,9 @@
 package monitor
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -256,5 +259,103 @@ func TestLogWrapGoToAndFindWorkOnLogLines(t *testing.T) {
 	pressKey(m, 'G')
 	if !m.log.follow {
 		t.Fatal("G follows")
+	}
+}
+
+// saveTo points S at a fresh directory and returns it.
+func saveTo(t *testing.T, m *model) string {
+	t.Helper()
+	dir := t.TempDir()
+	m.deps.SaveDir = dir
+	return dir
+}
+
+func TestLogSaveWritesWholeLogNotTheBuffer(t *testing.T) {
+	m, c := logTail(t)
+	dir := saveTo(t, m)
+	var sb strings.Builder
+	total := maxLogLines + 500
+	for i := 1; i <= total; i++ {
+		fmt.Fprintf(&sb, "\x1b[32mline %d\x1b[0m\n", i)
+	}
+	c.log = sb.String()
+	m.Update(pressL(m)())
+	if m.log.dropped != 500 {
+		t.Fatalf("the view keeps only the last lines (dropped %d)", m.log.dropped)
+	}
+	m.Update(pressKey(m, 'S')())
+	want := filepath.Join(dir, "b-4.log")
+	if !strings.Contains(m.log.status, "saved to "+want) {
+		t.Fatalf("status %q", m.log.status)
+	}
+	data, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.HasPrefix(got, "line 1\nline 2\n") || !strings.HasSuffix(got, fmt.Sprintf("line %d\n", total)) || strings.Count(got, "\n") != total {
+		t.Fatalf("saved %d lines, starts %q", strings.Count(got, "\n"), got[:20])
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "saved to") {
+		t.Fatalf("footer shows the path:\n%s", v)
+	}
+}
+
+func TestLogSaveNeverOverwrites(t *testing.T) {
+	m, c := logTail(t)
+	dir := saveTo(t, m)
+	c.log = "one\n"
+	m.Update(pressL(m)())
+	for _, name := range []string{"b-4.log", "b-4-1.log", "b-4-2.log"} {
+		m.Update(pressKey(m, 'S')())
+		if !strings.HasSuffix(m.log.status, filepath.Join(dir, name)) {
+			t.Fatalf("want %s, status %q", name, m.log.status)
+		}
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "b-4.log")); string(data) != "one\n" {
+		t.Fatalf("first file changed: %q", data)
+	}
+}
+
+func TestLogSaveStageLogSavesWhatIsShown(t *testing.T) {
+	m, c := stagedLog(t)
+	dir := saveTo(t, m)
+	m.Update(pressKey(m, 'l')())
+	shown := strings.Join(m.log.all(), "\n") + "\n"
+	cmd := pressKey(m, 'S')
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatal("nothing is written before the command runs")
+	}
+	m.Update(cmd())
+	data, err := os.ReadFile(filepath.Join(dir, "b-4.log"))
+	if err != nil || string(data) != shown || !strings.Contains(shown, "step one out") {
+		t.Fatalf("saved %q (%v), shown %q", data, err, shown)
+	}
+	if len(c.logStarts) != 0 {
+		t.Fatalf("a stage log is not refetched from consoleText: %v", c.logStarts)
+	}
+}
+
+func TestLogSaveErrorIsShownAndStaleResultDropped(t *testing.T) {
+	m, c := logTail(t)
+	m.deps.SaveDir = filepath.Join(t.TempDir(), "missing")
+	c.log = "one\n"
+	m.Update(pressL(m)())
+	m.Update(pressKey(m, 'S')())
+	if !strings.HasPrefix(m.log.status, "save failed: ") || m.log.saving {
+		t.Fatalf("status %q saving %v", m.log.status, m.log.saving)
+	}
+	// A result for a log that was closed is ignored.
+	cmd := pressKey(m, 'S')
+	m.closeLog()
+	m.Update(cmd())
+	if m.log != nil {
+		t.Fatal("log stays closed")
+	}
+}
+
+func TestLogFileNameReplacesSlashes(t *testing.T) {
+	if got := logFileName("team/api/deploy", 57); got != "team_api_deploy-57.log" {
+		t.Fatal(got)
 	}
 }
