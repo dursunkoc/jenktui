@@ -1,0 +1,14 @@
+TODO.md
+  h_a45c28af58a960 63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "dc4043970ee081cf274a3876fe052e943f2fb9fe",
+  "prompts": {},
+  "humans": {
+    "h_a45c28af58a960": {
+      "author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
