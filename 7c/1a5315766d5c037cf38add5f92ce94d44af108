@@ -1,0 +1,19 @@
+internal/ui/trigger/trigger_test.go
+  s_1c16aed3d161c7::t_4deede26cb2910 32-39,42,61-69
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "7c1a5315766d5c037cf38add5f92ce94d44af108",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
