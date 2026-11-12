@@ -90,7 +90,8 @@ func (m *model) Subtitle() string {
 
 func (m *model) header() string {
 	h := m.baseHeader()
-	if m.load.Active() {
+	// The spinner is for the first load and for R; automatic polls stay quiet.
+	if m.load.Active() && (m.manual || m.modal) {
 		h += " · " + m.load.View("refreshing…")
 	}
 	return h
