@@ -1,0 +1,27 @@
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_44815ae5af96df 111
+internal/jenkins/foldercolors.go
+  s_1c16aed3d161c7::t_870bb90ab59e5a 12,22-25
+internal/jenkins/status_test.go
+  s_1c16aed3d161c7::t_d5814d010384bd 220-221
+internal/ui/overview/overview.go
+  s_1c16aed3d161c7::t_05218812d22d65 184-190
+internal/ui/overview/overview_test.go
+  s_1c16aed3d161c7::t_70b0fee22e02a1 331-343
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0c5c176192bffb1c5fc709149186b4121a447941",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
