@@ -183,7 +183,7 @@ func (c *mdClient) BuildContext(_ context.Context, job string, _ int) (jenkins.B
 
 // run executes cmd (flattening batches) and feeds every message to m, so
 // applier messages take effect like in the real program.
-func run(m *model, cmd tea.Cmd) {
+func runMD(m *model, cmd tea.Cmd) {
 	if cmd == nil {
 		return
 	}
@@ -191,11 +191,11 @@ func run(m *model, cmd tea.Cmd) {
 	case nil:
 	case tea.BatchMsg:
 		for _, c := range msg {
-			run(m, c)
+			runMD(m, c)
 		}
 	default:
 		_, c := m.Update(msg)
-		run(m, c)
+		runMD(m, c)
 	}
 }
 
@@ -215,9 +215,9 @@ func TestHistoryDotsFetchedOncePerFinishedBuild(t *testing.T) {
 		{Number: 2, Result: "ABORTED"}, {Number: 1, Result: "SUCCESS"},
 	}
 	m, c := mdModel(hist, jenkins.BuildContext{})
-	poll := func() { _, cmd := m.Update(tickMsg{gen: m.gen}); run(m, cmd) }
+	poll := func() { _, cmd := m.Update(tickMsg{gen: m.gen}); runMD(m, cmd) }
 	poll()
-	run(m, m.onResult(0, runState{})) // a second hook call for the same build must not refetch
+	runMD(m, m.onResult(0, runState{})) // a second hook call for the same build must not refetch
 	if c.histN["a"] != 1 {
 		t.Fatalf("history fetched %d times, want 1", c.histN["a"])
 	}
@@ -280,8 +280,8 @@ func TestContextSectionCausesAndCommits(t *testing.T) {
 	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "FAILURE", build: jenkins.Build{Number: 5}}
 	m.hideSuccess = false
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter}) // opens the details; the hook fetches
-	run(m, cmd)
-	run(m, m.onDetailsOpen(0)) // reopening does not refetch
+	runMD(m, cmd)
+	runMD(m, m.onDetailsOpen(0)) // reopening does not refetch
 	if c.ctxN["a"] != 1 {
 		t.Fatalf("context fetched %d times, want 1", c.ctxN["a"])
 	}
@@ -299,7 +299,7 @@ func TestContextSectionCausesAndCommits(t *testing.T) {
 func TestNoChangesShowsNoCommitBlock(t *testing.T) {
 	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Branch indexing"}}})
 	m.runs[0] = runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
-	run(m, m.onDetailsOpen(0))
+	runMD(m, m.onDetailsOpen(0))
 	lines := m.contextLines(m.runs[0])
 	if len(lines) != 1 || !strings.Contains(ansi.Strip(lines[0]), "Branch indexing") {
 		t.Fatalf("lines = %q", lines)
@@ -312,8 +312,8 @@ func TestFetchOutlivingTheScreenStillApplies(t *testing.T) {
 	m.runs[0] = st
 	h, cx := m.fetchHistory(st), m.fetchContext(st)
 	m.epoch++ // the screen was left and reopened mid-fetch
-	run(m, h)
-	run(m, cx)
+	runMD(m, h)
+	runMD(m, cx)
 	if len(m.md.hist) != 1 || len(m.md.ctx) != 1 {
 		t.Fatal("results of a finished build are valid whatever the epoch")
 	}
@@ -326,12 +326,12 @@ func TestRunningContextRefetchedWhenBuildFinishes(t *testing.T) {
 	m, c := mdModel(nil, jenkins.BuildContext{})
 	running := runState{run: Run{Job: "a"}, phase: phRunning, num: 5, build: jenkins.Build{Number: 5, Building: true}}
 	m.runs[0] = running
-	run(m, m.fetchContext(running))
+	runMD(m, m.fetchContext(running))
 	if c.ctxN["a"] != 1 {
 		t.Fatal("first fetch")
 	}
 	// Opening the details of the still-running build fetches again.
-	run(m, m.onDetailsOpen(0))
+	runMD(m, m.onDetailsOpen(0))
 	if c.ctxN["a"] != 2 {
 		t.Fatalf("running context is not final: %d fetches", c.ctxN["a"])
 	}
@@ -339,12 +339,12 @@ func TestRunningContextRefetchedWhenBuildFinishes(t *testing.T) {
 	c.bc["a"] = jenkins.BuildContext{Changes: []jenkins.Change{{ID: "abc1234", Author: "bob", Message: "late"}}}
 	fin := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
 	m.runs[0] = fin
-	run(m, m.onResult(0, running))
+	runMD(m, m.onResult(0, running))
 	if c.ctxN["a"] != 3 || len(m.contextLines(fin)) != 1 {
 		t.Fatalf("finish must refetch: %d fetches, lines %v", c.ctxN["a"], m.contextLines(fin))
 	}
-	run(m, m.onDetailsOpen(0))
-	run(m, m.onResult(0, fin))
+	runMD(m, m.onDetailsOpen(0))
+	runMD(m, m.onResult(0, fin))
 	if c.ctxN["a"] != 3 {
 		t.Fatal("a finished build's context is final")
 	}
@@ -372,7 +372,7 @@ func TestHistoryRetriesStop(t *testing.T) {
 		m.deps.Client = e
 		m.runs[0] = st
 		for i := 0; i < 10; i++ {
-			run(m, m.onResult(0, st))
+			runMD(m, m.onResult(0, st))
 		}
 		if e.n != tc.want {
 			t.Errorf("%v: %d attempts, want %d", tc.err, e.n, tc.want)
@@ -384,7 +384,7 @@ func TestCauseNewlinesBecomeSpaces(t *testing.T) {
 	m, _ := mdModel(nil, jenkins.BuildContext{Causes: []jenkins.Cause{{Text: "Started by\nupstream\n"}}})
 	st := runState{run: Run{Job: "a"}, phase: phFinished, num: 5, result: "SUCCESS", build: jenkins.Build{Number: 5}}
 	m.runs[0] = st
-	run(m, m.fetchContext(st))
+	runMD(m, m.fetchContext(st))
 	l := m.contextLines(st)
 	if len(l) != 1 || ansi.Strip(l[0]) != "Started by upstream" {
 		t.Fatalf("%q", l)

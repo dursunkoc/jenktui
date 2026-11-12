@@ -104,9 +104,12 @@ username = "me"            # optional; prefills the login screen
 # ca_cert = "/path/to/ca.pem"
 insecure_skip_verify = false
 branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch names
+notify = "failures"      # "failures" (default), "all" or "off": bell and desktop notification when a build you watched finishes
 ```
 
 Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app.
+
+**Notifications.** While a Run Monitor is on screen and a build it saw queued or running finishes, it rings the terminal bell and sends a desktop notification (`FAILED api/deploy #57`): for failed and unstable builds with `notify = "failures"`, for every finished build with `"all"`, never with `"off"`. Builds that were already finished when the monitor first loaded do not notify. **Limit:** only the monitor on show polls, so nothing fires while you are in another screen (the Collections list, the catalog); jenktui is meant to stay open on the monitor in a tmux pane or a background window.
 
 **Security.** Credentials are never stored: your username and password or API token are asked on every start and live in memory only, as a note at the bottom of the login screen says. TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
 
@@ -120,7 +123,7 @@ Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. A running row shows its progress (`1m36s / ~4m` from Jenkins' estimate, `4m12s (over)` once it overruns) and a finished row shows when it started (`2m ago`, `3h ago`, `yesterday`). Each row ends with the last five results as dots (`●✕●◐○`: success or running `●`, failure `✕`, unstable `◐`, aborted `○`; newest on the right), and the details view shows why the build started ("Started by alice") and up to five commits. Leaving it keeps its state for the session.
   - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
   - `l` shows the log of the highlighted stage or step (a stage is its steps' output together); `L` shows the whole build.
-  - The log is a modal with line numbers that follows new output while the build runs. `↑`/`↓`/`PgUp`/`PgDn` scroll, `g` goes to the top, `G` follows again, `:` goes to a line number, and `/` finds text (case-insensitive; `*` any text, `_` one character, `\*` `\_` literal), with `n`/`N` for the next and previous match. Matches are highlighted. `Esc` goes back.
+  - The log is a modal with line numbers that follows new output while the build runs. `↑`/`↓`/`PgUp`/`PgDn` scroll, `g` goes to the top, `G` follows again, `S` saves the whole log to `./<job>-<n>.log` in the current directory (fetched again in full, not just the last 10,000 lines, and streamed to the file with owner-only permissions; a running build is saved up to the point where the save started; the job name is decoded and `/` becomes `_`, so `app/feature%2Fx` #12 is `app_feature_x-12.log`; an existing file is never overwritten, a `-1`, `-2` is added; a stage or step log saves what is shown; the footer shows the path), `y` copies the current line (the current match if there is one) and `o` opens the build in the browser (hidden when the system integration is unavailable), `w` wraps long lines onto further rows (line numbers stay on the first row; scrolling, find and go to line still work on log lines; a single line that wraps to more rows than fit on screen shows only its first screenful of rows), `:` goes to a line number, and `/` finds text (case-insensitive; `*` any text, `_` one character, `\*` `\_` literal), with `n`/`N` for the next and previous match. Matches are highlighted. Error lines (`ERROR`, `FAILED`, `FAILURE`, `...Exception`, `Caused by:`, `npm ERR!`, `error:`, `Error:`, `--- FAIL:`) are drawn in red, and `e`/`E` jump to the next and previous one (the footer shows `error 3/7`; the count covers the lines kept in the view, up to 10,000). `Esc` goes back.
 
 Job names are shown relative to the parent job: under `parent_job = "team"`, `team/app/build` is shown as `app/build` (in the catalog, Collections and the Run Monitor). A job outside the parent keeps its full name. If `parent_job` is itself a Multibranch Project (say `team/digital-ui`), its branches are shown as `digital-ui › feature/login` and the Branch Filter applies to them. Job lists have three aligned columns, titled Pipeline, Branch and Status: the job (for a Multibranch Project, the project) with its folders separated by a grey `›` (`team › api › build`), the branch, decoded (`feature/login` rather than `feature%2Flogin`), and the status. The Run Monitor and the trigger screen show a branch as `digital-ui › feature/login`.
 
@@ -148,18 +151,18 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
-| Catalog and picker | `b` Branch Filter on/off, `B` edit patterns |
+| Catalog and picker | `b` Branch Filter on/off, `B` edit patterns, `o` open the highlighted job in the browser (Catalog only) |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
-| Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |
+| Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
 | Trigger summary (several jobs) | `↑`/`↓` pick a job, `PgUp`/`PgDn` scroll, `e` edit it (`Enter` on the last field applies, `Esc` cancels), `y`/`Enter` trigger, `n`/`Esc` back |
-| Run Monitor | `Enter` details (`↑`/`↓` move between stages, `l` stage log, `L` full log, with `/` find and `:` go to line), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
+| Run Monitor | `Enter` details (on a failed build the marker starts on the failed stage; `↑`/`↓` move between stages, `l` stage log (a failed build's log opens at its end), `L` full log (in the log: `/` find, `e`/`E` next/previous error, `w` wrap, `S` save, `y` copy line, `o` open build, `:` go to line), `t` test report (failed tests; `Enter` shows a test's stack trace)), `s` show/hide successful, `R` refresh now, `f` jump to the next failed job, `X` abort the running build (or cancel the queued one) after a `y`/`n` question, `o` open the build in the browser (the job if it has no build yet), `y` copy its URL (list and details), `Esc` back (from details: back to the list) |
 
 ## Scope
 
-**In:** job catalog, Collections (create, edit, rename, delete, reorder), triggering with parameters (common and per-job), a per-Collection Run Monitor with stages and logs, Branch Filter.
+**In:** job catalog, Collections (create, edit, rename, delete, reorder), triggering with parameters (common and per-job), a per-Collection Run Monitor with stages, logs and abort, Branch Filter.
 
-**Out of v1:** abort and rerun, multiple servers, credential storage. See [TODO.md](TODO.md) for remaining work and known gaps.
+**Out for now:** rerun (planned), multiple servers, credential storage. See [TODO.md](TODO.md) for remaining work and known gaps.
 
 ## Documentation
 

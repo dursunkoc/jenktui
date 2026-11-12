@@ -22,11 +22,6 @@ type mdState struct {
 	histTries, ctxTries map[buildKey]int
 }
 
-type buildKey struct {
-	job string
-	num int
-}
-
 // onResult runs after a poll result replaced row i; prev is the row before.
 // MD starts its once-per-finished-build history fetch here.
 func (m *model) onResult(i int, prev runState) tea.Cmd {
