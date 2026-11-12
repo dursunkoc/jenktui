@@ -1,0 +1,51 @@
+README.md
+  s_1c16aed3d161c7::t_05061031621dcb 28,126
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_5fbc7407855bc6 68-73
+internal/ui/catalog/members.go
+  s_1c16aed3d161c7::t_dc68f941160669 1-36
+internal/ui/collections/collections.go
+  s_1c16aed3d161c7::t_9a3c705b586700 159-160,362,364
+internal/ui/collections/view.go
+  s_1c16aed3d161c7::t_ba9fbe49dd8f4b 211,268
+internal/ui/core/theme.go
+  s_1c16aed3d161c7::t_732268b621a488 3-8,33-62,65-69,79-83,89-91
+internal/ui/core/theme_test.go
+  s_1c16aed3d161c7::t_2509bbe479ac64 1-130
+internal/ui/entry/entry_test.go
+  s_1c16aed3d161c7::t_fe0d6c080745aa 379-439
+internal/ui/entry/login.go
+  s_1c16aed3d161c7::t_b9ad4c35575160 157
+internal/ui/entry/menu.go
+  s_1c16aed3d161c7::t_73c45109c92d6b 9,20,25-27,42,51-55,59,102
+internal/ui/entry/setup.go
+  s_1c16aed3d161c7::t_2763ffaa19bf50 35-39,120
+internal/ui/monitor/display_test.go
+  s_1c16aed3d161c7::t_719ba605653e4e 252-253,258,264
+internal/ui/monitor/history.go
+  s_1c16aed3d161c7::t_74cfff382b4a4c 185
+internal/ui/monitor/logview.go
+  s_1c16aed3d161c7::t_61906cc2e9f687 663
+internal/ui/monitor/testreport.go
+  s_1c16aed3d161c7::t_15631077066379 112
+internal/ui/params/form.go
+  s_1c16aed3d161c7::t_5afa9a67d47e64 64
+main.go
+  s_1c16aed3d161c7::t_4eb227214de4bf 31,49,200,204
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "9b497f99f3f03f14d10eb26137d2c1b704c0df0c",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
