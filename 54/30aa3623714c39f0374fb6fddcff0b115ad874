@@ -1,0 +1,31 @@
+README.md
+  s_1c16aed3d161c7::t_4d69f115bd71bc 24
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_234502fe6fc5d1 111
+internal/jenkins/foldercolors.go
+  s_1c16aed3d161c7::t_a51e3f2caa510b 1-32
+internal/jenkins/queuelist.go
+  s_1c16aed3d161c7::t_b3621edfa4420d 5,21
+internal/jenkins/status_test.go
+  s_1c16aed3d161c7::t_1b05c5ac95f45e 9,200-223
+internal/ui/overview/overview.go
+  s_1c16aed3d161c7::t_ba0387c82953cf 9,36-41,76-78,100,137,142,155-158,160-161,165-166,168-173,176-197,200,203-205,207,209,215,221-222,224-229,240-282,296,329-331,369-371,394-396
+internal/ui/overview/overview_test.go
+  s_1c16aed3d161c7::t_bdac2f6545fbfa 49-51,248-330
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "5430aa3623714c39f0374fb6fddcff0b115ad874",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
