@@ -1836,7 +1836,7 @@ func TestRerunFromMonitorPrefillsFormAndTracksNewBuild(t *testing.T) {
 	h.expectTitle("Collection · Ops")
 }
 
-func TestRerunCancelReturnsToMonitor(t *testing.T) {
+func TestRerunCancelReturnsToMonitorAndResumesPolling(t *testing.T) {
 	f := newFixture(t)
 	paramJob(f)
 	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/api/deploy")))
@@ -1845,16 +1845,20 @@ func TestRerunCancelReturnsToMonitor(t *testing.T) {
 	h.openCollection("Ops")
 	h.key("m")
 	mon := h.router.Top()
+	h.expectRow("team/api/deploy", "FAILED", "#7")
 	h.key("r")
 	h.expectTitle("Trigger")
+
+	// A build starts on the server while the form covers the monitor.
+	f.Job("team/api/deploy").LastBuild(jenkinstest.Build{Number: 8, Building: true, Timestamp: now()})
 	h.key("esc")
 	if h.router.Top() != mon {
 		t.Fatal("esc did not return to the monitor")
 	}
+	// No R: uncovering the monitor restarts its polling, which sees build 8.
 	h.expectTitle("Run Monitor: Ops")
+	h.expectRow("team/api/deploy", "RUNNING", "#8")
 	if n := len(f.Triggers()); n != 0 {
 		t.Fatalf("%d builds posted", n)
 	}
-	h.key("R")
-	h.expectRow("team/api/deploy", "FAILED", "#7")
 }

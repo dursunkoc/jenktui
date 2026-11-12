@@ -57,7 +57,7 @@ func TestBuildStatusAndContext(t *testing.T) {
 	if !reflect.DeepEqual(bc.Changes, wantChanges) {
 		t.Fatalf("changes %+v", bc.Changes)
 	}
-	wantParams := []BuildParam{{"BRANCH", "main", false}, {"DRY", "true", false}, {"FAST", "false", false}, {"SECRET", "", true}, {"EMPTY", "", false}}
+	wantParams := []BuildParam{{"BRANCH", "main", false, true}, {"DRY", "true", false, true}, {"FAST", "false", false, true}, {"SECRET", "", true, false}, {"EMPTY", "", false, true}}
 	if !reflect.DeepEqual(bc.Params, wantParams) {
 		t.Fatalf("params %+v", bc.Params)
 	}
@@ -129,7 +129,7 @@ func TestBuildContextParamClasses(t *testing.T) {
 	  {"_class":"hudson.model.RunParameterValue","name":"R","value":{"jobName":"x","number":3}},
 	  {"_class":"hudson.model.PasswordParameterValue","name":"P","value":"leaked"},
 	  {"_class":"hudson.model.StringParameterValue","name":"N","value":3}]}]}`)
-	want := []BuildParam{{"F", "", false}, {"S", "", false}, {"G", "v1", false}, {"R", "", false}, {"P", "", true}, {"N", "3", false}}
+	want := []BuildParam{{"F", "", false, false}, {"S", "", false, false}, {"G", "v1", false, true}, {"R", "", false, false}, {"P", "", true, false}, {"N", "3", false, true}}
 	if !reflect.DeepEqual(bc.Params, want) {
 		t.Fatalf("params %+v", bc.Params)
 	}

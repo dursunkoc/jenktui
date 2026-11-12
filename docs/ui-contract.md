@@ -59,7 +59,7 @@ A screen that polls can implement `core.Resumer` (`Resume() tea.Cmd`): after a `
 
 Use `core.Cmd(core.Push{s})` to build the `tea.Cmd`. `ctrl+c` always quits globally; screens handle `esc` (emit `Pop`) and `q` themselves.
 
-Size: the Router forwards `tea.WindowSizeMsg` to the active screen with Height already reduced by the 2 chrome rows, so a screen can lay out using it directly. A newly entered screen immediately receives the current size. Only the top screen receives messages; async results for a popped screen are dropped, so use `Replace`/`Push` rather than relying on background screens.
+Size: the Router forwards `tea.WindowSizeMsg` to the active screen with Height already reduced by the 2 chrome rows, so a screen can lay out using it directly. A newly entered screen immediately receives the current size. Only the top screen receives messages; async results for a popped or covered screen are dropped, so use `Replace`/`Push` rather than relying on background screens. A screen that must keep working across a `Push` implements `Resumer` (see above); on `Pop` the uncovered screen also gets the current size.
 
 Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.TooSmall`, `core.MinWidth/MinHeight`).
 

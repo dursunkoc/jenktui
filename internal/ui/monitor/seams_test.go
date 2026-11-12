@@ -25,8 +25,16 @@ func TestFlashShownThenExpires(t *testing.T) {
 	if m.noticeShown() {
 		t.Fatal("no notice yet")
 	}
-	if cmd := m.flash("copied"); cmd == nil {
-		t.Fatal("flash returns the expiry tick")
+	var asked []time.Duration
+	m.after = func(d time.Duration, msg tea.Msg) tea.Cmd {
+		asked = append(asked, d)
+		if _, ok := msg.(noticeExpiredMsg); !ok {
+			t.Errorf("expiry message is %T", msg)
+		}
+		return func() tea.Msg { return msg }
+	}
+	if cmd := m.flash("copied"); cmd == nil || len(asked) != 1 || asked[0] != noticeFor {
+		t.Fatalf("flash must schedule its expiry after %v: %v", noticeFor, asked)
 	}
 	if got := m.Subtitle(); got != "copied" {
 		t.Fatalf("at t: %q", got)

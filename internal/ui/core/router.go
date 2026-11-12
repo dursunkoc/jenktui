@@ -109,9 +109,17 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		r.helpOpen = false
 		if len(r.stack) > 1 {
 			r.stack = r.stack[:len(r.stack)-1]
-			if rs, ok := r.Top().(Resumer); ok {
-				return r, rs.Resume()
+			// The uncovered screen may have missed a resize while covered.
+			var cmds []tea.Cmd
+			if r.width > 0 {
+				s, c := r.Top().Update(r.bodySize())
+				r.setTop(s)
+				cmds = append(cmds, c)
 			}
+			if rs, ok := r.Top().(Resumer); ok {
+				cmds = append(cmds, rs.Resume())
+			}
+			return r, tea.Batch(cmds...)
 		}
 		return r, nil
 	}

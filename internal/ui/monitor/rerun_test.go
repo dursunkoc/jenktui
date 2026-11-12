@@ -5,7 +5,6 @@ import (
 	"errors"
 	"strings"
 	"testing"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -45,22 +44,13 @@ func rerunModel(c *rerunClient, withRerun bool, calls *[]map[string]string) *mod
 	return m
 }
 
-// deliverAll runs cmd, applies every message to m, and returns the navigation messages.
+// deliverAll runs cmd, applies every message to m, and returns the navigation
+// messages. Timers are no-ops (wire), so every command returns at once.
 func deliverAll(m *model, cmd tea.Cmd) (nav []tea.Msg) {
 	if cmd == nil {
 		return
 	}
-	// A flash's expiry timer is a command that returns only after noticeFor;
-	// give each command a moment and skip the ones that are still waiting.
-	ch := make(chan tea.Msg, 1)
-	go func() { ch <- cmd() }()
-	var got tea.Msg
-	select {
-	case got = <-ch:
-	case <-time.After(300 * time.Millisecond):
-		return nil
-	}
-	switch msg := got.(type) {
+	switch msg := cmd().(type) {
 	case nil:
 	case tea.BatchMsg:
 		for _, c := range msg {
@@ -77,7 +67,8 @@ func deliverAll(m *model, cmd tea.Cmd) (nav []tea.Msg) {
 
 func TestRerunPushesTheFormPrefilledWithoutPasswords(t *testing.T) {
 	c := &rerunClient{bc: jenkins.BuildContext{Params: []jenkins.BuildParam{
-		{Name: "ENV", Value: "prod"}, {Name: "DRY", Value: "true"}, {Name: "KEY", Password: true},
+		{Name: "ENV", Value: "prod", HasValue: true}, {Name: "DRY", Value: "true", HasValue: true}, {Name: "KEY", Password: true},
+		{Name: "UPLOAD"}, {Name: "EMPTY", HasValue: true}, // a file parameter has no value; a real empty string is kept
 	}}}
 	var calls []map[string]string
 	m := rerunModel(c, true, &calls)
@@ -94,6 +85,12 @@ func TestRerunPushesTheFormPrefilledWithoutPasswords(t *testing.T) {
 	}
 	if _, has := calls[0]["KEY"]; has {
 		t.Fatalf("password carried over: %v", calls[0])
+	}
+	if _, has := calls[0]["UPLOAD"]; has {
+		t.Fatalf("a parameter without a value was prefilled: %v", calls[0])
+	}
+	if v, has := calls[0]["EMPTY"]; !has || v != "" {
+		t.Fatalf("an empty string value must be kept: %v", calls[0])
 	}
 	if len(nav) != 1 {
 		t.Fatalf("nav = %v", nav)
@@ -131,7 +128,7 @@ func TestRerunHiddenWithoutDepsOrBuild(t *testing.T) {
 }
 
 func TestRerunWorksInDetailsToo(t *testing.T) {
-	c := &rerunClient{bc: jenkins.BuildContext{Params: []jenkins.BuildParam{{Name: "A", Value: "1"}}}}
+	c := &rerunClient{bc: jenkins.BuildContext{Params: []jenkins.BuildParam{{Name: "A", Value: "1", HasValue: true}}}}
 	var calls []map[string]string
 	m := rerunModel(c, true, &calls)
 	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -158,7 +155,7 @@ func TestRerunReplyAfterLeavingIsDropped(t *testing.T) {
 	cmd := pressKey(m, 'r')
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // leave: epoch moves on
 	nav := deliverAll(m, cmd)
-	if len(nav) != 0 && len(calls) != 0 {
+	if len(nav) != 0 || len(calls) != 0 {
 		t.Fatalf("late reply pushed a form: nav=%v calls=%v", nav, calls)
 	}
 	if len(calls) != 0 {
@@ -175,5 +172,24 @@ func TestResumeRestartsPollingAfterTheFormIsPopped(t *testing.T) {
 	msg := m.Resume()()
 	if tk, ok := msg.(tickMsg); !ok || tk.gen != gen {
 		t.Fatalf("Resume gave %#v, want a tick for gen %d", msg, gen)
+	}
+}
+
+func TestRerunStopsTheSpinnerAndDropsAPollFromBeforeTheForm(t *testing.T) {
+	c := &rerunClient{bc: jenkins.BuildContext{}}
+	var calls []map[string]string
+	m := rerunModel(c, true, &calls)
+	// A poll starts, then r pushes the form; the poll's result arrives later.
+	_, pollCmd := m.Update(tickMsg{gen: m.gen})
+	staleGen := m.gen
+	deliverAll(m, pressKey(m, 'r'))
+	if m.gen == staleGen || m.load.Active() {
+		t.Fatalf("gen %d (was %d), spinner active %v", m.gen, staleGen, m.load.Active())
+	}
+	before := m.runs[0]
+	c.fakeClient.builds["api/deploy"] = map[int]jenkins.Build{0: {Number: 99, Result: "SUCCESS"}}
+	deliverAll(m, pollCmd)
+	if m.runs[0].num != before.num {
+		t.Fatalf("a poll result from before the form was applied: #%d", m.runs[0].num)
 	}
 }

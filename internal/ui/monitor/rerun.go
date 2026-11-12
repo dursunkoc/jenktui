@@ -77,9 +77,7 @@ func (r rerunLoaded) apply(m *model) tea.Cmd {
 	scr := m.deps.Rerun(r.job, prefillOf(r.params))
 	// The screen pushed over the monitor swallows its messages, so stop the
 	// polling as when leaving; Resume restarts it if the user comes back.
-	m.gen++
-	m.epoch++
-	m.ma.seen = nil
+	m.pause()
 	m.notice = ""
 	return core.Cmd(core.Push{Screen: scr})
 }
@@ -88,7 +86,7 @@ func (r rerunLoaded) apply(m *model) tea.Cmd {
 func prefillOf(ps []jenkins.BuildParam) map[string]string {
 	out := make(map[string]string, len(ps))
 	for _, p := range ps {
-		if !p.Password {
+		if !p.Password && p.HasValue {
 			out[p.Name] = p.Value
 		}
 	}

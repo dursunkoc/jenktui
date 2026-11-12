@@ -38,6 +38,9 @@ type BuildParam struct {
 	Name     string
 	Value    string
 	Password bool
+	// HasValue is false for a parameter Jenkins reports without a plain value
+	// (a file or run parameter, a password): it cannot be prefilled.
+	HasValue bool
 }
 
 // Build is the state of one build.
@@ -168,11 +171,11 @@ func (c *Client) BuildContext(ctx context.Context, fullName string, number int) 
 			if !bp.Password {
 				switch v := p.Value.(type) {
 				case string:
-					bp.Value = v
+					bp.Value, bp.HasValue = v, true
 				case bool:
-					bp.Value = strconv.FormatBool(v)
+					bp.Value, bp.HasValue = strconv.FormatBool(v), true
 				case float64:
-					bp.Value = strconv.FormatFloat(v, 'f', -1, 64)
+					bp.Value, bp.HasValue = strconv.FormatFloat(v, 'f', -1, 64), true
 				}
 			}
 			bc.Params = append(bc.Params, bp)

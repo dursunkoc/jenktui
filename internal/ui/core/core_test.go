@@ -346,3 +346,15 @@ func TestPopResumesUncoveredScreen(t *testing.T) {
 		t.Fatalf("resumed = %d", a.resumed)
 	}
 }
+
+func TestPopGivesTheUncoveredScreenTheCurrentSize(t *testing.T) {
+	a, b := &fake{name: "a"}, &fake{name: "b"}
+	r := NewRouter(&Session{}, a)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r.Update(Push{b})
+	r.Update(tea.WindowSizeMsg{Width: 100, Height: 30}) // only b sees this
+	r.Update(Pop{})
+	if a.size.Width != 100 || a.size.Height != 27 {
+		t.Fatalf("size after pop = %+v", a.size)
+	}
+}

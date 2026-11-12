@@ -113,6 +113,7 @@ func wire(m *model) *[]sched {
 		rec = append(rec, sched{d, gen})
 		return func() tea.Msg { return nil }
 	}
+	m.after = func(time.Duration, tea.Msg) tea.Cmd { return nil }
 	return &rec
 }
 
