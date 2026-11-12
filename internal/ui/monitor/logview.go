@@ -37,6 +37,7 @@ var (
 	keyLogGoto = key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "go to line"))
 	keyLogErr  = key.NewBinding(key.WithKeys("e"), key.WithHelp("e/E", "next/prev error"))
 	keyLogErrP = key.NewBinding(key.WithKeys("E"))
+	keyLogWrap = key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "wrap"))
 	keyLogBack = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to details"))
 
 	keyPromptOK  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
@@ -89,6 +90,9 @@ type logView struct {
 	re     *regexp.Regexp // compiled query; nil when no search is active
 	focus  int            // line of the current match or go-to target; -1 none
 	status string         // result of the last find or go-to
+
+	wrap bool // w: long lines continue on further rows instead of being cut
+	tw   int  // text width the wrapped layout uses; 0 = no wrapping (set by sync)
 }
 
 type (
@@ -285,9 +289,39 @@ func (m *model) logPage() int {
 	return max(m.h-4, 1)
 }
 
+// rows is how many screen rows line takes (1 unless wrapping).
+func (lv *logView) rows(line string) int {
+	if lv.tw <= 0 {
+		return 1
+	}
+	if w := ansi.StringWidth(line); w > lv.tw {
+		return (w + lv.tw - 1) / lv.tw
+	}
+	return 1
+}
+
+// maxTop is the highest first line that still fills the page: the last lines
+// whose rows fit in page rows.
+func (lv *logView) maxTop(n, page int) int {
+	if lv.tw <= 0 {
+		return max(n-page, 0)
+	}
+	all := lv.all()
+	rows, i := 0, n
+	for i > 0 {
+		h := lv.rows(all[i-1])
+		if rows+h > page {
+			break
+		}
+		rows += h
+		i--
+	}
+	return max(min(i, n-1), 0)
+}
+
 // start is the first visible line.
 func (lv *logView) start(n, page int) int {
-	maxTop := max(n-page, 0)
+	maxTop := lv.maxTop(n, page)
 	if lv.follow {
 		return maxTop
 	}
@@ -297,9 +331,20 @@ func (lv *logView) start(n, page int) int {
 // scrollTo makes line the first visible one (clamped); reaching the end
 // resumes following.
 func (lv *logView) scrollTo(line, n, page int) {
-	maxTop := max(n-page, 0)
+	maxTop := lv.maxTop(n, page)
 	lv.top = max(min(line, maxTop), 0)
 	lv.follow = lv.top >= maxTop
+}
+
+// syncWrap sets the wrapped text width for the current terminal size; it must run
+// before anything that measures lines (keys and rendering).
+func (m *model) syncWrap() {
+	lv := m.log
+	lv.tw = 0
+	if lv.wrap && m.w > 0 {
+		gw := len(strconv.Itoa(lv.dropped + len(lv.all())))
+		lv.tw = max(max(m.w-4, 10)-gw-3, 1)
+	}
 }
 
 // reveal scrolls so line is visible, a few rows below the top.
@@ -313,13 +358,14 @@ func (m *model) logKeys() []key.Binding {
 	if m.log.prompt != promptNone {
 		return []key.Binding{keyPromptOK, keyPromptEsc}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 }
 
 // logKey handles the keys of the log view; ok is false for keys it leaves to
 // the common handling (quit).
 func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 	lv := m.log
+	m.syncWrap()
 	if lv.prompt != promptNone {
 		m.promptKey(msg)
 		return nil, true
@@ -352,6 +398,12 @@ func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		lv.findNext(-1, cur, page)
 	case key.Matches(msg, keyLogErr):
 		lv.nextError(+1, cur, page)
+	case key.Matches(msg, keyLogWrap):
+		follow := lv.follow
+		lv.wrap = !lv.wrap
+		m.syncWrap()
+		lv.scrollTo(cur, n, page)
+		lv.follow = follow || lv.follow
 	case key.Matches(msg, keyLogErrP):
 		lv.nextError(-1, cur, page)
 	default:
@@ -532,48 +584,69 @@ func (m *model) logView() string {
 	case lv.more:
 		state = "paused (G to follow)"
 	}
+	m.syncWrap()
 	all := lv.all()
 	page := m.logPage()
 	first := lv.start(len(all), page)
-	last := min(first+page, len(all))
 
 	iw := 0 // inner width; 0 = unbounded (no size known yet)
 	if m.w > 0 {
 		iw = max(m.w-4, 10)
 	}
+	gw := len(strconv.Itoa(lv.dropped + len(all)))
+	tw := 0
+	if iw > 0 {
+		tw = max(iw-gw-3, 1)
+	}
+	var body []string
+	last := first
+	for i := first; i < len(all) && len(body) < page; i++ {
+		text := all[i]
+		pieces := []string{text}
+		switch {
+		case lv.tw > 0:
+			pieces = strings.Split(ansi.Hardwrap(text, lv.tw, true), "\n")
+		case tw > 0:
+			pieces = []string{ansi.Truncate(text, tw, "…")}
+		}
+		base := lipgloss.NewStyle()
+		if isErrorLine(text) {
+			base = base.Foreground(m.th.Fail)
+		}
+		for j, piece := range pieces {
+			if len(body) >= page {
+				break
+			}
+			num := strings.Repeat(" ", gw)
+			if j == 0 {
+				num = fmt.Sprintf("%*d", gw, lv.dropped+i+1)
+				if i == lv.focus {
+					num = m.th.Selected.Render(num)
+				} else {
+					num = m.th.MutedTxt.Render(num)
+				}
+			}
+			sep := " │ "
+			if j > 0 {
+				sep = " ┆ "
+			}
+			body = append(body, num+m.th.MutedTxt.Render(sep)+highlightWith(piece, lv.re, base))
+		}
+		last = i + 1
+	}
 	pos := ""
 	if len(all) > 0 {
 		pos = fmt.Sprintf("  lines %d-%d of %d", lv.dropped+first+1, lv.dropped+last, lv.dropped+len(all))
+	}
+	if lv.wrap {
+		pos += "  wrapped"
 	}
 	what := ""
 	if lv.what != "" {
 		what = " › " + lv.what
 	}
 	head := m.badge(st) + "  " + m.jobName(lv.job) + fmt.Sprintf(" #%d", lv.num) + what + "  " + m.th.MutedTxt.Render(state+pos)
-	rows := []string{fit(head, iw)}
-
-	gw := len(strconv.Itoa(lv.dropped + len(all)))
-	tw := 0
-	if iw > 0 {
-		tw = max(iw-gw-3, 1)
-	}
-	for i := first; i < last; i++ {
-		num := fmt.Sprintf("%*d", gw, lv.dropped+i+1)
-		if i == lv.focus {
-			num = m.th.Selected.Render(num)
-		} else {
-			num = m.th.MutedTxt.Render(num)
-		}
-		text := all[i]
-		if tw > 0 {
-			text = ansi.Truncate(text, tw, "…")
-		}
-		base := lipgloss.NewStyle()
-		if isErrorLine(all[i]) {
-			base = base.Foreground(m.th.Fail)
-		}
-		rows = append(rows, num+m.th.MutedTxt.Render(" │ ")+highlightWith(text, lv.re, base))
-	}
+	rows := append([]string{fit(head, iw)}, body...)
 	for m.h > 0 && len(rows) < page+1 {
 		rows = append(rows, "")
 	}
@@ -601,7 +674,7 @@ func (m *model) logFooter() string {
 	if lv.status != "" {
 		return m.th.MutedTxt.Render(lv.status)
 	}
-	return m.th.MutedTxt.Render("/ find · e/E error · : go to line · pgup/pgdn page · g top · G follow · esc back")
+	return m.th.MutedTxt.Render("/ find · e/E error · w wrap · : go to line · pgup/pgdn page · g top · G follow · esc back")
 }
 
 // highlight marks the matches of re in s in reverse video.

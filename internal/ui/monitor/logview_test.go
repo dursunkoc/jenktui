@@ -133,3 +133,77 @@ func TestLogErrorLinesUseFailColourAndHelpListsKey(t *testing.T) {
 		t.Fatal("help bar lists e/E")
 	}
 }
+
+func TestLogWrapShowsLongLineOnSeveralRows(t *testing.T) {
+	long := strings.Repeat("abcdefghij", 12) // 120 chars; text width is 60-4-1-3 = 52
+	m := numberedLog(t, "short", long, "tail")
+	if v := ansi.Strip(m.View()); strings.Contains(v, long[60:]) {
+		t.Fatalf("unwrapped line is cut:\n%s", v)
+	}
+	pressKey(m, 'w')
+	v := ansi.Strip(m.View())
+	rows := strings.Split(v, "\n")
+	if len(rows) != m.h {
+		t.Fatalf("modal keeps its height (%d rows):\n%s", len(rows), v)
+	}
+	for _, want := range []string{"2 │ " + long[:52], "┆ " + long[52:104], "┆ " + long[104:], "3 │ tail", "wrapped"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("missing %q:\n%s", want, v)
+		}
+	}
+	// Continuation rows carry no number: line 2 is numbered exactly once.
+	if strings.Count(v, " 2 │ ") != 1 {
+		t.Fatalf("number only on the first row:\n%s", v)
+	}
+	pressKey(m, 'w')
+	if m.log.wrap || strings.Contains(ansi.Strip(m.View()), "┆") {
+		t.Fatal("w toggles wrapping off")
+	}
+}
+
+func TestLogWrapGoToAndFindWorkOnLogLines(t *testing.T) {
+	long := strings.Repeat("x", 200)
+	var ls []string
+	for i := 1; i <= 30; i++ {
+		l := "row"
+		if i%10 == 0 {
+			l = long + " needle"
+		}
+		ls = append(ls, l)
+	}
+	m := numberedLog(t, ls...)
+	pressKey(m, 'w')
+	if !m.log.follow {
+		t.Fatal("wrapping keeps following")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "lines 28-30 of 30") && !strings.Contains(v, "30 │ ") {
+		t.Fatalf("follow shows the end:\n%s", v)
+	}
+	pressKey(m, ':')
+	typeKeys(m, "10")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.log.focus != 9 || m.log.follow {
+		t.Fatalf("go to line 10: focus %d follow %v", m.log.focus, m.log.follow)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "10 │ xxx") {
+		t.Fatalf("line 10 visible:\n%s", v)
+	}
+	pressKey(m, '/')
+	typeKeys(m, "needle")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if m.log.focus != 9 {
+		t.Fatalf("find stays on the visible match, got line index %d", m.log.focus)
+	}
+	pressKey(m, 'n')
+	if m.log.focus != 19 {
+		t.Fatalf("n: focus %d", m.log.focus)
+	}
+	pressKey(m, 'n')
+	if m.log.focus != 29 {
+		t.Fatalf("n: focus %d", m.log.focus)
+	}
+	pressKey(m, 'G')
+	if !m.log.follow {
+		t.Fatal("G follows")
+	}
+}
