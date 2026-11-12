@@ -147,7 +147,10 @@ func (m *model) block(vi, i int) []string {
 		parts = append(parts, fmt.Sprintf("#%d", st.num))
 	}
 	if d, ok := m.elapsed(st); ok {
-		parts = append(parts, m.th.MutedTxt.Render(fmtDur(d)))
+		parts = append(parts, m.th.MutedTxt.Render(m.durText(st, d)))
+	}
+	if t := m.ageText(st); t != "" {
+		parts = append(parts, m.th.MutedTxt.Render(t))
 	}
 	if t := m.note(st); t != "" {
 		parts = append(parts, m.th.MutedTxt.Render(t))
