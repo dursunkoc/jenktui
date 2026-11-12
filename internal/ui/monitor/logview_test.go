@@ -45,29 +45,80 @@ func TestStageLogRefetchKeepsFocusOverCap(t *testing.T) {
 	m, _ := stagedLog(t)
 	m.Update(pressKey(m, 'l')())
 	lv := m.log
-	var sb strings.Builder
-	for i := 0; i < maxLogLines+500; i++ {
-		if i == maxLogLines+100 {
-			sb.WriteString("ERROR target\n")
-			continue
+	build := func(n int) string {
+		var sb strings.Builder
+		for i := 0; i < n; i++ {
+			if i == maxLogLines+100 {
+				sb.WriteString("ERROR target\n")
+				continue
+			}
+			sb.WriteString("ok\n")
 		}
-		sb.WriteString("ok\n")
+		return sb.String()
 	}
-	text := sb.String()
-	deliverChunk := func() {
+	deliver := func(text string) {
 		m.updateLog(logMsg{gen: m.logGen, start: lv.next, chunk: jenkins.LogChunk{Text: text}})
 	}
-	deliverChunk()
+	deliver(build(maxLogLines + 500))
 	pressKey(m, 'e')
-	want := lv.all()[lv.focus]
-	if want != "ERROR target" {
-		t.Fatalf("focus on %q", want)
+	if lv.all()[lv.focus] != "ERROR target" {
+		t.Fatalf("focus on %q", lv.all()[lv.focus])
 	}
-	focus := lv.focus
-	deliverChunk()
-	deliverChunk()
-	if lv.focus != focus || lv.all()[lv.focus] != "ERROR target" {
-		t.Fatalf("focus drifted from %d to %d (%q)", focus, lv.focus, lv.all()[lv.focus])
+	first := lv.focus
+	deliver(build(maxLogLines + 500))
+	if lv.focus != first || lv.all()[lv.focus] != "ERROR target" {
+		t.Fatalf("same-size refetch: focus %d -> %d", first, lv.focus)
+	}
+	// The log grew: more lines were trimmed, so the buffer index shifts by 100.
+	deliver(build(maxLogLines + 600))
+	if lv.focus != first-100 || lv.all()[lv.focus] != "ERROR target" {
+		t.Fatalf("grown refetch: focus %d (%q), want %d", lv.focus, lv.all()[lv.focus], first-100)
+	}
+}
+
+func TestLogWrapRevealKeepsTargetOnScreen(t *testing.T) {
+	long := strings.Repeat("y", 300) // 6 rows at text width 52, more than the 5-row page
+	m := numberedLog(t, "a", "b", long, "ERROR target", "c", "d", "e", "f")
+	pressKey(m, 'w')
+	pressKey(m, 'g')
+	pressKey(m, 'e')
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "4 │ ERROR target") {
+		t.Fatalf("target not on screen:\n%s", v)
+	}
+}
+
+func TestLogWrapCountsRowsLikeTheRender(t *testing.T) {
+	cjk := strings.Repeat("漢字かな", 15) // 60 wide characters
+	m := numberedLog(t, cjk, cjk, cjk, cjk, "LASTLINE")
+	m.w = 61 // odd text width
+	pressKey(m, 'w')
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "5 │ LASTLINE") || !m.log.follow {
+		t.Fatalf("follow shows the last line:\n%s", v)
+	}
+	// rows() equals the number of rendered rows for every line.
+	for _, l := range m.log.all() {
+		if got, want := m.log.rows(l), strings.Count(ansi.Hardwrap(l, m.log.tw, true), "\n")+1; got != want {
+			t.Fatalf("rows(%q)=%d want %d", l, got, want)
+		}
+	}
+}
+
+func TestLogWrapBackwardErrorStartsBelowLastDrawnLine(t *testing.T) {
+	long := strings.Repeat("x", 100) // 2 rows
+	var ls []string
+	for i := 0; i < 30; i++ {
+		l := long
+		if i == 2 || i == 4 {
+			l = "ERROR " + long
+		}
+		ls = append(ls, l)
+	}
+	m := numberedLog(t, ls...)
+	pressKey(m, 'w')
+	pressKey(m, 'g')
+	pressKey(m, 'E')
+	if m.log.focus != 2 || m.log.status != "error 1/2" {
+		t.Fatalf("focus %d status %q: the partly drawn line 3 is the last drawn", m.log.focus, m.log.status)
 	}
 }
 

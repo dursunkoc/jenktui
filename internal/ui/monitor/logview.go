@@ -219,10 +219,15 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 		lv.err = nil
 		if len(lv.nodes) > 0 {
 			// A stage log has no offset: refetch it whole while the build runs.
-			top, focus := lv.top, lv.focus
+			top, focus, oldDropped := lv.top, lv.focus, lv.dropped
 			lv.lines, lv.part, lv.dropped = nil, "", 0
 			lv.append(msg.chunk.Text)
-			lv.top = max(min(top, len(lv.lines)), 0)
+			// The refetch trims again from the front: shift by the change.
+			d := lv.dropped - oldDropped
+			lv.top = max(min(top-d, len(lv.lines)), 0)
+			if focus >= 0 {
+				focus = max(focus-d, -1)
+			}
 			lv.focus = min(focus, len(lv.lines)-1)
 			if len(lv.lines) == 0 && lv.part == "" {
 				lv.lines = []string{"(Jenkins has no output for this " + strings.SplitN(lv.what, " ", 2)[0] + "; L shows the whole build)"}
@@ -294,8 +299,8 @@ func (lv *logView) rows(line string) int {
 	if lv.tw <= 0 {
 		return 1
 	}
-	if w := ansi.StringWidth(line); w > lv.tw {
-		return (w + lv.tw - 1) / lv.tw
+	if ansi.StringWidth(line) > lv.tw {
+		return strings.Count(ansi.Hardwrap(line, lv.tw, true), "\n") + 1
 	}
 	return 1
 }
@@ -350,7 +355,33 @@ func (m *model) syncWrap() {
 // reveal scrolls so line is visible, a few rows below the top.
 func (lv *logView) reveal(line, n, page int) {
 	lv.focus = line
-	lv.scrollTo(line-page/3, n, page)
+	if lv.tw <= 0 {
+		lv.scrollTo(line-page/3, n, page)
+		return
+	}
+	// Wrapped: put the target about a third of the page down, in rows.
+	all := lv.all()
+	top, used := line, 0
+	for top > 0 && line < len(all) {
+		h := lv.rows(all[top-1])
+		if used+h > page/3 {
+			break
+		}
+		used += h
+		top--
+	}
+	lv.scrollTo(top, n, page)
+}
+
+// drawnEnd is the index after the last line (partly) drawn from first.
+func (lv *logView) drawnEnd(first, page int) int {
+	all := lv.all()
+	rows, i := 0, first
+	for i < len(all) && rows < page {
+		rows += lv.rows(all[i])
+		i++
+	}
+	return i
 }
 
 // logKeys is the help bar of the console log.
@@ -521,6 +552,9 @@ func (lv *logView) nextError(dir, cur, page int) {
 	from := cur - 1
 	if dir < 0 {
 		from = min(cur+page, n)
+		if lv.tw > 0 {
+			from = lv.drawnEnd(cur, page)
+		}
 	}
 	if lv.focus >= 0 {
 		from = lv.focus
