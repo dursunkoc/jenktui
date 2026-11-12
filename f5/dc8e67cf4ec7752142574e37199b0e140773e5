@@ -1,0 +1,53 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_55a5b089be2780 29
+README.md
+  s_1c16aed3d161c7::t_05b04117192009 128
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_9a5d6a626c5249 58,105-106
+e2e_test.go
+  s_1c16aed3d161c7::t_9780ce3f03b53b 2024-2057
+internal/jenkins/control.go
+  s_1c16aed3d161c7::t_2e0286ef027f10 56-68,70-72,74,76
+internal/jenkins/trigger.go
+  s_1c16aed3d161c7::t_96206a35cfce20 87-113,118-123,125,127,132-133,138,140,149,158,160
+internal/jenkins/trigger_real_test.go
+  s_1c16aed3d161c7::t_d0140fc33487e8 82-93
+internal/ui/collections/collections.go
+  s_1c16aed3d161c7::t_862f540b3a4c24 49-52,300-302
+internal/ui/core/core_test.go
+  s_1c16aed3d161c7::t_9b67d993401c03 453-465
+internal/ui/core/names.go
+  s_1c16aed3d161c7::t_700087a8a52ee2 3-6,12-14,17-19,21-35,37
+internal/ui/monitor/monitor.go
+  s_1c16aed3d161c7::t_9066bf7747e084 10,77-79,198-202
+internal/ui/monitor/monitor_test.go
+  s_1c16aed3d161c7::t_7640a0333e94eb 207-208,210,213
+internal/ui/monitor/pause_test.go
+  s_1c16aed3d161c7::t_bc157c57f6d198 52-69
+internal/ui/palette/palette.go
+  s_1c16aed3d161c7::t_27b6d29293cfae 29-33,41-50,58-62,72,80-89,103-110,112,125-126,128,131-134,136,173,177-179
+internal/ui/palette/palette_test.go
+  s_1c16aed3d161c7::t_a5add410be1561 31,35-41,86-92,170-175,178-194
+internal/ui/widgets/list.go
+  s_1c16aed3d161c7::t_c7ced90451e441 33-35,338-339,428-432,454-457,460,494,543-550,554,586
+internal/ui/widgets/list_test.go
+  s_1c16aed3d161c7::t_0991ea8b73b938 419-438
+main.go
+  s_1c16aed3d161c7::t_c0eaeb8608a3da 146-154,157,162-164,263,266,268-270,272-277,279-282,303
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f5dc8e67cf4ec7752142574e37199b0e140773e5",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
