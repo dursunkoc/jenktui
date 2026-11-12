@@ -545,6 +545,17 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-More-Data", "true")
 		}
 		_, _ = io.WriteString(w, n.log[start:])
+	case len(rest) == 6 && rest[1] == "execution" && rest[2] == "node" && rest[4] == "wfapi" && rest[5] == "describe":
+		if !n.pipeline || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		st, ok := findStage(n.stages, rest[3])
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(w, stageJSON(mustAtoi(rest[3]), st))
 	case len(rest) == 6 && rest[1] == "execution" && rest[2] == "node" && rest[4] == "wfapi" && rest[5] == "log":
 		if !n.pipeline || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
 			http.NotFound(w, r)
@@ -800,6 +811,8 @@ func findStage(stages []Stage, id string) (Stage, bool) {
 	}
 	return Stage{}, false
 }
+
+func mustAtoi(s string) int { n, _ := strconv.Atoi(s); return n }
 
 func lastSeg(p string) string {
 	if i := strings.LastIndex(p, "/"); i >= 0 {

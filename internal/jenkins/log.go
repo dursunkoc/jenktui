@@ -73,3 +73,26 @@ func (c *Client) StageLog(ctx context.Context, fullName string, number int, node
 	}
 	return html.UnescapeString(htmlTag.ReplaceAllString(r.Text, "")), nil
 }
+
+// StageSteps returns the steps (flow nodes) of one stage of a build, from the
+// stage's own describe. The run-level describe lists stages without their
+// steps, and a stage node's log holds none of their output, so a stage's log
+// is the logs of these steps. ErrNoStages is returned on 404.
+func (c *Client) StageSteps(ctx context.Context, fullName string, number int, stageID string) ([]Stage, error) {
+	var r struct {
+		Steps []wfStage `json:"stageFlowNodes"`
+	}
+	path := fmt.Sprintf("%s/%s/execution/node/%s/wfapi/describe", jobPath(fullName), buildRef(number), url.PathEscape(stageID))
+	resp, err := c.do(ctx, http.MethodGet, path, &r)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return nil, ErrNoStages
+		}
+		return nil, err
+	}
+	out := make([]Stage, 0, len(r.Steps))
+	for _, s := range r.Steps {
+		out = append(out, s.convert())
+	}
+	return out, nil
+}

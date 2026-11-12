@@ -34,6 +34,7 @@ type Client interface {
 	Stages(ctx context.Context, fullName string, number int) ([]jenkins.Stage, error)
 	ConsoleText(ctx context.Context, fullName string, number int, start int64) (jenkins.LogChunk, error)
 	StageLog(ctx context.Context, fullName string, number int, nodeID string) (string, error)
+	StageSteps(ctx context.Context, fullName string, number int, stageID string) ([]jenkins.Stage, error)
 }
 
 // Deps are the monitor's dependencies. Zero durations get defaults.

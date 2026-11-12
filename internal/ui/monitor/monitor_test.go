@@ -28,10 +28,11 @@ type fakeClient struct {
 	logMore   bool
 	logErr    error
 	logStarts []int64
-	stageLogs map[string]string // node id -> output
-	stageLogN []string          // node ids asked for
-	buildN    map[string]int    // BuildStatus calls per job
-	stageN    map[string]int    // Stages calls per job
+	stageLogs map[string]string          // node id -> output
+	stageLogN []string                   // node ids asked for
+	steps     map[string][]jenkins.Stage // stage id -> its steps (StageSteps)
+	buildN    map[string]int             // BuildStatus calls per job
+	stageN    map[string]int             // Stages calls per job
 }
 
 func (f *fakeClient) ResolveQueue(ctx context.Context, r jenkins.QueueRef) (jenkins.QueueStatus, error) {
@@ -71,6 +72,13 @@ func (f *fakeClient) ConsoleText(_ context.Context, _ string, _ int, start int64
 	}
 	f.logStarts = append(f.logStarts, start)
 	return jenkins.LogChunk{Text: f.log[min(int(start), len(f.log)):], Next: int64(len(f.log)), More: f.logMore}, nil
+}
+
+func (f *fakeClient) StageSteps(_ context.Context, _ string, _ int, id string) ([]jenkins.Stage, error) {
+	if s, ok := f.steps[id]; ok {
+		return s, nil
+	}
+	return nil, jenkins.ErrNoStages
 }
 
 func (f *fakeClient) StageLog(_ context.Context, _ string, _ int, id string) (string, error) {
@@ -1308,5 +1316,29 @@ func TestStageLogRefetchesWhileBuildRuns(t *testing.T) {
 	m.Update(m.fetchLog(0)())
 	if got := strings.Join(m.log.lines, "|"); !strings.Contains(got, "more") || strings.Count(got, "step one out") != 1 {
 		t.Fatalf("content is replaced, not appended: %q", got)
+	}
+}
+
+// Real Jenkins lists stages without steps in the run describe: the stage is
+// asked for its steps, and its own node is the fallback.
+func TestStageLogLooksUpStepsOfAStageWithoutChildren(t *testing.T) {
+	m, c := logTail(t)
+	m.h, m.w = 12, 70
+	c.stageLogs = map[string]string{"21": "from step 21\n", "22": "from step 22\n", "3": "own node\n"}
+	c.steps = map[string][]jenkins.Stage{"2": {{ID: "21", Name: "git"}, {ID: "22", Name: "sh"}}}
+	m.runs[1].stages = []jenkins.Stage{
+		{ID: "2", Name: "Build", Status: jenkins.StageFailed},
+		{ID: "3", Name: "Deploy", Status: jenkins.StageNotExecuted},
+	}
+	m.Update(pressKey(m, 'l')())
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "── git ──") || !strings.Contains(v, "from step 22") {
+		t.Fatalf("steps of the stage:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "own node") {
+		t.Fatalf("no steps => the stage's own node:\n%s", v)
 	}
 }

@@ -55,7 +55,10 @@ const (
 // drawn as a bordered modal with line numbers. It follows new output until the
 // user scrolls up, and polls Jenkins while the build is still producing output.
 // logNode is one pipeline node whose output makes up a stage or step log.
-type logNode struct{ id, name string }
+type logNode struct {
+	id, name string
+	stage    bool // a stage whose steps are not known yet: look them up first
+}
 
 type logView struct {
 	nodes   []logNode // non-empty: the log of a stage or step, not the whole build
@@ -116,18 +119,18 @@ func (m *model) stageAt(st runState) (string, []logNode) {
 	for _, s := range st.stages {
 		if n == m.stageCur {
 			if len(s.Children) == 0 {
-				return "stage " + s.Name, []logNode{{s.ID, s.Name}}
+				return "stage " + s.Name, []logNode{{s.ID, s.Name, true}}
 			}
 			var nodes []logNode
 			for _, c := range s.Children {
-				nodes = append(nodes, logNode{c.ID, c.Name})
+				nodes = append(nodes, logNode{id: c.ID, name: c.Name})
 			}
 			return "stage " + s.Name, nodes
 		}
 		n++
 		for _, c := range s.Children {
 			if n == m.stageCur {
-				return "step " + c.Name + " (" + s.Name + ")", []logNode{{c.ID, c.Name}}
+				return "step " + c.Name + " (" + s.Name + ")", []logNode{{id: c.ID, name: c.Name}}
 			}
 			n++
 		}
@@ -146,6 +149,16 @@ func (m *model) fetchLog(start int64) tea.Cmd {
 		return func() tea.Msg {
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			defer cancel()
+			// The run-level describe has no steps: ask the stage for them, and
+			// fall back to the stage's own node when it has none.
+			if len(nodes) == 1 && nodes[0].stage {
+				if steps, err := client.StageSteps(ctx, job, num, nodes[0].id); err == nil && len(steps) > 0 {
+					nodes = nil
+					for _, s := range steps {
+						nodes = append(nodes, logNode{id: s.ID, name: s.Name})
+					}
+				}
+			}
 			var sb strings.Builder
 			for _, n := range nodes {
 				text, err := client.StageLog(ctx, job, num, n.id)
@@ -196,6 +209,9 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 			// A stage log has no offset: refetch it whole while the build runs.
 			lv.lines, lv.part, lv.dropped = nil, "", 0
 			lv.append(msg.chunk.Text)
+			if len(lv.lines) == 0 && lv.part == "" {
+				lv.lines = []string{"(Jenkins has no output for this " + strings.SplitN(lv.what, " ", 2)[0] + "; L shows the whole build)"}
+			}
 			lv.more = false
 			if i := m.index(lv.job); i >= 0 && m.runs[i].phase == phRunning && m.runs[i].num == lv.num {
 				lv.more = true

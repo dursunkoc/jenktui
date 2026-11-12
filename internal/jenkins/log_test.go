@@ -24,6 +24,21 @@ func TestStageLog(t *testing.T) {
 	}
 }
 
+func TestStageSteps(t *testing.T) {
+	s := jenkinstest.New(t)
+	s.Job("pipe").LastBuild(jenkinstest.Build{Number: 3, Result: "FAILURE"}).Pipeline(
+		jenkinstest.Stage{Name: "Build", Status: jenkinstest.StageFailed, Children: []jenkinstest.Stage{
+			{Name: "git", Status: jenkinstest.StageSuccess}, {Name: "sh", Status: jenkinstest.StageFailed}}})
+	c := newTestClient(t, s)
+	got, err := c.StageSteps(context.Background(), "pipe", 3, "1")
+	if err != nil || len(got) != 2 || got[0].ID != "101" || got[1].Name != "sh" || got[1].Status != StageFailed {
+		t.Fatalf("steps %+v %v", got, err)
+	}
+	if _, err = c.StageSteps(context.Background(), "pipe", 3, "42"); !errors.Is(err, ErrNoStages) {
+		t.Fatalf("unknown stage: %v", err)
+	}
+}
+
 func TestConsoleText(t *testing.T) {
 	s := jenkinstest.New(t)
 	s.Job("team/app").LastBuild(jenkinstest.Build{Number: 4, Building: true}).Log("one\ntwo\n")
