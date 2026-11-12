@@ -201,3 +201,129 @@ type stubOverlay struct{}
 func (stubOverlay) view(int, int) string           { return "" }
 func (stubOverlay) key(tea.KeyMsg) (tea.Cmd, bool) { return nil, false }
 func (stubOverlay) keys() []key.Binding            { return nil }
+
+func failClient() *fakeClient {
+	return &fakeClient{
+		builds: map[string]map[int]jenkins.Build{
+			"a": {0: {Number: 3, Result: "SUCCESS"}},
+			"b": {0: {Number: 9, Result: "FAILURE"}},
+			"c": {0: {Number: 4, Result: "FAILURE"}},
+		},
+		stages: []jenkins.Stage{
+			{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+			{ID: "2", Name: "Test", Status: jenkins.StageFailed},
+			{ID: "3", Name: "Deploy", Status: jenkins.StageNotExecuted},
+		},
+		log: "l1\nl2\nl3\nl4\nl5\nl6\nl7\nl8\nl9\nl10\n",
+	}
+}
+
+func failModel(c *fakeClient) *model {
+	m := NewCollection(Deps{Client: c, Now: (&clock{t: t0}).now}, "N", []string{"a", "b", "c"}, nil).(*model)
+	wire(m)
+	m.w, m.h = 80, 10
+	cycle(m)
+	return m
+}
+
+func TestFNextFailedRowWraps(t *testing.T) {
+	m := failModel(failClient())
+	pressKey(m, 'f')
+	if m.cursor != 1 {
+		t.Fatalf("cursor %d", m.cursor)
+	}
+	pressKey(m, 'f')
+	pressKey(m, 'f') // wraps past a (success) to b
+	if m.cursor != 1 {
+		t.Fatalf("cursor %d after wrap", m.cursor)
+	}
+	m.cursor = 0
+	m2 := failModel(&fakeClient{builds: map[string]map[int]jenkins.Build{"a": {0: ok(1)}, "b": {0: ok(1)}, "c": {0: ok(1)}}})
+	pressKey(m2, 'f')
+	if m2.cursor != 0 {
+		t.Fatal("no failed row: cursor stays")
+	}
+}
+
+func TestEnterOnFailedBuildMarksFailedStage(t *testing.T) {
+	m := failModel(failClient())
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd) // stages arrive after the details opened
+	if m.stageCur != 1 {
+		t.Fatalf("marker on line %d, want the Test stage (1)", m.stageCur)
+	}
+	// moving first keeps the user's choice
+	m.details = false
+	m.cursor = 2
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	deliver(m, cmd)
+	if m.stageCur != 1 && m.stageCur != 0 {
+		t.Fatalf("unexpected %d", m.stageCur)
+	}
+}
+
+func TestFailedChildIsTheDeepestMarker(t *testing.T) {
+	st := []jenkins.Stage{
+		{Name: "Build", Status: jenkins.StageSuccess},
+		{Name: "Test", Status: jenkins.StageFailed, Children: []jenkins.Stage{
+			{Name: "unit", Status: jenkins.StageSuccess}, {Name: "it", Status: jenkins.StageFailed}}},
+	}
+	if got := failedLine(st); got != 3 {
+		t.Fatalf("got %d, want 3", got)
+	}
+	if failedLine(st[:1]) != -1 {
+		t.Fatal("no failed stage")
+	}
+}
+
+func TestLOpensFailedBuildLogAtEndNotFollowing(t *testing.T) {
+	c := failClient()
+	c.stages[1].Children = nil
+	c.steps = map[string][]jenkins.Stage{}
+	c.stageLogs = map[string]string{"2": "s1\ns2\ns3\ns4\ns5\ns6\ns7\ns8\ns9\ns10\ns11\ns12\n"}
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	if cmd := pressKey(m, 'l'); cmd != nil {
+		m.Update(cmd())
+	}
+	if m.log == nil || m.log.follow {
+		t.Fatal("log open and not following")
+	}
+	all := m.log.all()
+	if got := m.log.start(len(all), m.logPage()); got != len(all)-m.logPage() {
+		t.Fatalf("start %d of %d", got, len(all))
+	}
+}
+
+func TestFreestyleFailureOpensFullLogAtEnd(t *testing.T) {
+	c := failClient()
+	c.stageErr = jenkins.ErrNoStages
+	c.stages = nil
+	m := failModel(c)
+	m.cursor = 1
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	deliver(m, cmd)
+	pressKey(m, 'l')
+	if m.log == nil || m.log.nodes != nil {
+		t.Fatal("full build log expected")
+	}
+	m.Update(m.fetchLog(0)())
+	all := m.log.all()
+	if m.log.follow || m.log.start(len(all), m.logPage()) != max(len(all)-m.logPage(), 0) {
+		t.Fatalf("not at end: follow=%v", m.log.follow)
+	}
+}
+
+func TestLOnSuccessKeepsFollowing(t *testing.T) {
+	m := failModel(failClient())
+	m.cursor = 0
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	pressKey(m, 'L')
+	if m.log == nil || !m.log.follow {
+		t.Fatal("whole-log L unchanged")
+	}
+}
