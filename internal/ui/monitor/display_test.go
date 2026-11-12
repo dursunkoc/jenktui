@@ -37,3 +37,22 @@ func TestSpinnerOnlyForFirstLoadAndManualRefresh(t *testing.T) {
 		t.Fatal("automatic tick after R must show no spinner")
 	}
 }
+
+// The first cycle (m.modal) shows the header spinner once a row has data.
+func TestSpinnerShowsDuringFirstLoad(t *testing.T) {
+	c := collClient()
+	m, _, _ := newColl(c, []string{"a", "c"}, nil)
+	m.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
+	_, cmd := m.Update(tickMsg{gen: m.gen})
+	var first tea.Msg
+	for _, bc := range cmd().(tea.BatchMsg) {
+		if r, ok := bc().(resultMsg); ok {
+			first = r
+			break
+		}
+	}
+	m.Update(first)
+	if !strings.Contains(ansi.Strip(m.Subtitle()), "refreshing…") {
+		t.Fatalf("first load must show the spinner: %q", m.Subtitle())
+	}
+}
