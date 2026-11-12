@@ -35,6 +35,9 @@ var (
 	keyLogNext = key.NewBinding(key.WithKeys("n"), key.WithHelp("n/N", "next/prev match"))
 	keyLogPrev = key.NewBinding(key.WithKeys("N"))
 	keyLogGoto = key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "go to line"))
+	keyLogErr  = key.NewBinding(key.WithKeys("e"), key.WithHelp("e/E", "next/prev error"))
+	keyLogErrP = key.NewBinding(key.WithKeys("E"))
+	keyLogWrap = key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "wrap"))
 	keyLogBack = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to details"))
 
 	keyPromptOK  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
@@ -42,6 +45,12 @@ var (
 
 	logHATokens = regexp.MustCompile(`\x1b\[8mha:////[A-Za-z0-9+/=]*\x1b\[0m`)
 )
+
+// errorLine matches the lines drawn as errors (case-sensitive). Not
+// configurable yet.
+var errorLine = regexp.MustCompile(`\bERROR\b|\bFAILED\b|\bFAILURE\b|Exception\b|Caused by:|npm ERR!|error:|Error:|^--- FAIL:`)
+
+func isErrorLine(s string) bool { return errorLine.MatchString(s) }
 
 type logPrompt int
 
@@ -81,6 +90,9 @@ type logView struct {
 	re     *regexp.Regexp // compiled query; nil when no search is active
 	focus  int            // line of the current match or go-to target; -1 none
 	status string         // result of the last find or go-to
+
+	wrap bool // w: long lines continue on further rows instead of being cut
+	tw   int  // text width the wrapped layout uses; 0 = no wrapping (set by sync)
 }
 
 type (
@@ -207,8 +219,16 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 		lv.err = nil
 		if len(lv.nodes) > 0 {
 			// A stage log has no offset: refetch it whole while the build runs.
+			top, focus, oldDropped := lv.top, lv.focus, lv.dropped
 			lv.lines, lv.part, lv.dropped = nil, "", 0
 			lv.append(msg.chunk.Text)
+			// The refetch trims again from the front: shift by the change.
+			d := lv.dropped - oldDropped
+			lv.top = max(min(top-d, len(lv.lines)), 0)
+			if focus >= 0 {
+				focus = max(focus-d, -1)
+			}
+			lv.focus = min(focus, len(lv.lines)-1)
 			if len(lv.lines) == 0 && lv.part == "" {
 				lv.lines = []string{"(Jenkins has no output for this " + strings.SplitN(lv.what, " ", 2)[0] + "; L shows the whole build)"}
 			}
@@ -274,9 +294,39 @@ func (m *model) logPage() int {
 	return max(m.h-4, 1)
 }
 
+// rows is how many screen rows line takes (1 unless wrapping).
+func (lv *logView) rows(line string) int {
+	if lv.tw <= 0 {
+		return 1
+	}
+	if ansi.StringWidth(line) > lv.tw {
+		return strings.Count(ansi.Hardwrap(line, lv.tw, true), "\n") + 1
+	}
+	return 1
+}
+
+// maxTop is the highest first line that still fills the page: the last lines
+// whose rows fit in page rows.
+func (lv *logView) maxTop(n, page int) int {
+	if lv.tw <= 0 {
+		return max(n-page, 0)
+	}
+	all := lv.all()
+	rows, i := 0, n
+	for i > 0 {
+		h := lv.rows(all[i-1])
+		if rows+h > page {
+			break
+		}
+		rows += h
+		i--
+	}
+	return max(min(i, n-1), 0)
+}
+
 // start is the first visible line.
 func (lv *logView) start(n, page int) int {
-	maxTop := max(n-page, 0)
+	maxTop := lv.maxTop(n, page)
 	if lv.follow {
 		return maxTop
 	}
@@ -286,15 +336,52 @@ func (lv *logView) start(n, page int) int {
 // scrollTo makes line the first visible one (clamped); reaching the end
 // resumes following.
 func (lv *logView) scrollTo(line, n, page int) {
-	maxTop := max(n-page, 0)
+	maxTop := lv.maxTop(n, page)
 	lv.top = max(min(line, maxTop), 0)
 	lv.follow = lv.top >= maxTop
+}
+
+// syncWrap sets the wrapped text width for the current terminal size; it must run
+// before anything that measures lines (keys and rendering).
+func (m *model) syncWrap() {
+	lv := m.log
+	lv.tw = 0
+	if lv.wrap && m.w > 0 {
+		gw := len(strconv.Itoa(lv.dropped + len(lv.all())))
+		lv.tw = max(max(m.w-4, 10)-gw-3, 1)
+	}
 }
 
 // reveal scrolls so line is visible, a few rows below the top.
 func (lv *logView) reveal(line, n, page int) {
 	lv.focus = line
-	lv.scrollTo(line-page/3, n, page)
+	if lv.tw <= 0 {
+		lv.scrollTo(line-page/3, n, page)
+		return
+	}
+	// Wrapped: put the target about a third of the page down, in rows.
+	all := lv.all()
+	top, used := line, 0
+	for top > 0 && line < len(all) {
+		h := lv.rows(all[top-1])
+		if used+h > page/3 {
+			break
+		}
+		used += h
+		top--
+	}
+	lv.scrollTo(top, n, page)
+}
+
+// drawnEnd is the index after the last line (partly) drawn from first.
+func (lv *logView) drawnEnd(first, page int) int {
+	all := lv.all()
+	rows, i := 0, first
+	for i < len(all) && rows < page {
+		rows += lv.rows(all[i])
+		i++
+	}
+	return i
 }
 
 // logKeys is the help bar of the console log.
@@ -302,13 +389,14 @@ func (m *model) logKeys() []key.Binding {
 	if m.log.prompt != promptNone {
 		return []key.Binding{keyPromptOK, keyPromptEsc}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 }
 
 // logKey handles the keys of the log view; ok is false for keys it leaves to
 // the common handling (quit).
 func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 	lv := m.log
+	m.syncWrap()
 	if lv.prompt != promptNone {
 		m.promptKey(msg)
 		return nil, true
@@ -339,6 +427,16 @@ func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		lv.findNext(+1, cur, page)
 	case key.Matches(msg, keyLogPrev):
 		lv.findNext(-1, cur, page)
+	case key.Matches(msg, keyLogErr):
+		lv.nextError(+1, cur, page)
+	case key.Matches(msg, keyLogWrap):
+		follow := lv.follow
+		lv.wrap = !lv.wrap
+		m.syncWrap()
+		lv.scrollTo(cur, n, page)
+		lv.follow = follow || lv.follow
+	case key.Matches(msg, keyLogErrP):
+		lv.nextError(-1, cur, page)
 	default:
 		return nil, false
 	}
@@ -436,6 +534,52 @@ func (lv *logView) findNext(dir, cur, page int) {
 	lv.status = fmt.Sprintf("no match for %q", lv.query)
 }
 
+// nextError moves to the next (dir > 0) or previous error line, wrapping
+// around, and reports "error i/total" in the status.
+func (lv *logView) nextError(dir, cur, page int) {
+	all := lv.all()
+	n := len(all)
+	total := 0
+	for _, l := range all {
+		if isErrorLine(l) {
+			total++
+		}
+	}
+	if total == 0 {
+		lv.status = "no errors found"
+		return
+	}
+	from := cur - 1
+	if dir < 0 {
+		from = min(cur+page, n)
+		if lv.tw > 0 {
+			from = lv.drawnEnd(cur, page)
+		}
+	}
+	if lv.focus >= 0 {
+		from = lv.focus
+	}
+	for step := 1; step <= n; step++ {
+		i := ((from+dir*step)%n + n) % n
+		if !isErrorLine(all[i]) {
+			continue
+		}
+		wrapped := dir > 0 && i <= from || dir < 0 && i >= from
+		lv.reveal(i, n, page)
+		rank := 0
+		for _, l := range all[:i+1] {
+			if isErrorLine(l) {
+				rank++
+			}
+		}
+		lv.status = fmt.Sprintf("error %d/%d", rank, total)
+		if wrapped {
+			lv.status += " (wrapped)"
+		}
+		return
+	}
+}
+
 func (lv *logView) matches(all []string) (c int) {
 	for _, l := range all {
 		if lv.re.MatchString(l) {
@@ -474,44 +618,69 @@ func (m *model) logView() string {
 	case lv.more:
 		state = "paused (G to follow)"
 	}
+	m.syncWrap()
 	all := lv.all()
 	page := m.logPage()
 	first := lv.start(len(all), page)
-	last := min(first+page, len(all))
 
 	iw := 0 // inner width; 0 = unbounded (no size known yet)
 	if m.w > 0 {
 		iw = max(m.w-4, 10)
 	}
+	gw := len(strconv.Itoa(lv.dropped + len(all)))
+	tw := 0
+	if iw > 0 {
+		tw = max(iw-gw-3, 1)
+	}
+	var body []string
+	last := first
+	for i := first; i < len(all) && len(body) < page; i++ {
+		text := all[i]
+		pieces := []string{text}
+		switch {
+		case lv.tw > 0:
+			pieces = strings.Split(ansi.Hardwrap(text, lv.tw, true), "\n")
+		case tw > 0:
+			pieces = []string{ansi.Truncate(text, tw, "…")}
+		}
+		base := lipgloss.NewStyle()
+		if isErrorLine(text) {
+			base = base.Foreground(m.th.Fail)
+		}
+		for j, piece := range pieces {
+			if len(body) >= page {
+				break
+			}
+			num := strings.Repeat(" ", gw)
+			if j == 0 {
+				num = fmt.Sprintf("%*d", gw, lv.dropped+i+1)
+				if i == lv.focus {
+					num = m.th.Selected.Render(num)
+				} else {
+					num = m.th.MutedTxt.Render(num)
+				}
+			}
+			sep := " │ "
+			if j > 0 {
+				sep = " ┆ "
+			}
+			body = append(body, num+m.th.MutedTxt.Render(sep)+highlightWith(piece, lv.re, base))
+		}
+		last = i + 1
+	}
 	pos := ""
 	if len(all) > 0 {
 		pos = fmt.Sprintf("  lines %d-%d of %d", lv.dropped+first+1, lv.dropped+last, lv.dropped+len(all))
+	}
+	if lv.wrap {
+		pos += "  wrapped"
 	}
 	what := ""
 	if lv.what != "" {
 		what = " › " + lv.what
 	}
 	head := m.badge(st) + "  " + m.jobName(lv.job) + fmt.Sprintf(" #%d", lv.num) + what + "  " + m.th.MutedTxt.Render(state+pos)
-	rows := []string{fit(head, iw)}
-
-	gw := len(strconv.Itoa(lv.dropped + len(all)))
-	tw := 0
-	if iw > 0 {
-		tw = max(iw-gw-3, 1)
-	}
-	for i := first; i < last; i++ {
-		num := fmt.Sprintf("%*d", gw, lv.dropped+i+1)
-		if i == lv.focus {
-			num = m.th.Selected.Render(num)
-		} else {
-			num = m.th.MutedTxt.Render(num)
-		}
-		text := all[i]
-		if tw > 0 {
-			text = ansi.Truncate(text, tw, "…")
-		}
-		rows = append(rows, num+m.th.MutedTxt.Render(" │ ")+highlight(text, lv.re))
-	}
+	rows := append([]string{fit(head, iw)}, body...)
 	for m.h > 0 && len(rows) < page+1 {
 		rows = append(rows, "")
 	}
@@ -539,13 +708,24 @@ func (m *model) logFooter() string {
 	if lv.status != "" {
 		return m.th.MutedTxt.Render(lv.status)
 	}
-	return m.th.MutedTxt.Render("/ find · : go to line · pgup/pgdn page · g top · G follow · esc back")
+	return m.th.MutedTxt.Render("/ find · e/E error · w wrap · : go to line · pgup/pgdn page · g top · G follow · esc back")
 }
 
 // highlight marks the matches of re in s in reverse video.
 func highlight(s string, re *regexp.Regexp) string {
+	return highlightWith(s, re, lipgloss.NewStyle())
+}
+
+// highlightWith is highlight with the rest of s drawn in base.
+func highlightWith(s string, re *regexp.Regexp, base lipgloss.Style) string {
+	plain := func(t string) string {
+		if t == "" {
+			return t
+		}
+		return base.Render(t)
+	}
 	if re == nil {
-		return s
+		return plain(s)
 	}
 	var b strings.Builder
 	prev := 0
@@ -553,11 +733,11 @@ func highlight(s string, re *regexp.Regexp) string {
 		if p[1] == p[0] {
 			continue
 		}
-		b.WriteString(s[prev:p[0]])
-		b.WriteString(lipgloss.NewStyle().Reverse(true).Render(s[p[0]:p[1]]))
+		b.WriteString(plain(s[prev:p[0]]))
+		b.WriteString(base.Reverse(true).Render(s[p[0]:p[1]]))
 		prev = p[1]
 	}
-	b.WriteString(s[prev:])
+	b.WriteString(plain(s[prev:]))
 	return b.String()
 }
 
