@@ -868,3 +868,26 @@ func TestTitleNamesParent(t *testing.T) {
 		}
 	}
 }
+
+// In the details view the arrow keys move between stages, not jobs.
+func TestDetailsArrowsMoveStages(t *testing.T) {
+	m := &model{th: core.NewTheme(), details: true, cursor: 0}
+	m.runs = []runState{{run: Run{Job: "a"}, phase: phFinished, result: "FAILURE", stages: []jenkins.Stage{
+		{Name: "Build", Status: jenkins.StageSuccess},
+		{Name: "Test", Status: jenkins.StageFailed, Children: []jenkins.Stage{{Name: "unit", Status: jenkins.StageFailed}}},
+	}}, {run: Run{Job: "b"}, phase: phFinished, result: "FAILURE"}}
+	down := tea.KeyMsg{Type: tea.KeyDown}
+	for range 5 {
+		m.Update(down)
+	}
+	if m.cursor != 0 || m.stageCur != 2 {
+		t.Fatalf("job cursor %d, stage cursor %d", m.cursor, m.stageCur)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "▸     ✘ unit") {
+		t.Fatalf("marker missing:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	if m.stageCur != 1 {
+		t.Fatalf("stage cursor %d", m.stageCur)
+	}
+}

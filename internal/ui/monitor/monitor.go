@@ -125,6 +125,7 @@ type model struct {
 	hideSuccess bool
 	cursor      int // index into the visible rows
 	details     bool
+	stageCur    int // highlighted line (stage or parallel child) in the details view
 	w, h        int
 
 	gen     int          // bumped on every poll cycle start and on exit; stale msgs are dropped
@@ -460,11 +461,15 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		m.load.StopNow()
 		return m, core.Cmd(core.Quit{})
 	case key.Matches(msg, core.KeyUp):
-		if m.cursor > 0 {
+		if m.details {
+			m.stageCur = max(m.stageCur-1, 0)
+		} else if m.cursor > 0 {
 			m.cursor--
 		}
 	case key.Matches(msg, core.KeyDown):
-		if m.cursor < len(m.visible())-1 {
+		if m.details {
+			m.stageCur = max(min(m.stageCur+1, m.stageLines()-1), 0)
+		} else if m.cursor < len(m.visible())-1 {
 			m.cursor++
 		}
 	case key.Matches(msg, keyRefresh):
@@ -484,11 +489,26 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 			return m, nil
 		}
 		m.details = !m.details
+		m.stageCur = 0
 		if m.details {
 			return m, m.detailStages()
 		}
 	}
 	return m, nil
+}
+
+// stageLines is the number of lines the details view lists for the selected
+// row: each stage plus its parallel children.
+func (m *model) stageLines() int {
+	i := m.selected()
+	if i < 0 {
+		return 0
+	}
+	n := 0
+	for _, s := range m.runs[i].stages {
+		n += 1 + len(s.Children)
+	}
+	return n
 }
 
 // detailStages fetches the stages of a finished, non-success row whose details

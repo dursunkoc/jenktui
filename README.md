@@ -84,7 +84,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
-| Run Monitor | `Enter` details, `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
+| Run Monitor | `Enter` details (`↑`/`↓` move between stages), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
 
 A Collection member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
 
