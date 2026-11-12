@@ -60,6 +60,7 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 ## Later (out of v1)
 
+- Download logs to local upon request.
 - Abort and rerun a build.
 - Several Jenkins servers or profiles.
 - Credential storage in the OS keychain.
