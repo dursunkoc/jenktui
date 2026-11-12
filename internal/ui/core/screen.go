@@ -46,6 +46,13 @@ type Subtitler interface {
 	Subtitle() string
 }
 
+// Resumer is optionally implemented by screens that must restart work when a
+// Pop uncovers them again (a screen pushed over a polling screen swallows its
+// messages). Resume returns the command that restarts it.
+type Resumer interface {
+	Resume() tea.Cmd
+}
+
 // Navigation messages. Screens return them from commands via Nav* helpers or
 // directly as tea.Msg values.
 type (
@@ -53,7 +60,9 @@ type (
 	Push struct{ Screen Screen }
 	// Pop removes the top screen; a no-op when only one remains.
 	Pop struct{}
-	// Replace swaps the top screen for Screen.
+	// Replace swaps the top screen for Screen. When Screen is already lower in
+	// the stack (the same pointer), the screens above it are dropped and it
+	// becomes the top, so it is never on the stack twice.
 	Replace struct{ Screen Screen }
 	// Quit exits the program.
 	Quit struct{}

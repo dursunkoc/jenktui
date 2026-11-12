@@ -15,7 +15,7 @@ import (
 //     a stop result) is a type in its own file with an apply method and needs
 //     no case in monitor.go. Drop stale results inside apply with the existing
 //     gen/epoch counters.
-//   - flash (MA, LV): m.flash(text) shows a notice in Subtitle for noticeFor on
+//   - flash (MA, LV): m.flash(text) (its expiry goes through m.after, which wire() makes a no-op in tests) shows a notice in Subtitle for noticeFor on
 //     the injected clock and returns a cmd that re-renders when it expires;
 //     callers batch it with their own cmd.
 //   - detail sections (MD, MA): addDetailSection registers a func(runState)
@@ -55,7 +55,7 @@ func (noticeExpiredMsg) apply(*model) tea.Cmd { return nil }
 // cmd fires when it expires so an idle monitor redraws.
 func (m *model) flash(text string) tea.Cmd {
 	m.notice, m.noticeUntil = text, m.deps.Now().Add(noticeFor)
-	return tea.Tick(noticeFor, func(time.Time) tea.Msg { return noticeExpiredMsg{} })
+	return m.after(noticeFor, noticeExpiredMsg{})
 }
 
 func (m *model) noticeShown() bool {

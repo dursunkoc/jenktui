@@ -420,3 +420,42 @@ func TestSurvivorsSingleAfterExclusionUsesSingleFlow(t *testing.T) {
 	h := start(t, c, nil, "ok", "bad")
 	h.wantView("Trigger ok?")
 }
+
+func TestPrefillStartsTheFormWithTheGivenValues(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("app").Params(
+		jenkinstest.StringParam("BRANCH", "", "main"),
+		jenkinstest.ChoiceParam("REGION", "", "eu", "us"),
+		jenkinstest.BoolParam("DRY", "", false),
+		jenkinstest.StringParam("NEW", "", "fresh"),
+		jenkinstest.PasswordParam("PW", ""))
+	h := &harness{t: t, s: New(Deps{Client: realClient(t, srv), Prefill: map[string]string{
+		"BRANCH": "release", "REGION": "us", "DRY": "true", "GONE": "x"}}, []string{"app"})}
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
+	h.pump(h.s.Init())
+	h.wantView("release")
+	h.wantView("‹ us ›")
+	h.wantView("[x]")
+	h.wantView("fresh") // a parameter not in the prefill keeps its default
+	h.keys("enter", "enter", "enter", "enter")
+	h.keys("pw1", "enter") // the password is asked for, not carried over
+	h.wantView("Ready to trigger 1 job")
+	h.keys("y")
+	tr := srv.Triggers()
+	if len(tr) != 1 {
+		t.Fatalf("triggers: %+v", tr)
+	}
+	p := tr[0].Params
+	if p.Get("BRANCH") != "release" || p.Get("REGION") != "us" || p.Get("DRY") != "true" || p.Get("NEW") != "fresh" || p.Get("PW") != "pw1" || p.Has("GONE") {
+		t.Fatalf("params: %v", p)
+	}
+}
+
+func TestPrefillWithoutParametersStillAsksForConfirmation(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("plain")
+	h := &harness{t: t, s: New(Deps{Client: realClient(t, srv), Prefill: map[string]string{"OLD": "x"}}, []string{"plain"})}
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
+	h.pump(h.s.Init())
+	h.wantView("Trigger plain?")
+}

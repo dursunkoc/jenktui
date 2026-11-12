@@ -87,13 +87,38 @@ func newDeps(dir string) entry.Deps {
 	// lower-cased name (config.Collections.Find is case-insensitive). Leaving
 	// a monitor keeps its state; opening the Collection's monitor again, or
 	// triggering from the Collection, reuses it.
+	runsOf := func(started []trigger.Started) []monitor.Run {
+		runs := make([]monitor.Run, len(started))
+		for i, st := range started {
+			runs[i] = monitor.Run{Job: st.Job, Ref: st.Ref, Err: st.Err}
+		}
+		return runs
+	}
 	monitors := map[string]core.Screen{}
+	// How each monitor shows its jobs, for the rerun form's title. Keyed by
+	// the screen so a rename does not lose it.
+	monitorNames := map[core.Screen]map[string]core.JobName{}
 	monitorFor := func(s *core.Session, name string) core.Screen {
 		k := strings.ToLower(name)
 		if m, ok := monitors[k]; ok {
 			return m
 		}
-		m := monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob, Sys: sys, Notify: s.Config.NotifyMode()}, name, nil, nil)
+		var m core.Screen
+		rerun := func(job string, params map[string]string) core.Screen {
+			return trigger.New(trigger.Deps{
+				Client:  client(s),
+				Names:   monitorNames[m],
+				Parent:  s.Config.ParentJob,
+				Prefill: params,
+				// The monitor is already on the stack under the form; the new
+				// build joins it and the router drops the form.
+				Next: func(started []trigger.Started) core.Screen {
+					monitor.Add(m, runsOf(started))
+					return m
+				},
+			}, []string{job})
+		}
+		m = monitor.NewCollection(monitor.Deps{Client: client(s), Parent: s.Config.ParentJob, Sys: sys, Notify: s.Config.NotifyMode(), Rerun: rerun}, name, nil, nil)
 		monitors[k] = m
 		return m
 	}
@@ -112,6 +137,7 @@ func newDeps(dir string) entry.Deps {
 			m := monitorFor(s, name)
 			monitor.SetJobs(m, jobKeys, missing)
 			monitor.SetNames(m, names)
+			monitorNames[m] = names
 			monitor.HideSuccess(m, true)
 			return m
 		}
@@ -124,10 +150,7 @@ func newDeps(dir string) entry.Deps {
 				Names:  names,
 				Parent: s.Config.ParentJob,
 				Next: func(started []trigger.Started) core.Screen {
-					runs := make([]monitor.Run, len(started))
-					for i, st := range started {
-						runs[i] = monitor.Run{Job: st.Job, Ref: st.Ref, Err: st.Err}
-					}
+					runs := runsOf(started)
 					m := monitorFor(s, collection)
 					if cs, err := config.LoadCollections(collectionsPath); err == nil {
 						if i := cs.Find(collection); i >= 0 {
@@ -135,6 +158,7 @@ func newDeps(dir string) entry.Deps {
 						}
 					}
 					monitor.SetNames(m, names)
+					monitorNames[m] = names
 					monitor.Add(m, runs)
 					// Hide successful jobs, as `m` does. The new builds are queued or
 					// running, so they stay visible until they finish successfully.

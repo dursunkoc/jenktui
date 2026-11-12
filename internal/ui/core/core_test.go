@@ -311,3 +311,50 @@ func TestJobName(t *testing.T) {
 		t.Fatalf("Render = %q", got)
 	}
 }
+
+type resumable struct {
+	fake
+	resumed int
+}
+
+func (r *resumable) Resume() tea.Cmd { r.resumed++; return nil }
+
+func TestReplaceWithScreenLowerInStackUnwinds(t *testing.T) {
+	a, mon, form := &fake{name: "a"}, &fake{name: "mon"}, &fake{name: "form"}
+	r := NewRouter(&Session{}, a)
+	r.Update(Push{mon})
+	r.Update(Push{form})
+	r.Update(Replace{mon})
+	if r.Depth() != 2 || r.Top() != Screen(mon) {
+		t.Fatalf("depth=%d top=%v, want the monitor once on top of a", r.Depth(), r.Top().Title())
+	}
+	if mon.inits != 2 {
+		t.Fatalf("inits = %d, the unwound screen is entered again", mon.inits)
+	}
+	r.Update(Pop{})
+	if r.Top() != Screen(a) {
+		t.Fatal("pop did not reach the screen below")
+	}
+}
+
+func TestPopResumesUncoveredScreen(t *testing.T) {
+	a, form := &resumable{fake: fake{name: "a"}}, &fake{name: "form"}
+	r := NewRouter(&Session{}, a)
+	r.Update(Push{form})
+	r.Update(Pop{})
+	if a.resumed != 1 {
+		t.Fatalf("resumed = %d", a.resumed)
+	}
+}
+
+func TestPopGivesTheUncoveredScreenTheCurrentSize(t *testing.T) {
+	a, b := &fake{name: "a"}, &fake{name: "b"}
+	r := NewRouter(&Session{}, a)
+	r.Update(tea.WindowSizeMsg{Width: 80, Height: 24})
+	r.Update(Push{b})
+	r.Update(tea.WindowSizeMsg{Width: 100, Height: 30}) // only b sees this
+	r.Update(Pop{})
+	if a.size.Width != 100 || a.size.Height != 27 {
+		t.Fatalf("size after pop = %+v", a.size)
+	}
+}
