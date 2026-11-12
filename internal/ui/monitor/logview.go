@@ -297,6 +297,14 @@ func (lv *logView) reveal(line, n, page int) {
 	lv.scrollTo(line-page/3, n, page)
 }
 
+// logKeys is the help bar of the console log.
+func (m *model) logKeys() []key.Binding {
+	if m.log.prompt != promptNone {
+		return []key.Binding{keyPromptOK, keyPromptEsc}
+	}
+	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+}
+
 // logKey handles the keys of the log view; ok is false for keys it leaves to
 // the common handling (quit).
 func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
