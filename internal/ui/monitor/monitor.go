@@ -486,7 +486,7 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			m.runs[i] = msg.st
 			m.restoreCursor(keep)
 			m.focusFailedStage()
-			hook = m.hooks.result(i, prev)
+			hook = tea.Batch(m.hooks.result(i, prev), m.notifyOnFinish(prev, msg.st))
 		}
 		if m.pending <= 0 {
 			m.finishLoad()

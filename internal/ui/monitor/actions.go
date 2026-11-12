@@ -18,6 +18,7 @@ type maState struct {
 	// movement key clears it.
 	focusFailed bool
 	counts      map[buildKey]countsEntry // test counts per build (MA3)
+	seen        map[string]bool          // jobs seen queued or running, until they finish (MA5)
 }
 
 var (

@@ -104,9 +104,12 @@ username = "me"            # optional; prefills the login screen
 # ca_cert = "/path/to/ca.pem"
 insecure_skip_verify = false
 branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch names
+notify = "failures"      # "failures" (default), "all" or "off": bell and desktop notification when a build you watched finishes
 ```
 
 Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app.
+
+**Notifications.** While a Run Monitor is on screen and a build it saw queued or running finishes, it rings the terminal bell and sends a desktop notification (`FAILED api/deploy #57`): for failed and unstable builds with `notify = "failures"`, for every finished build with `"all"`, never with `"off"`. Builds that were already finished when the monitor first loaded do not notify. **Limit:** only the monitor on show polls, so nothing fires while you are in another screen (the Collections list, the catalog); jenktui is meant to stay open on the monitor in a tmux pane or a background window.
 
 **Security.** Credentials are never stored: your username and password or API token are asked on every start and live in memory only, as a note at the bottom of the login screen says. TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
 
