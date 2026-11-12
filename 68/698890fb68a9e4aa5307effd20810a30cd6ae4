@@ -1,0 +1,21 @@
+internal/ui/monitor/logsave.go
+  s_1c16aed3d161c7::t_8ac8b39bfb071b 153-154,159-165
+internal/ui/monitor/logview_test.go
+  s_1c16aed3d161c7::t_6ab85762435627 369-377
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "68698890fb68a9e4aa5307effd20810a30cd6ae4",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
