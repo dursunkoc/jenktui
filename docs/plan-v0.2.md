@@ -128,7 +128,7 @@ Agents at peak: W1 runs up to 9 in parallel (P1, JC1–3, T1–T5 split as the o
 - **From:** v0.2 §5 (changes, causes, estimated duration) and §4 (parameters for rerun).
 - **Owns:** `internal/jenkins/status.go`, `status_test.go` (new) or `client_test.go`.
 - **Depends on:** F2 steps 1–2.
-- **Do:** extend `jenkins.Build` with `EstimatedDuration time.Duration`, `Causes []Cause{Text, User}`, `Changes []Change{ID, Author, Message}`, `Params map[string]string`, and name the fields in `BuildStatus`'s `tree=`. Add `BuildHistory(ctx, fullName, n int) ([]Build, error)` returning the last `n` builds, newest first, with only number, result and building (cheap: one request, `builds[number,result,building]{0,n}`).
+- **Do:** `BuildStatus` stays lean because the monitor polls it constantly: `jenkins.Build` gains only `EstimatedDuration time.Duration` (0 when unknown) and its `tree=` names it. Causes, changes and parameters live in a separate `BuildContext(ctx, fullName, number) (BuildContext, error)` returning `BuildContext{Causes []Cause{Text, User}; Changes []Change{ID, Author, Message}; Params []BuildParam{Name, Value, Password}}`. `Params` is a list (Jenkins' order is kept), not a map; `Password` is set by the parameter's `_class`, and file, run or null values come back with an empty `Value`. `changeSets` is used when non-empty, else the freestyle `changeSet`. Add `BuildHistory(ctx, fullName, n int) ([]Build, error)` returning the last `n` builds, newest first, with only number, result and building (cheap: one request, `builds[number,result,building]{0,n}`).
 - **Tests:** against the F2 fake, including a build with no causes or changes, a running build (`result` null), and `actions` containing nulls.
 - **Real-Jenkins check:** yes (O3).
 
@@ -195,7 +195,8 @@ Three lanes in `internal/ui/monitor`, one agent each, plus UI1. All start after 
 **MD3: history dots and build context in the details view** *(after JC1)*
 - **From:** v0.2 §5 (history, who started it, commits).
 - **Do:** the list row ends with the last five results as dots (`●●●○●`, theme colours, newest on the right), fetched with `BuildHistory` once per finished build (not every poll). The details view gets a header section (registered in M0's details-header slot): the causes ("Started by alice", "Branch indexing") and up to five commits (`abc1234 author: message`, cut to the width).
-- **Fetching:** the fetch is a `tea.Cmd` with a `historyMsg`; the `Update` case for it belongs to lane MA's file, so lane MD writes the command and the message type in a new file `history.go` and asks MA to add the three-line `case`. Use an optional interface (`historian`) so `fakeClient` keeps compiling.
+- **Build context:** the details view fetches `BuildContext` once per job and build (not every poll) through an optional `contexter` interface on `onDetailsOpen`, so `fakeClient` keeps compiling.
+- **Fetching:** the history fetch is a `tea.Cmd` with a `historyMsg`; the `Update` case for it belongs to lane MA's file, so lane MD writes the command and the message type in a new file `history.go` and asks MA to add the three-line `case`. Use an optional interface (`historian`) so `fakeClient` keeps compiling.
 - **Tests:** dots for success, failure, unstable, running; a build with no changes shows no commit block.
 
 ### Lane LV: log view (owns `logview.go`)
@@ -247,7 +248,7 @@ Owns `main.go`, `internal/ui/core`, `docs/ui-contract.md`, `internal/ui/entry`, 
 
 **CORE1: rerun** *(after JC1 and all of lane MA, which owns `monitor.go` until then)*
 - **From:** v0.2 §4. **Reverses a settled decision**, as MA4.
-- **Do:** `r` in the Run Monitor list and details reruns the highlighted build with its parameters. The monitor cannot open the trigger screen itself (screens never import each other), so it calls `Deps.Rerun` (the field M0 added), which this issue wires in `main.go` to `trigger.New` with the values prefilled (`params.Options{Prefill}` already exists). Password parameters cannot be read back, so the form asks for them; a job without parameters gets the plain confirmation. The new run joins the same monitor through the trigger's `Next`, as today. The key handling is a small edit in `monitor.go`; do it after lane MA is finished.
+- **Do:** `r` in the Run Monitor list and details reruns the highlighted build with its parameters. The monitor cannot open the trigger screen itself (screens never import each other), so it calls `Deps.Rerun` (the field M0 added), which this issue wires in `main.go` to `trigger.New` with the values prefilled (`params.Options{Prefill}` already exists). `r` calls `BuildContext` for the build and converts `Params` to `Prefill`, leaving out the `Password` ones (they cannot be read back, so the form asks for them); a job without parameters gets the plain confirmation. The new run joins the same monitor through the trigger's `Next`, as today. The key handling is a small edit in `monitor.go`; do it after lane MA is finished.
 - **Tests:** an e2e scenario: trigger with parameters, open the monitor, `r`, the form is prefilled, confirm, a new build is tracked.
 
 **CORE2: open a Collection from the command line**
