@@ -1,0 +1,48 @@
+e2e_test.go
+  s_68aed7bbf4c6d1::t_7f58523010ab97 1432-1461
+internal/jenkins/status.go
+  s_68aed7bbf4c6d1::t_d4f7f0e05a115c 81,109,117
+internal/ui/monitor/logview.go
+  s_68aed7bbf4c6d1::t_84378d0ee9bd64 27-28,57-59,61-62,93-95,101-106,108,112-137,145-165,188,195-206,466-470
+internal/jenkins/jenkinstest/server.go
+  s_68aed7bbf4c6d1::t_fa5018139c185b 9
+  s_68aed7bbf4c6d1::t_d4f7f0e05a115c 100,548-560,789-801
+  s_68aed7bbf4c6d1::t_3eca122a3430a0 802-803
+internal/ui/monitor/monitor.go
+  s_68aed7bbf4c6d1::t_84378d0ee9bd64 36,362,467-469
+internal/jenkins/trigger_status_test.go
+  s_68aed7bbf4c6d1::t_141d9d5ddda170 204-207,209-212
+docs/HANDOFF.md
+  s_68aed7bbf4c6d1::t_7f58523010ab97 65
+GLOSSARY.md
+  s_68aed7bbf4c6d1::t_7f58523010ab97 23
+README.md
+  s_68aed7bbf4c6d1::t_7f58523010ab97 57,87
+docs/ui-contract.md
+  s_68aed7bbf4c6d1::t_7f58523010ab97 94
+internal/jenkins/log.go
+  s_68aed7bbf4c6d1::t_d4f7f0e05a115c 6,9,57-74
+  s_68aed7bbf4c6d1::t_c614b825f18e2e 75
+internal/jenkins/log_test.go
+  s_68aed7bbf4c6d1::t_141d9d5ddda170 11-26
+internal/ui/monitor/monitor_test.go
+  s_68aed7bbf4c6d1::t_7cd96a3f1c8cf8 33-34,1302
+  s_68aed7bbf4c6d1::t_84378d0ee9bd64 31-32,76-87,932-935
+  s_68aed7bbf4c6d1::t_141d9d5ddda170 1223-1301,1303-1312
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "393236e4c401541ebe5ad6e4fa0417ddbc87c40d",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
