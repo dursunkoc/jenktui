@@ -1,8 +1,15 @@
 package monitor
 
 import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -10,6 +17,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/sysint"
 )
 
 func TestErrorLineMatching(t *testing.T) {
@@ -256,5 +264,266 @@ func TestLogWrapGoToAndFindWorkOnLogLines(t *testing.T) {
 	pressKey(m, 'G')
 	if !m.log.follow {
 		t.Fatal("G follows")
+	}
+}
+
+// saveTo points S at a fresh directory and returns it.
+func saveTo(t *testing.T, m *model) string {
+	t.Helper()
+	dir := t.TempDir()
+	m.deps.SaveDir = dir
+	return dir
+}
+
+func TestLogSaveWritesWholeLogNotTheBuffer(t *testing.T) {
+	m, c := logTail(t)
+	dir := saveTo(t, m)
+	var sb strings.Builder
+	total := maxLogLines + 500
+	for i := 1; i <= total; i++ {
+		fmt.Fprintf(&sb, "\x1b[32mline %d\x1b[0m\n", i)
+	}
+	c.log = sb.String()
+	m.Update(pressL(m)())
+	if m.log.dropped != 500 {
+		t.Fatalf("the view keeps only the last lines (dropped %d)", m.log.dropped)
+	}
+	m.Update(pressKey(m, 'S')())
+	want := filepath.Join(dir, "b-4.log")
+	if !strings.Contains(m.log.status, "saved to "+want) {
+		t.Fatalf("status %q", m.log.status)
+	}
+	data, err := os.ReadFile(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	if !strings.HasPrefix(got, "line 1\nline 2\n") || !strings.HasSuffix(got, fmt.Sprintf("line %d\n", total)) || strings.Count(got, "\n") != total {
+		t.Fatalf("saved %d lines, starts %q", strings.Count(got, "\n"), got[:20])
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "saved to") {
+		t.Fatalf("footer shows the path:\n%s", v)
+	}
+}
+
+func TestLogSaveNeverOverwrites(t *testing.T) {
+	m, c := logTail(t)
+	dir := saveTo(t, m)
+	c.log = "one\n"
+	m.Update(pressL(m)())
+	for _, name := range []string{"b-4.log", "b-4-1.log", "b-4-2.log"} {
+		m.Update(pressKey(m, 'S')())
+		if !strings.HasSuffix(m.log.status, filepath.Join(dir, name)) {
+			t.Fatalf("want %s, status %q", name, m.log.status)
+		}
+	}
+	if data, _ := os.ReadFile(filepath.Join(dir, "b-4.log")); string(data) != "one\n" {
+		t.Fatalf("first file changed: %q", data)
+	}
+}
+
+func TestLogSaveStageLogSavesWhatIsShown(t *testing.T) {
+	m, c := stagedLog(t)
+	dir := saveTo(t, m)
+	m.Update(pressKey(m, 'l')())
+	shown := strings.Join(m.log.all(), "\n") + "\n"
+	cmd := pressKey(m, 'S')
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatal("nothing is written before the command runs")
+	}
+	m.Update(cmd())
+	data, err := os.ReadFile(filepath.Join(dir, "b-4.log"))
+	if err != nil || string(data) != shown || !strings.Contains(shown, "step one out") {
+		t.Fatalf("saved %q (%v), shown %q", data, err, shown)
+	}
+	if len(c.logStarts) != 0 {
+		t.Fatalf("a stage log is not refetched from consoleText: %v", c.logStarts)
+	}
+}
+
+func TestLogSaveErrorIsShownAndStaleResultDropped(t *testing.T) {
+	m, c := logTail(t)
+	m.deps.SaveDir = filepath.Join(t.TempDir(), "missing")
+	c.log = "one\n"
+	m.Update(pressL(m)())
+	m.Update(pressKey(m, 'S')())
+	if !strings.HasPrefix(m.log.status, "save failed: ") || m.log.saving {
+		t.Fatalf("status %q saving %v", m.log.status, m.log.saving)
+	}
+	// A result for a log that was closed is ignored.
+	cmd := pressKey(m, 'S')
+	m.closeLog()
+	m.Update(cmd())
+	if m.log != nil {
+		t.Fatal("log stays closed")
+	}
+}
+
+func TestLogFileNameReplacesSlashes(t *testing.T) {
+	if got := logFileName("team/api/deploy", 57); got != "team_api_deploy-57.log" {
+		t.Fatal(got)
+	}
+	if got := logFileName("app/feature%2Fx", 12); got != "app_feature_x-12.log" {
+		t.Fatal(got)
+	}
+	for in, want := range map[string]string{
+		"app/feat%5C..%5C..%5Cx": "app_feat_.._.._x-3.log",
+		"app/a%3Ab":              "app_a_b-3.log",
+		"a%00b%0Ac*?\"<>|":       "a_b_c______-3.log",
+	} {
+		if got := logFileName(in, 3); got != want {
+			t.Errorf("logFileName(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+// growClient serves a console log that grows with every request and always
+// says there is more, like a running build.
+type growClient struct {
+	*fakeClient
+	calls int
+}
+
+func (g *growClient) ConsoleText(_ context.Context, _ string, _ int, start int64) (jenkins.LogChunk, error) {
+	g.calls++
+	return jenkins.LogChunk{Text: "x\n", Next: start + int64(g.calls)*2, More: true}, nil
+}
+
+func TestSaveDoesNotFollowARunningBuild(t *testing.T) {
+	g := &growClient{fakeClient: &fakeClient{}}
+	var buf bytes.Buffer
+	if err := streamWholeLog(g, time.Second, "j", 1, &buf); err != nil {
+		t.Fatal(err)
+	}
+	if g.calls > 2 || buf.String() != "x\n" {
+		t.Fatalf("%d requests, wrote %q", g.calls, buf.String())
+	}
+}
+
+func TestLineCleanerWritesOnlyCompleteLines(t *testing.T) {
+	var buf bytes.Buffer
+	lc := &lineCleaner{w: &buf}
+	lc.write("\x1b[32mgre")
+	if buf.Len() != 0 {
+		t.Fatalf("partial line written: %q", buf.String())
+	}
+	lc.write("en\x1b[0m\r\nsecond\x1b[8mha:////4abc==\x1b[0m\nthi")
+	if got := buf.String(); got != "green\nsecond\n" {
+		t.Fatalf("got %q", got)
+	}
+	lc.write("rd")
+	lc.flush()
+	if got := buf.String(); got != "green\nsecond\nthird" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestLogSaveFileModeAndFooterPath(t *testing.T) {
+	m, c := logTail(t)
+	dir := saveTo(t, m)
+	c.log = "one\n"
+	m.Update(pressL(m)())
+	m.Update(pressKey(m, 'S')())
+	fi, err := os.Stat(filepath.Join(dir, "b-4.log"))
+	if err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("mode %v err %v", fi, err)
+	}
+	// A narrow terminal cuts the path from the left so the file name stays.
+	m.w = 40
+	m.log.saving = false
+	m.Update(pressKey(m, 'S')())
+	if st := m.log.status; !strings.HasPrefix(st, "saved to …") || !strings.HasSuffix(st, "b-4-1.log") || len([]rune(st)) > 36 {
+		t.Fatalf("status %q", st)
+	}
+}
+
+func TestDisplayPathRelativeInsideWorkingDirectory(t *testing.T) {
+	wd, _ := os.Getwd()
+	if got := displayPath(filepath.Join(wd, "b-4.log"), 0); got != "b-4.log" {
+		t.Fatal(got)
+	}
+}
+
+func logWithSys(t *testing.T, sys Sys, lines ...string) *model {
+	t.Helper()
+	m, c := logTail(t)
+	m.deps.Sys = sys
+	m.deps.Client = urlClient{c}
+	m.h, m.w = 9, 60
+	c.log = strings.Join(lines, "\n") + "\n"
+	m.Update(pressL(m)())
+	return m
+}
+
+// sysKey presses r and feeds the result back, returning the log footer status.
+func sysKey(m *model, r rune) string {
+	if cmd := pressKey(m, r); cmd != nil {
+		m.Update(cmd())
+	}
+	return m.log.status
+}
+
+func TestLogCopyCurrentLineOrMatch(t *testing.T) {
+	sys := &fakeSys{route: sysint.RouteTool}
+	m := logWithSys(t, sys, "one", "two needle", "three", "four", "five", "six", "seven", "eight")
+	if got := sysKey(m, 'y'); got != "copied" || sys.copied[0] != "eight" {
+		t.Fatalf("following copies the last line: %q %v", got, sys.copied)
+	}
+	pressKey(m, 'g')
+	sysKey(m, 'y')
+	if sys.copied[1] != "one" {
+		t.Fatalf("copies the first visible line: %v", sys.copied)
+	}
+	pressKey(m, '/')
+	typeKeys(m, "needle")
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	sysKey(m, 'y')
+	if sys.copied[2] != "two needle" {
+		t.Fatalf("copies the current match: %v", sys.copied)
+	}
+}
+
+func TestLogCopyRouteAndErrorTexts(t *testing.T) {
+	m := logWithSys(t, &fakeSys{route: sysint.RouteTerminal}, "one")
+	if got := sysKey(m, 'y'); got != "sent to terminal clipboard" {
+		t.Fatal(got)
+	}
+	m = logWithSys(t, &fakeSys{err: errors.New("sysint: no clipboard tool")}, "one")
+	if got := sysKey(m, 'y'); got != "no clipboard tool" {
+		t.Fatal(got)
+	}
+}
+
+func TestLogOpenUsesBuildURLAndSysNilHidesKeys(t *testing.T) {
+	sys := &fakeSys{}
+	m := logWithSys(t, sys, "one")
+	if got := sysKey(m, 'o'); got != "opened" || len(sys.opened) != 1 || sys.opened[0] != "https://ci/job/b/4/" {
+		t.Fatalf("%q %v", got, sys.opened)
+	}
+	hasKey := func(m *model, k string) bool {
+		for _, b := range m.logKeys() {
+			if b.Help().Key == k {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasKey(m, "y") || !hasKey(m, "o") {
+		t.Fatal("help lists y and o")
+	}
+	m = logWithSys(t, nil, "one")
+	m.deps.Sys = nil
+	if cmd := pressKey(m, 'o'); cmd != nil || hasKey(m, "o") || hasKey(m, "y") {
+		t.Fatal("nil Sys hides and ignores o and y")
+	}
+}
+
+func TestLogSysResultDroppedWhenLogClosed(t *testing.T) {
+	m := logWithSys(t, &fakeSys{route: sysint.RouteTool}, "one")
+	cmd := pressKey(m, 'y')
+	m.closeLog()
+	m.Update(cmd())
+	if m.log != nil {
+		t.Fatal("stays closed")
 	}
 }
