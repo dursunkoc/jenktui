@@ -173,18 +173,7 @@ func TestKeysIgnoredBehindModalLogAndOverlay(t *testing.T) {
 	pressKey(m, 'o')
 	pressKey(m, 'y')
 
-	m = actionModel(sys)
-	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	pressKey(m, 'L')
-	if m.log == nil {
-		t.Fatal("setup: log expected")
-	}
-	if cmd := pressKey(m, 'o'); cmd != nil {
-		cmd()
-	}
-	if cmd := pressKey(m, 'y'); cmd != nil {
-		cmd()
-	}
+	// While the log is open o and y act on the log (LV4; see logview_test.go).
 
 	m = actionModel(sys)
 	m.overlay = stubOverlay{}

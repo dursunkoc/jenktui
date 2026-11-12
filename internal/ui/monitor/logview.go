@@ -39,6 +39,8 @@ var (
 	keyLogErrP = key.NewBinding(key.WithKeys("E"))
 	keyLogWrap = key.NewBinding(key.WithKeys("w"), key.WithHelp("w", "wrap"))
 	keyLogSave = key.NewBinding(key.WithKeys("S"), key.WithHelp("S", "save to file"))
+	keyLogCopy = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy line"))
+	keyLogOpen = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open build"))
 	keyLogBack = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to details"))
 
 	keyPromptOK  = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
@@ -392,7 +394,11 @@ func (m *model) logKeys() []key.Binding {
 	if m.log.prompt != promptNone {
 		return []key.Binding{keyPromptOK, keyPromptEsc}
 	}
-	return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogSave, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+	ks := []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogErr, keyLogWrap, keyLogSave}
+	if m.deps.Sys != nil {
+		ks = append(ks, keyLogCopy, keyLogOpen)
+	}
+	return append(ks, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit)
 }
 
 // logKey handles the keys of the log view; ok is false for keys it leaves to
@@ -438,6 +444,10 @@ func (m *model) logKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 		m.syncWrap()
 		lv.scrollTo(cur, n, page)
 		lv.follow = follow || lv.follow
+	case key.Matches(msg, keyLogCopy) && m.deps.Sys != nil:
+		return m.copyLogLine(cur, n, page), true
+	case key.Matches(msg, keyLogOpen) && m.deps.Sys != nil:
+		return m.openLogBuild(), true
 	case key.Matches(msg, keyLogSave):
 		return m.saveLog(), true
 	case key.Matches(msg, keyLogErrP):
