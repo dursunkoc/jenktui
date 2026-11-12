@@ -199,10 +199,17 @@ func (c *Client) ListCatalog(ctx context.Context, parent string) (Catalog, error
 	var walk func(folder, project string) error
 	walk = func(folder, project string) error {
 		var resp struct {
-			Jobs []jobNode `json:"jobs"`
+			Class string    `json:"_class"`
+			Jobs  []jobNode `json:"jobs"`
 		}
-		if _, err := c.do(ctx, http.MethodGet, jobPath(folder)+"/api/json?tree=jobs[_class,name,color,jobs[name]]", &resp); err != nil {
+		if _, err := c.do(ctx, http.MethodGet, jobPath(folder)+"/api/json?tree=_class,jobs[_class,name,color,jobs[name]]", &resp); err != nil {
 			return err
+		}
+		// The parent itself may be a Multibranch Project: its children are
+		// branches, not plain jobs.
+		if folder != "" && folder == strings.Trim(parent, "/") && project == "" && (jobNode{Class: resp.Class}).multibranch() {
+			project = folder
+			cat.MultibranchProjects = append(cat.MultibranchProjects, folder)
 		}
 		for _, n := range resp.Jobs {
 			full := n.Name
@@ -232,20 +239,7 @@ func (c *Client) ListCatalog(ctx context.Context, parent string) (Catalog, error
 		return nil
 	}
 	root := strings.Trim(parent, "/")
-	// When the parent is itself a Multibranch Project its children are
-	// branches, not plain jobs: walk it as a project.
-	project := ""
-	if root != "" {
-		var self jobNode
-		if _, err := c.do(ctx, http.MethodGet, jobPath(root)+"/api/json?tree=_class", &self); err != nil {
-			return Catalog{}, err
-		}
-		if self.multibranch() {
-			project = root
-			cat.MultibranchProjects = append(cat.MultibranchProjects, root)
-		}
-	}
-	if err := walk(root, project); err != nil {
+	if err := walk(root, ""); err != nil {
 		return Catalog{}, err
 	}
 	sort.Slice(cat.Jobs, func(i, j int) bool { return cat.Jobs[i].FullName < cat.Jobs[j].FullName })
