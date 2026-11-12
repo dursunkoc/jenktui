@@ -38,7 +38,7 @@ Only the named owner edits these in a wave.
 | `internal/jenkins/jenkinstest/server.go` | W0 issue **F2** only; later issues ask the integrator or add small handlers after F2 has merged |
 | `internal/jenkins/status.go` | lane **JC** (client) |
 | `internal/ui/core/*`, `docs/ui-contract.md` | W0 **F1**, then W3 lane **CORE** |
-| `main.go` | W1 **M0**, W2 lane **MA**, W3 lane **CORE** |
+| `main.go` | W1 **M0**, W2 **UI1**, W3 lane **CORE** |
 | README, GLOSSARY, `docs/ui-contract.md` | every issue, for its own behaviour; the integrator resolves conflicts |
 | HANDOFF, TODO.md, wiki (`../jenktui.wiki`), `docs/images` | integrator |
 
@@ -196,7 +196,7 @@ Three lanes in `internal/ui/monitor`, one agent each, plus UI1. All start after 
 - **From:** v0.2 §5 (history, who started it, commits).
 - **Do:** the list row ends with the last five results as dots (`●●●○●`, theme colours, newest on the right), fetched with `BuildHistory` once per finished build (not every poll). The details view gets a header section (registered in M0's details-header slot): the causes ("Started by alice", "Branch indexing") and up to five commits (`abc1234 author: message`, cut to the width).
 - **Build context:** the details view fetches `BuildContext` once per job and build (not every poll) through an optional `contexter` interface on `onDetailsOpen`, so `fakeClient` keeps compiling.
-- **Fetching:** the history fetch is a `tea.Cmd` with a `historyMsg`; the `Update` case for it belongs to lane MA's file, so lane MD writes the command and the message type in a new file `history.go` and asks MA to add the three-line `case`. Use an optional interface (`historian`) so `fakeClient` keeps compiling.
+- **Fetching:** the history fetch starts from M0's `onResult` hook (in `display.go`) when a row first reaches a finished build number; the result is a message type in `history.go` that implements M0's `applier`, so monitor.go needs no new `case`. Keep fetched data in `mdState` keyed by job and build number. Use optional interfaces (`historian`, `contexter`) so `fakeClient` keeps compiling.
 - **Tests:** dots for success, failure, unstable, running; a build with no changes shows no commit block.
 
 ### Lane LV: log view (owns `logview.go`)
@@ -219,11 +219,11 @@ LV issues add their keys to `logKeys()` (moved into `logview.go` by M0) and thei
 
 **MA2: straight to the failure**
 - **From:** v0.2 §2.
-- **Do:** `Enter` on a failed build opens the details with the marker on the first failed stage (the deepest failed step if the steps are loaded), and `l` then opens that log scrolled to the end, not following. `f` in the list moves the cursor to the next failed row.
+- **Do:** `Enter` on a failed build opens the details with the marker on the first failed stage (the deepest failed step if the steps are loaded), and `l` then opens that log scrolled to the end, not following (MA2 sets the log view's position and follow fields after `openLog` returns, from monitor.go or actions.go; it does not edit `logview.go`). `f` in the list moves the cursor to the next failed row.
 - **Tests:** a pipeline with a failed second stage; a failed freestyle job (no stages) opens the full log at the end.
 
 **MA3: test report in the details view** *(after JC2)*
-- **Do:** for a finished build, fetch the test report once (optional interface `reporter`); a section in M0's details-header slot shows `3 failed · 812 passed · 4 skipped` and `t` opens a modal listing the failed tests, with `Enter` showing a test's stack trace (reuse the log view's rendering for it if it fits without editing `logview.go`; otherwise ask lane LV for a small constructor). No report: show nothing.
+- **Do:** when the details view opens on a finished build, fetch the counts once with `TestCounts` (optional interface `reporter`); a section in M0's details-header slot shows `3 failed · 812 passed · 4 skipped`. `t` fetches the full `TestReport` and opens M0's overlay listing the failed tests (with the matrix cell when `Child` is set, and "more failures than listed" when `Truncated`), with `Enter` showing a test's stack trace inside the overlay. No report (`ErrNoTestReport`): show nothing.
 - **Tests:** report with failures, all passed, 404.
 
 **MA4: abort** *(after JC3)*
@@ -238,7 +238,7 @@ LV issues add their keys to `logKeys()` (moved into `logview.go` by M0) and thei
 - **Tests:** transitions with the injected clock: first load does not notify, success with `failures` does not, failure does, `off` never.
 
 ### UI1: open from the catalog and a Collection *(after P1; owns `internal/ui/catalog`, `internal/ui/collections`; after T1 and G4)*
-- `o` opens the highlighted job in the browser in the Job Catalog and an opened Collection. The job URL comes from the job list (`url` is already in the job JSON on real Jenkins; add it to `ListCatalog`'s `tree=` if missing, in `client.go`, which G1 owns: do it after G1 or ask that agent). Add a `Sys` field to each screen's `Deps` or options; lane MA, which owns `main.go` in wave 2, adds the wiring line.
+- `o` opens the highlighted job in the browser in the Job Catalog and an opened Collection. The job URL comes from the job list (`url` is already in the job JSON on real Jenkins; add it to `ListCatalog`'s `tree=` if missing, in `client.go`, which G1 owns: do it after G1 or ask that agent). Add a `Sys` field to each screen's `Deps` or options and wire it in `main.go` (M0 already wired the monitor; no other wave 2 issue edits `main.go`, so UI1 owns it in this wave).
 
 ---
 
