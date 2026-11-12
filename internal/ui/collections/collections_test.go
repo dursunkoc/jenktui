@@ -518,3 +518,31 @@ func shown(s core.Screen) string {
 	}
 	return s.View()
 }
+
+func TestBadgeUnstableAndAborted(t *testing.T) {
+	for c, want := range map[string]core.Status{"yellow": core.StatusUnstable, "aborted": core.StatusAborted, "red": core.StatusFailed,
+		"yellow_anime": core.StatusRunning, "aborted_anime": core.StatusRunning, "grey": core.StatusUnknown, "disabled": core.StatusUnknown} {
+		if got := badge(c); got != want {
+			t.Errorf("badge(%q) = %v, want %v", c, got, want)
+		}
+	}
+}
+
+func TestPickerCountSkipsPlaceholder(t *testing.T) {
+	cat := jenkins.Catalog{
+		Jobs: []jenkins.Job{
+			{FullName: "app/dev", Multibranch: "app", Branch: "dev"},
+			job("zzz", ""),
+		},
+		MultibranchProjects: []string{"app"},
+	}
+	r := newRig(t, cat, config.Collection{Name: "C"})
+	r.deps.BranchFilter.Patterns = []string{"main"}
+	s := New(r.deps)
+	_, navs := send(s, "e")
+	p := open(pushed(t, navs))
+	v := shown(p)
+	if !strings.Contains(v, "no matching branches") || !strings.Contains(v, "1 jobs ·") {
+		t.Fatalf("want placeholder row and 1 jobs: %q", v)
+	}
+}

@@ -29,7 +29,7 @@ func TestFilterWildcards(t *testing.T) {
 			items = append(items, Item{Key: k})
 		}
 		l.SetItems(items)
-		l.filter = tc.filter
+		l.input.SetValue(tc.filter)
 		var got []string
 		for _, i := range l.visible() {
 			got = append(got, l.items[i].Key)

@@ -105,3 +105,24 @@ func TestLoadingMinimumVisibleTime(t *testing.T) {
 		t.Fatal("Start while lingering must not start a second chain")
 	}
 }
+
+func TestLoadingDropsReplayedFirstTick(t *testing.T) {
+	l := NewLoading(NewTheme())
+	l.SetMin(0)
+	first := l.Start()()
+	if l.Update(first) == nil {
+		t.Fatal("first tick must schedule the next one")
+	}
+	if l.Update(first) != nil {
+		t.Fatal("a replayed first tick must be dropped, or two tick chains run")
+	}
+	// A restart after StopNow must not revive the old chain's tick either.
+	l.StopNow()
+	again := l.Start()()
+	if l.Update(first) != nil {
+		t.Fatal("a tick of the previous Start must be dropped")
+	}
+	if l.Update(again) == nil {
+		t.Fatal("the current Start's tick must still be accepted")
+	}
+}
