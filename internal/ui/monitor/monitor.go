@@ -235,6 +235,9 @@ func (m *model) add(runs []Run) {
 	keep := m.currentJob()
 	for _, r := range runs {
 		st := m.newRow(r, true)
+		if r.Err == nil {
+			m.markSeen(r.Job) // it is queued from the start, so its finish notifies
+		}
 		if i := m.index(r.Job); i >= 0 {
 			m.runs[i] = st
 		} else {
@@ -486,7 +489,7 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			m.runs[i] = msg.st
 			m.restoreCursor(keep)
 			m.focusFailedStage()
-			hook = m.hooks.result(i, prev)
+			hook = tea.Batch(m.hooks.result(i, prev), m.notifyOnFinish(prev, msg.st))
 		}
 		if m.pending <= 0 {
 			m.finishLoad()
@@ -556,12 +559,14 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		}
 		m.gen++ // invalidate in-flight ticks/results; builds keep running on Jenkins
 		m.epoch++
+		m.ma.seen = nil // builds that finish while away must not notify on return
 		m.closeLog()
 		m.load.StopNow()
 		return m, core.Cmd(core.Pop{})
 	case key.Matches(msg, core.KeyQuit):
 		m.gen++
 		m.epoch++
+		m.ma.seen = nil // builds that finish while away must not notify on return
 		m.closeLog()
 		m.load.StopNow()
 		return m, core.Cmd(core.Quit{})
