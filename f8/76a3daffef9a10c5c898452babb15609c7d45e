@@ -1,0 +1,19 @@
+README.md
+  s_68aed7bbf4c6d1::t_c8aa922d1b7ee1 1-29,33,35-38,42,44,50,58,72-74,76,78-91,95,106,108,110,112,115-120,124,140,156-160,162-165,173,177
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "f876a3daffef9a10c5c898452babb15609c7d45e",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
