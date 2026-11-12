@@ -211,3 +211,49 @@ func TestLogSwallowsUnhandledKeys(t *testing.T) {
 		t.Fatal("q should return Quit")
 	}
 }
+
+type hookMsg struct{ s string }
+
+func TestResultAndDetailsHooksCmdsComeBack(t *testing.T) {
+	m, clk, rec := newColl(&fakeClient{}, []string{"a"}, nil)
+	var gotPrev runState
+	m.hooks.result = func(i int, prev runState) tea.Cmd {
+		gotPrev = prev
+		return func() tea.Msg { return hookMsg{"result"} }
+	}
+	m.hooks.detailsOpen = func(i int) tea.Cmd {
+		return func() tea.Msg { return hookMsg{"details"} }
+	}
+	m.startCycle(false)
+	clk.t = clk.t.Add(time.Second)
+	_, cmd := m.Update(resultMsg{gen: m.gen, st: runState{run: Run{Job: "a"}, rev: m.runs[0].rev, phase: phFinished, result: "FAILURE", num: 3}})
+	if gotPrev.phase != phUnpolled {
+		t.Fatalf("prev should be the row before the result: %+v", gotPrev)
+	}
+	if cmd == nil || len(*rec) != 1 {
+		t.Fatalf("cmd=%v scheduled=%d: the hook cmd and the next tick are both kept", cmd != nil, len(*rec))
+	}
+	found := false
+	for _, c := range cmd().(tea.BatchMsg) {
+		if c != nil {
+			if h, ok := c().(hookMsg); ok && h.s == "result" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("result hook cmd missing from the batch")
+	}
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	found = false
+	for _, c := range cmd().(tea.BatchMsg) {
+		if c != nil {
+			if h, ok := c().(hookMsg); ok && h.s == "details" {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatal("details hook cmd missing")
+	}
+}

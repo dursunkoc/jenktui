@@ -30,6 +30,10 @@ import (
 //   - mdState / md (MD) and maState / ma (MA): per-lane state on the model.
 //     runState is replaced whole by every poll result, so feature data keyed
 //     by job and build number lives in md or ma, never on runState.
+//   - onResult / onDetailsOpen (MD3): hooks in display.go. onResult(i, prev)
+//     runs after a poll result replaced row i (prev is the old row), and
+//     onDetailsOpen(i) when the details view opens; each returns a cmd that is
+//     batched with the rest. MD starts its history fetch there.
 //   - manual (MD1): m.manual is true while the running cycle was started by R.
 //   - logKeys (LV): the log view's help bar and key handling live in
 //     logview.go (logKeys, logKey).

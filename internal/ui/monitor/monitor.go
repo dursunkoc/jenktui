@@ -164,8 +164,12 @@ type model struct {
 	sections    []detailSection
 	confirm     *confirmPrompt // yes/no question on the last body line, or nil
 	overlay     overlay        // modal replacing the body, or nil
-	md          mdState        // lane MD feature data (never on runState)
-	ma          maState        // lane MA feature data (never on runState)
+	hooks       struct {       // bound to onResult and onDetailsOpen; tests swap them
+		result      func(i int, prev runState) tea.Cmd
+		detailsOpen func(i int) tea.Cmd
+	}
+	md mdState // lane MD feature data (never on runState)
+	ma maState // lane MA feature data (never on runState)
 
 	schedule func(d time.Duration, gen int) tea.Cmd // injectable for tests
 }
@@ -186,6 +190,7 @@ func newBase(deps Deps, name string) *model {
 	th := core.NewTheme()
 	m := &model{deps: deps, th: th, load: core.NewLoading(th), name: name, triggered: deps.Now()}
 	m.load.SetNow(deps.Now)
+	m.hooks.result, m.hooks.detailsOpen = m.onResult, m.onDetailsOpen
 	m.initHooks() // MD registers its detail sections there; MA registers its own below this line
 	m.schedule = func(d time.Duration, gen int) tea.Cmd {
 		return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{gen} })
@@ -461,15 +466,19 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			return m, nil // stale result
 		}
 		m.pending--
+		var hook tea.Cmd
 		if i := m.index(msg.st.run.Job); i >= 0 && m.runs[i].rev == msg.st.rev {
 			keep := m.currentJob()
+			prev := m.runs[i]
 			m.runs[i] = msg.st
 			m.restoreCursor(keep)
+			hook = m.hooks.result(i, prev)
 		}
 		if m.pending <= 0 {
 			m.finishLoad()
-			return m, m.schedule(m.interval(), m.gen)
+			return m, tea.Batch(hook, m.schedule(m.interval(), m.gen))
 		}
+		return m, hook
 	case stagesMsg:
 		if msg.epoch != m.epoch || msg.err != nil && !errors.Is(msg.err, jenkins.ErrNoStages) {
 			return m, nil
@@ -561,7 +570,7 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 		m.details = !m.details
 		m.stageCur = 0
 		if m.details {
-			return m, m.detailStages()
+			return m, tea.Batch(m.detailStages(), m.hooks.detailsOpen(m.selected()))
 		}
 	}
 	return m, nil
