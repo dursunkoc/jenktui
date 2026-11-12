@@ -33,14 +33,19 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 - Deleting a Collection leaves its monitor in memory. It is re-synced if a new Collection reuses the name.
 - Run Monitor state lives only for the session; nothing survives a restart.
-- The Run Monitor's header spinner flashes on every automatic poll (every 3 seconds while builds run). If that distracts, show it only for manual `R`.
 - Job keys keep Jenkins' URL-encoded branch names (`app/feature%2Fx`), so a hand-edited `collections.toml` must use that form.
 
-- The console log has no horizontal scroll: long lines are cut with `…`. It caps at 10,000 lines (numbering keeps counting) and has no `?` help panel, since `?` is typeable in the find prompt.
+- The console log has no horizontal scroll; `w` wraps long lines, but a single line taller than the screen shows only its first screenful. It caps at 10,000 lines (numbering keeps counting; the error count covers the kept lines) and has no `?` help panel, since `?` is typeable in the find prompt.
+- Notifications fire only while that Collection's Run Monitor is the screen on show: the Router delivers replies only to the top screen, so a monitor you left stops polling. Notifying from a monitor not on show needs a Router change.
+- Saving a very large log still reads Jenkins' first response whole into memory; a streaming client method (`ConsoleTo`) would avoid it.
+- `o`/`y` copy over OSC 52 when no clipboard tool is available; some terminals drop large OSC 52 payloads silently, so `y` on a huge line may say "sent to terminal clipboard" and copy nothing.
 - A running build's stage or step log is refetched whole every 3 seconds (the stage endpoint has no byte offset), which is wasteful for very long stages.
 - The README screenshots are generated (see HANDOFF) and do not update on their own; regenerate them when a screen changes.
 
 ## Tech debt
+
+- [ ] Replies reach only the top screen, so a screen pushed over the Run Monitor (for example a `Ctrl+P` palette, CORE4) would swallow its poll results and fetches without bumping its epoch: `pending` would never reach zero and lost-reply detection would not fire. Bump the monitor's epoch when covering it, or forward its messages. Also, two monitors could in theory accept each other's poll results if `gen`, job and `rev` match.
+- [ ] In the test report overlay `q` does not quit, while in the log view it does; pick one rule.
 
 - [ ] `trigger.go` and `control.go` each have their own POST-with-crumb loop; extract a shared helper (plan: CORE5).
 - [ ] Under a Multibranch `parent_job`, a job the Run Monitor or trigger screen has no name for falls back to `core.RelName` and shows the encoded branch (`feature%2Fx`).
@@ -61,27 +66,27 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 Developer-facing features, in suggested order. [docs/plan-v0.2.md](docs/plan-v0.2.md) breaks these and the other open items into issues for parallel agents. The first group is small and does not touch any settled decision. Update README, GLOSSARY, the wiki Keyboard Reference and the screenshots as each one lands.
 
 ### 1. Leaving the app
-- [ ] `o` opens the highlighted job or build in the browser (`Build.URL` is already fetched; `open` on macOS, `xdg-open` on Linux, `rundll32`/`start` on Windows).
-- [ ] `y` copies the highlighted build's URL to the clipboard; in the log view, copies the current line or match.
+- [x] `o` opens the highlighted job or build in the browser (`Build.URL` is already fetched; `open` on macOS, `xdg-open` on Linux, `rundll32`/`start` on Windows).
+- [x] `y` copies the highlighted build's URL to the clipboard; in the log view, copies the current line or match.
 
 ### 2. Why did it fail?
-- [ ] `Enter` on a failed build lands on the first failed stage, and `l` opens its log scrolled to the end.
-- [ ] Highlight error lines in the console log (`ERROR`, `FAILED`, `Exception`, `BUILD FAILURE`, …) and add a key that jumps to the next one.
-- [ ] Test report: read `/testReport/api/json` and show "N failed / M passed" in the details view, with the failed test names and their stack traces. 404 means no report; show nothing.
+- [x] `Enter` on a failed build lands on the first failed stage, and `l` opens its log scrolled to the end.
+- [x] Highlight error lines in the console log (`ERROR`, `FAILED`, `Exception`, `BUILD FAILURE`, …) and add a key that jumps to the next one.
+- [x] Test report: read `/testReport/api/json` and show "N failed / M passed" in the details view, with the failed test names and their stack traces. 404 means no report; show nothing.
 
 ### 3. Notifications
-- [ ] When a watched build finishes, ring the terminal bell and/or send a desktop notification (`osascript` / `notify-send`), configurable, optionally only on failure. Only for builds the monitor saw running, not on its first load.
+- [x] When a watched build finishes, ring the terminal bell and/or send a desktop notification (`osascript` / `notify-send`), configurable, optionally only on failure. Only for builds the monitor saw running, not on its first load.
 
 ### 4. Abort and rerun
 This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions); update HANDOFF when it lands.
 - [ ] Rerun the highlighted build with the same parameters (`r`), read from the build's `actions[parameters]`; password parameters cannot be read back, so ask for them.
-- [ ] Abort a running or queued build (`X`, with a confirmation): `POST .../stop` for a build, `/queue/cancelItem?id=` for a queue item. Both need the CSRF crumb.
+- [x] Abort a running or queued build (`X`, with a confirmation): `POST .../stop` for a build, `/queue/cancelItem?id=` for a queue item. Both need the CSRF crumb.
 
 ### 5. Build context
-- [ ] Client part done: `BuildStatus` has `estimatedDuration`; `BuildContext` returns causes, changes and parameters; `BuildHistory` the last results. Left: the UI below.
-- [ ] Monitor: a progress bar or ETA for running builds ("1m36s / ~4m") and when each build started ("2m ago").
-- [ ] Details view: who started the build and which commits it contains.
-- [ ] A short result history per job (`●●●○●`, the last five builds) to spot flaky jobs.
+- [x] Client part done: `BuildStatus` has `estimatedDuration`; `BuildContext` returns causes, changes and parameters; `BuildHistory` the last results. Left: the UI below.
+- [x] Monitor: a progress bar or ETA for running builds ("1m36s / ~4m") and when each build started ("2m ago").
+- [x] Details view: who started the build and which commits it contains.
+- [x] A short result history per job (`●●●○●`, the last five builds) to spot flaky jobs.
 
 ### 6. Getting around faster
 - [ ] Command palette or fuzzy jump (`Ctrl+P`): type part of a job or Collection name, `Enter` to open it, from any screen.
@@ -89,11 +94,11 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [ ] An overview of every Collection's failures and running builds from the main menu (moved from Later).
 
 ### 7. Log viewer
-- [ ] Save the log to a local file (`S`), written to the current directory as `<job>-<n>.log`, with the path shown (moved from Later: "Download logs to local upon request").
-- [ ] Wrap toggle (`w`) or horizontal scroll for long lines (see Known gaps).
+- [x] Save the log to a local file (`S`), written to the current directory as `<job>-<n>.log`, with the path shown (moved from Later: "Download logs to local upon request").
+- [x] Wrap toggle (`w`) or horizontal scroll for long lines (see Known gaps).
 
 ### 8. Polish
-- [ ] Show the monitor's header spinner only for a manual `R`, not on every automatic poll (see Known gaps).
+- [x] Show the monitor's header spinner only for a manual `R`, not on every automatic poll (see Known gaps).
 - [ ] Respect `NO_COLOR`, and offer a light theme.
 
 ### Needs a decision
