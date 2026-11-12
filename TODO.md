@@ -58,12 +58,52 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 - [ ] An ADR for the stack choice (Go with Bubble Tea over Python with Textual). Rewriting later would be costly and the trade-off was real.
 
+## v0.2
+
+Developer-facing features, in suggested order. The first group is small and does not touch any settled decision. Update README, GLOSSARY, the wiki Keyboard Reference and the screenshots as each one lands.
+
+### 1. Leaving the app
+- [ ] `o` opens the highlighted job or build in the browser (`Build.URL` is already fetched; `open` on macOS, `xdg-open` on Linux, `rundll32`/`start` on Windows).
+- [ ] `y` copies the highlighted build's URL to the clipboard; in the log view, copies the current line or match.
+
+### 2. Why did it fail?
+- [ ] `Enter` on a failed build lands on the first failed stage, and `l` opens its log scrolled to the end.
+- [ ] Highlight error lines in the console log (`ERROR`, `FAILED`, `Exception`, `BUILD FAILURE`, …) and add a key that jumps to the next one.
+- [ ] Test report: read `/testReport/api/json` and show "N failed / M passed" in the details view, with the failed test names and their stack traces. 404 means no report; show nothing.
+
+### 3. Notifications
+- [ ] When a watched build finishes, ring the terminal bell and/or send a desktop notification (`osascript` / `notify-send`), configurable, optionally only on failure. Only for builds the monitor saw running, not on its first load.
+
+### 4. Abort and rerun
+This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions); update HANDOFF when it lands.
+- [ ] Rerun the highlighted build with the same parameters (`r`), read from the build's `actions[parameters]`; password parameters cannot be read back, so ask for them.
+- [ ] Abort a running or queued build (`X`, with a confirmation): `POST .../stop` for a build, `/queue/cancelItem?id=` for a queue item. Both need the CSRF crumb.
+
+### 5. Build context
+- [ ] Add `changeSets` (commit, author, message), `causes` (who or what started it) and `estimatedDuration` to `BuildStatus`'s `tree=`, and name them in the fake.
+- [ ] Monitor: a progress bar or ETA for running builds ("1m36s / ~4m") and when each build started ("2m ago").
+- [ ] Details view: who started the build and which commits it contains.
+- [ ] A short result history per job (`●●●○●`, the last five builds) to spot flaky jobs.
+
+### 6. Getting around faster
+- [ ] Command palette or fuzzy jump (`Ctrl+P`): type part of a job or Collection name, `Enter` to open it, from any screen.
+- [ ] `jenktui <collection>` opens that Collection's Run Monitor straight after login.
+- [ ] An overview of every Collection's failures and running builds from the main menu (moved from Later).
+
+### 7. Log viewer
+- [ ] Save the log to a local file (`S`), written to the current directory as `<job>-<n>.log`, with the path shown (moved from Later: "Download logs to local upon request").
+- [ ] Wrap toggle (`w`) or horizontal scroll for long lines (see Known gaps).
+
+### 8. Polish
+- [ ] Show the monitor's header spinner only for a manual `R`, not on every automatic poll (see Known gaps).
+- [ ] Respect `NO_COLOR`, and offer a light theme.
+
+### Needs a decision
+- [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
+
 ## Later (out of v1)
 
-- Download logs to local upon request.
-- Abort and rerun a build.
 - Several Jenkins servers or profiles.
 - Credential storage in the OS keychain.
 - A Branch Filter per Multibranch Project instead of one global list.
-- An overview of every Collection's failures from the main menu.
 - Keep Run Monitor state across restarts.
