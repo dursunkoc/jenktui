@@ -70,6 +70,9 @@ type ctxMsg struct {
 }
 
 func (c ctxMsg) apply(m *model) tea.Cmd {
+	if c.running && m.md.ctxDone[c.key] {
+		return nil // a late reply from while it ran must not overwrite the final context
+	}
 	if c.err != nil {
 		if m.md.ctxTries == nil {
 			m.md.ctxTries = map[buildKey]int{}

@@ -452,3 +452,14 @@ func TestReplyLostWhileLeftIsFetchedAgain(t *testing.T) {
 		t.Fatal("dots must appear")
 	}
 }
+
+func TestLateRunningReplyDoesNotOverwriteFinalContext(t *testing.T) {
+	m, _ := mdModel(nil, jenkins.BuildContext{})
+	k := buildKey{"a", 5}
+	final := jenkins.BuildContext{Changes: []jenkins.Change{{ID: "abc1234", Author: "bob", Message: "late"}}}
+	ctxMsg{key: k, bc: final}.apply(m)
+	ctxMsg{key: k, bc: jenkins.BuildContext{}, running: true}.apply(m)
+	if len(m.md.ctx[k].Changes) != 1 || !m.md.ctxDone[k] {
+		t.Fatalf("final context was overwritten: %+v", m.md.ctx[k])
+	}
+}
