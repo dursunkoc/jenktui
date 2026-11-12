@@ -6,7 +6,9 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -52,8 +54,8 @@ type List struct {
 	theme    core.Theme
 	items    []Item
 	selected map[string]bool
-	filter   string
-	re       *regexp.Regexp // compiled filter, cached per filter text
+	input    textinput.Model // the filter box
+	re       *regexp.Regexp  // compiled filter, cached per filter text
 	reFor    string
 	statusOn bool        // a status filter is active
 	status   core.Status // the status shown while statusOn
@@ -65,7 +67,14 @@ type List struct {
 
 // NewList returns an empty List.
 func NewList(theme core.Theme, opts Options) *List {
-	return &List{opts: opts, theme: theme, selected: map[string]bool{}, w: 80, h: 10}
+	ti := textinput.New()
+	ti.Prompt = "/ "
+	ti.PromptStyle = theme.Selected
+	ti.TextStyle = theme.Selected
+	ti.Cursor.SetMode(cursor.CursorStatic) // no blink: no timer commands
+	ti.Cursor.Style = lipgloss.NewStyle().Reverse(true)
+	ti.CharLimit = 0
+	return &List{opts: opts, theme: theme, selected: map[string]bool{}, input: ti, w: 80, h: 10}
 }
 
 // SetItems replaces the items. Selections are kept for keys that still exist
@@ -120,7 +129,7 @@ func (l *List) Selected() []string {
 func (l *List) Filtering() bool { return l.editing }
 
 // Filter returns the current filter text.
-func (l *List) Filter() string { return l.filter }
+func (l *List) Filter() string { return l.input.Value() }
 
 // Len returns the number of items matching the filter.
 func (l *List) Len() int { return len(l.visible()) }
@@ -162,8 +171,8 @@ func (l *List) FilterEditKeys() []key.Binding {
 
 // visible returns indices into items that match the filter.
 func (l *List) visible() []int {
-	if l.reFor != l.filter {
-		l.re, l.reFor = compileFilter(l.filter), l.filter
+	if f := l.input.Value(); l.reFor != f {
+		l.re, l.reFor = compileFilter(f), f
 	}
 	out := make([]int, 0, len(l.items))
 	for i, it := range l.items {
@@ -294,12 +303,10 @@ func (l *List) Update(msg tea.Msg) tea.Cmd {
 	v := l.visible()
 	switch {
 	case key.Matches(km, core.KeyFilter):
-		l.editing = true
-		return nil
+		return l.startEditing()
 	case key.Matches(km, core.KeyUp):
 		if l.cursor == 0 && km.String() == "up" {
-			l.editing = true // reached the top: back to the filter box
-			return nil
+			return l.startEditing() // reached the top: back to the filter box
 		}
 		l.cursor--
 	case key.Matches(km, core.KeyDown):
@@ -340,38 +347,41 @@ func (l *List) move(v []int, d int) {
 	l.cursor = j
 }
 
+func (l *List) startEditing() tea.Cmd {
+	l.editing = true
+	return l.input.Focus()
+}
+
+func (l *List) stopEditing() {
+	l.editing = false
+	l.input.Blur()
+}
+
 func (l *List) updateFilter(km tea.KeyMsg) tea.Cmd {
 	switch km.String() {
 	case "enter":
-		l.editing = false
+		l.stopEditing()
 		return nil
 	case "esc":
-		l.editing = false
-		l.filter = ""
+		l.stopEditing()
+		l.input.SetValue("")
 		l.clamp()
 		return nil
 	case "up":
 		return nil
 	case "down":
-		l.editing = false // focus the list; space now selects
+		l.stopEditing() // focus the list; space now selects
 		l.clamp()
 		return nil
 	}
-	switch km.Type {
-	case tea.KeyBackspace:
-		if r := []rune(l.filter); len(r) > 0 {
-			l.filter = string(r[:len(r)-1])
-		}
-	case tea.KeySpace:
-		l.filter += " "
-	case tea.KeyRunes:
-		l.filter += string(km.Runes)
-	default:
-		return nil
+	before := l.input.Value()
+	var cmd tea.Cmd
+	l.input, cmd = l.input.Update(km)
+	if l.input.Value() != before {
+		l.cursor, l.offset = 0, 0
 	}
-	l.cursor, l.offset = 0, 0
 	l.clamp()
-	return nil
+	return cmd
 }
 
 // View renders a blank line, the filter row, a blank line and the column
@@ -380,18 +390,14 @@ func (l *List) View() string {
 	var b strings.Builder
 	b.WriteString("\n")
 	switch {
-	case l.editing || l.filter != "":
-		cur := ""
-		if l.editing {
-			cur = "█"
-		}
+	case l.editing || l.input.Value() != "":
 		hint := ""
 		if l.editing {
 			hint = l.theme.MutedTxt.Render("  ↓ to list")
 		} else {
 			hint = l.theme.MutedTxt.Render("  ↑ to edit")
 		}
-		b.WriteString(l.theme.Selected.Render("/ "+l.filter+cur) + hint)
+		b.WriteString(l.input.View() + hint)
 	default:
 		b.WriteString(l.theme.MutedTxt.Render("press / to filter, s for status"))
 	}
