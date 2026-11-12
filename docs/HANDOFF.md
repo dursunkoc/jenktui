@@ -70,6 +70,8 @@ These were agreed with the user. Change them only if the user asks.
 
 ## Working with this repo
 
+- **README screenshots** (`docs/images/*.png`) are generated, not captured: `SHOT_DIR=$PWD/docs/screenshots/frames go test -tags screenshots -run TestScreenshots .` drives the real app against an invented "shop" fake Jenkins (`screenshots_test.go`) and writes ANSI frames; `uv run docs/screenshots/render.py` turns them into PNGs (macOS fonts, Pillow). Never feed it real Jenkins data; change the fixture in `screenshots_test.go` and regenerate when a screen changes.
+
 - Go lives at `/opt/homebrew/bin/go` on the author's machine (installed with Homebrew); add it to `PATH` in non-interactive shells.
 - The binary is built with `go build -o jenktui .` and is git-ignored.
 - Parallel work went well when each task owned a disjoint package and the `core` contract stayed fixed. Keep `main.go` and `docs/ui-contract.md` edits with one owner at a time.

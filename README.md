@@ -2,6 +2,30 @@
 
 A rich terminal UI for Jenkins. Browse every job under a parent folder, curate named **Collections**, trigger builds from them, and watch each Collection's latest builds live, with pipeline stage info.
 
+## Screenshots
+
+The data below is invented (a fake "shop" Jenkins); nothing comes from a real server.
+
+**Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.
+
+![Job Catalog](docs/images/catalog.png)
+
+**Collection**: a named, ordered group of jobs, ready to trigger or watch.
+
+![Collection](docs/images/collection.png)
+
+**Run Monitor**: the latest build of every job in the Collection, with live pipeline stages.
+
+![Run Monitor](docs/images/monitor.png)
+
+**Build details**: stages and steps; `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.
+
+![Build details](docs/images/details.png)
+
+**Console log**: line numbers, find with wildcards (`*`, `_`), go to line, follow while the build runs.
+
+![Console log](docs/images/log.png)
+
 ## Install
 
 None of these need Go, except the last two.
