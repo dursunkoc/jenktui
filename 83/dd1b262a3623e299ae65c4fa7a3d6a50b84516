@@ -1,0 +1,33 @@
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 95-96
+internal/ui/monitor/monitor.go
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 400-402,405,407,420,524-526
+internal/ui/monitor/actions.go
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 3-11,15-118
+internal/jenkins/joburl.go
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 1-13
+README.md
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 156
+GLOSSARY.md
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 23
+internal/ui/monitor/actions_test.go
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 1-203
+internal/jenkins/joburl_test.go
+  s_1c16aed3d161c7::t_8ba3fd2e903d64 1-29
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "83dd1b262a3623e299ae65c4fa7a3d6a50b84516",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "unknown"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
