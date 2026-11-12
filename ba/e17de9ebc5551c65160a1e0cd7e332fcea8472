@@ -1,0 +1,38 @@
+internal/ui/widgets/match.go
+  s_68aed7bbf4c6d1::t_ce68d9f3c98a70 17-23
+internal/ui/monitor/monitor_test.go
+  s_68aed7bbf4c6d1::t_1e789f40adeffc 975,983,991,1039-1173,1176,1180-1206
+  s_68aed7bbf4c6d1::t_f1b2bae4915445 1174-1175,1177-1179
+internal/ui/monitor/logview.go
+  s_68aed7bbf4c6d1::t_ce68d9f3c98a70 8,14,19,22-23,27-41,45-55,57-74,95,154,167,169-171,182-183,188-211,218-220,222-224,228-231,233,235,237,240-247,254-365,385-418,420-427,429,432-468,470
+internal/ui/monitor/monitor.go
+  s_68aed7bbf4c6d1::t_ce68d9f3c98a70 355-358
+internal/ui/widgets/match_test.go
+  s_68aed7bbf4c6d1::t_f1b2bae4915445 49-58
+GLOSSARY.md
+  s_68aed7bbf4c6d1::t_ff2c550a66dfb5 23
+README.md
+  s_68aed7bbf4c6d1::t_dbbbe18d8fd6c7 57,87
+docs/HANDOFF.md
+  s_68aed7bbf4c6d1::t_c2a9db320663dd 64
+docs/ui-contract.md
+  s_68aed7bbf4c6d1::t_5b70f6f2ddf63b 94
+e2e_test.go
+  s_68aed7bbf4c6d1::t_200b7e40bd64f5 1446-1454
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "bae17de9ebc5551c65160a1e0cd7e332fcea8472",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
