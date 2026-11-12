@@ -20,6 +20,9 @@ import (
 //	load.View("refreshing…")       // inline form, for a header/status line
 //	load.Modal("Loading jobs…", w, h) // blocking form, a centered Box
 //
+// Every Start tags its first tick, so a replayed or older tick never starts a
+// second chain (the spinner would animate at double speed).
+//
 // Ticks are plain tea.Cmds (no goroutines). A tick that arrives while the
 // indicator is stopped, or that belongs to another spinner or an older tick
 // chain, is ignored and schedules nothing, so idle screens never redraw.
@@ -72,7 +75,12 @@ func (l *Loading) Start() tea.Cmd {
 		return nil
 	}
 	l.on, l.since = true, l.now()
-	return l.sp.Tick
+	// The spinner's own first tick carries tag 0, which it accepts any number
+	// of times, so a replayed one would start a second chain. Advance the tag
+	// first: the tick we hand out is tagged, and a replay is rejected.
+	var c tea.Cmd
+	l.sp, c = l.sp.Update(l.sp.Tick())
+	return c
 }
 
 // Stop marks the work finished. The indicator stays Active until the minimum

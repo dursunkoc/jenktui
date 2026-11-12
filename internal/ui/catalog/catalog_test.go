@@ -129,7 +129,7 @@ func TestEscPopsAndFilterEscDoesNot(t *testing.T) {
 }
 
 func TestStatusFromColor(t *testing.T) {
-	for c, want := range map[string]core.Status{"blue": core.StatusSuccess, "red": core.StatusFailed, "blue_anime": core.StatusRunning, "notbuilt": core.StatusUnknown, "": core.StatusUnknown} {
+	for c, want := range map[string]core.Status{"blue": core.StatusSuccess, "red": core.StatusFailed, "blue_anime": core.StatusRunning, "yellow": core.StatusUnstable, "yellow_anime": core.StatusRunning, "aborted": core.StatusAborted, "notbuilt": core.StatusUnknown, "": core.StatusUnknown} {
 		if got := statusFromColor(c); got != want {
 			t.Errorf("%q = %v want %v", c, got, want)
 		}
@@ -355,4 +355,20 @@ func TestJobName(t *testing.T) {
 // branchRow matches a row showing name and branch in their own columns.
 func branchRow(name, branch string) *regexp.Regexp {
 	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
+}
+
+func TestSubtitleCountSkipsPlaceholder(t *testing.T) {
+	// "lib" has no matching branch, so it is a placeholder row.
+	s := newBranchScreen(t, []string{"main"}, nil)
+	if sub := s.Subtitle(); !strings.Contains(sub, "2 jobs") {
+		t.Errorf("no text filter: want 2 jobs (plain, app/main), got %q", sub)
+	}
+	s.Update(kmsg("/"))
+	typeText(s, "lib")
+	if v := shown(s); !strings.Contains(v, "no matching branches") {
+		t.Fatalf("placeholder should match the filter:\n%s", v)
+	}
+	if sub := s.Subtitle(); !strings.Contains(sub, "0 of 2 jobs") {
+		t.Errorf("text filter on placeholder only: want 0 of 2 jobs, got %q", sub)
+	}
 }
