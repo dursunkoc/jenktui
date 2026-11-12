@@ -416,3 +416,23 @@ func TestStatusFilterUnstableAndAborted(t *testing.T) {
 		t.Fatalf("unexpected cycle order: %v", seen)
 	}
 }
+
+func TestNoSelectHidesTheCheckboxColumnAndIgnoresSelectKeys(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{NoSelect: true})
+	l.SetItems([]Item{{Key: "a/one"}, {Key: "b/two"}})
+	l.SetSize(60, 12)
+	v := ansi.Strip(l.View())
+	if strings.Contains(v, "[ ]") || strings.Contains(v, "[x]") {
+		t.Fatalf("checkboxes shown:\n%s", v)
+	}
+	for _, k := range []tea.KeyMsg{{Type: tea.KeySpace, Runes: []rune{' '}}, {Type: tea.KeyRunes, Runes: []rune{'a'}}} {
+		l.Update(k)
+	}
+	if got := l.Selected(); len(got) != 0 {
+		t.Fatalf("selected = %v", got)
+	}
+	// the header lines up with the rows: no 6-column box gutter
+	if !strings.Contains(v, "  Pipeline") || strings.Contains(v, "      Pipeline") {
+		t.Fatalf("header offset:\n%s", v)
+	}
+}

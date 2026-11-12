@@ -116,6 +116,9 @@ func New(deps Deps) core.Screen {
 	return &screen{deps: deps, th: core.NewTheme(), w: 80, h: 20}
 }
 
+// Busy is true while Enter's Collection is being opened.
+func (s *screen) Busy() bool { return s.opening }
+
 func (s *screen) Title() string { return "Overview" }
 
 var keyOpen = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open monitor"))
@@ -136,6 +139,9 @@ func (s *screen) start() tea.Cmd {
 	s.busy = true
 	return s.cycle(s.gen)
 }
+
+// Pause is called by the Router when a screen is pushed over this one.
+func (s *screen) Pause() { s.pause() }
 
 // pause drops in-flight and scheduled work (the screen is left or covered).
 func (s *screen) pause() { s.gen++; s.busy = false }

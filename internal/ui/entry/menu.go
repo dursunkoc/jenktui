@@ -106,6 +106,9 @@ func (m *Menu) View() string {
 	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.th.Box.Render(body))
 }
 
+// Busy is true while a command-line Collection is being opened.
+func (m *Menu) Busy() bool { return m.pending }
+
 func (m *Menu) Title() string { return "jenktui" }
 func (m *Menu) Keys() []key.Binding {
 	return []key.Binding{core.KeyUp, core.KeyDown, core.KeyEnter, core.KeyQuit}

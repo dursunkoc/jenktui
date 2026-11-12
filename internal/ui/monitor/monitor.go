@@ -7,6 +7,7 @@ import (
 	"errors"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -72,6 +73,9 @@ type Run struct {
 	Ref jenkins.QueueRef
 	Err error
 }
+
+// monitorSeq numbers the monitors of the process.
+var monitorSeq atomic.Int64
 
 type phase int
 
@@ -191,6 +195,11 @@ func newBase(deps Deps, name string) *model {
 	th := core.NewTheme()
 	m := &model{deps: deps, th: th, load: core.NewLoading(th), name: name, triggered: deps.Now()}
 	m.load.SetNow(deps.Now)
+	// Every monitor counts generations, epochs, log generations and row
+	// revisions from its own range, so a late message of one monitor can never
+	// match a guard of another (the Router delivers to whichever is on top).
+	base := int(monitorSeq.Add(1)) << 32
+	m.gen, m.epoch, m.logGen, m.revs = base, base, base, base
 	m.hooks.result, m.hooks.detailsOpen = m.onResult, m.onDetailsOpen
 	m.initHooks() // MD registers its detail sections there; MA registers its own below this line
 	m.addDetailSection(m.testSection)

@@ -20,7 +20,9 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/entry"
 	"github.com/dursunkoc/jenktui/internal/ui/monitor"
 	"github.com/dursunkoc/jenktui/internal/ui/overview"
+	"github.com/dursunkoc/jenktui/internal/ui/palette"
 	"github.com/dursunkoc/jenktui/internal/ui/trigger"
+	"github.com/dursunkoc/jenktui/internal/ui/widgets"
 	"github.com/dursunkoc/jenktui/internal/version"
 )
 
@@ -141,13 +143,25 @@ func newDeps(dir string) entry.Deps {
 			monitor.Rename(m, newName)
 		}
 	}
+	// A deleted Collection's monitor is dropped, so a new Collection with the
+	// same name does not inherit its rows.
+	deleted := func(name string) {
+		k := strings.ToLower(name)
+		if m, ok := monitors[k]; ok {
+			delete(monitorNames, m)
+			delete(monitors, k)
+		}
+	}
 	openMonitor := func(s *core.Session) func(string, []string, map[string]bool, map[string]core.JobName) core.Screen {
 		return func(name string, jobKeys []string, missing map[string]bool, names map[string]core.JobName) core.Screen {
+			_, existed := monitors[strings.ToLower(name)]
 			m := monitorFor(s, name)
 			monitor.SetJobs(m, jobKeys, missing)
 			monitor.SetNames(m, names)
 			monitorNames[m] = names
-			monitor.HideSuccess(m, true)
+			if !existed { // a kept monitor keeps the user's show/hide toggle
+				monitor.HideSuccess(m, true)
+			}
 			return m
 		}
 	}
@@ -169,8 +183,9 @@ func newDeps(dir string) entry.Deps {
 					monitor.SetNames(m, names)
 					monitorNames[m] = names
 					monitor.Add(m, runs)
-					// Hide successful jobs, as `m` does. The new builds are queued or
-					// running, so they stay visible until they finish successfully.
+					// Forced on purpose, even for a kept monitor: it focuses the
+					// outcome of the new builds. They are queued or running, so they
+					// stay visible until they finish successfully.
 					monitor.HideSuccess(m, true)
 					return m
 				},
@@ -212,6 +227,11 @@ func newDeps(dir string) entry.Deps {
 		}
 	}
 
+	newCatalog := func(s *core.Session, extra ...catalog.Option) core.Screen {
+		opts := append([]catalog.Option{catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s))}, extra...)
+		return catalog.New(s.Client, s.Config.ParentJob, opts...)
+	}
+
 	return entry.Deps{
 		ConfigDir:      dir,
 		OpenCollection: openByName,
@@ -237,8 +257,41 @@ func newDeps(dir string) entry.Deps {
 				},
 			})
 		},
-		Catalog: func(s *core.Session) core.Screen {
-			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s)))
+		Catalog: func(s *core.Session) core.Screen { return newCatalog(s) },
+		Palette: func(s *core.Session) core.Screen {
+			return palette.New(palette.Deps{
+				Parent: s.Config.ParentJob,
+				Collections: func() ([]string, error) {
+					cs, err := config.LoadCollections(collectionsPath)
+					if err != nil {
+						return nil, err
+					}
+					names := make([]string, len(cs.Items))
+					for i, c := range cs.Items {
+						names[i] = c.Name
+					}
+					return names, nil
+				},
+				Jobs: func() ([]jenkins.Job, error) {
+					cl := client(s)
+					if cl == nil {
+						return nil, nil
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+					defer cancel()
+					cat, err := cl.ListCatalog(ctx, s.Config.ParentJob)
+					return cat.Jobs, err
+				},
+				OpenCollection: func(name string) tea.Cmd {
+					return func() tea.Msg {
+						scr, notice := resolveCollection(s, name)
+						return palette.Opened{Screen: scr, Notice: notice}
+					}
+				},
+				OpenJob: func(fullName string) core.Screen {
+					return newCatalog(s, catalog.WithFilter(widgets.QuoteGlob(fullName)))
+				},
+			})
 		},
 		Collections: func(s *core.Session) core.Screen {
 			return collections.New(collections.Deps{
@@ -248,6 +301,7 @@ func newDeps(dir string) entry.Deps {
 				Trigger:      triggerFor(s),
 				Monitor:      openMonitor(s),
 				Renamed:      renamed,
+				Deleted:      deleted,
 				Opener:       sys,
 				JobURL:       jobURL(s),
 				BranchFilter: branchSettings(s),

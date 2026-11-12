@@ -341,3 +341,19 @@ func TestGoneFolderMakesMembersMissingWithoutFallback(t *testing.T) {
 		t.Fatalf("fallback used for a gone folder: %v", cc.asked)
 	}
 }
+
+func TestOverviewIsBusyWhileACollectionIsOpening(t *testing.T) {
+	f := newFixture(sampleClient(), sampleCols, func(string) tea.Cmd { return nil })
+	f.run(f.s.Init())
+	if f.s.Busy() {
+		t.Fatal("busy while idle")
+	}
+	f.s.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if !f.s.Busy() {
+		t.Fatal("not busy while opening")
+	}
+	f.s.Update(tea.KeyMsg{Type: tea.KeyDown})
+	if f.s.Busy() {
+		t.Fatal("still busy after a key")
+	}
+}

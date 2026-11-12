@@ -17,6 +17,8 @@ var (
 	KeyFilter = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "filter"))
 	KeyQuit   = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"))
 
+	// KeyJump opens the jump palette from any screen; the Router handles it.
+	KeyJump = key.NewBinding(key.WithKeys("ctrl+p"), key.WithHelp("ctrl+p", "jump to"))
 	// KeyHelp opens the help panel and KeyCloseHelp closes it. The Router
 	// handles both; screens never see them.
 	KeyHelp      = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "all keys"))

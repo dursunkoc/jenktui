@@ -207,6 +207,7 @@ var namedKeys = map[string]tea.KeyMsg{
 	"backspace":  {Type: tea.KeyBackspace},
 	"ctrl+u":     {Type: tea.KeyCtrlU},
 	"ctrl+c":     {Type: tea.KeyCtrlC},
+	"ctrl+p":     {Type: tea.KeyCtrlP},
 }
 
 // keyMsg builds the message for a named key ("enter", "shift+down", ...) or a

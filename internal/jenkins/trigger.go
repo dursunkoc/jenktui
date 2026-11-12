@@ -84,28 +84,60 @@ func (c *Client) Trigger(ctx context.Context, fullName string, params map[string
 		body = form.Encode()
 	}
 	path := jobPath(fullName) + endpoint
+	ct := ""
+	if body != "" {
+		ct = "application/x-www-form-urlencoded"
+	}
+	resp, _, err := c.postWithCrumb(ctx, c.hc, path, strings.NewReader(body), ct)
+	if err != nil {
+		return QueueRef{}, err
+	}
+	switch {
+	case resp.StatusCode == http.StatusNotFound:
+		return QueueRef{}, fmt.Errorf("%w: %s", ErrJobNotFound, fullName)
+	case resp.StatusCode >= 400:
+		return QueueRef{}, fmt.Errorf("jenkins returned %s for POST %s", resp.Status, path)
+	}
+	return parseQueueLocation(resp.Header.Get("Location"))
+}
+
+// postWithCrumb POSTs body to path with Basic auth and the CSRF crumb (it
+// proceeds without a crumb when the issuer refuses), and retries once with a
+// refreshed crumb when Jenkins rejects it with a 403 about the crumb. hc
+// decides the redirect policy. It maps the answers every caller treats the
+// same: 401 is ErrAuth, any other 403 is ErrForbidden with Jenkins' own text,
+// and a network failure is classified. Every other response, 404 and other
+// 4xx/5xx and redirects included, is returned (body already read and closed)
+// for the caller to interpret. The body reader must support being read once
+// per attempt: strings.Reader is rewound, so pass one (or nil).
+func (c *Client) postWithCrumb(ctx context.Context, hc *http.Client, path string, body *strings.Reader, contentType string) (*http.Response, []byte, error) {
 	refresh := false
 	for attempt := 0; ; attempt++ {
 		field, val, err := c.crumb(ctx, refresh)
 		if err != nil {
-			return QueueRef{}, err
+			return nil, nil, err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, strings.NewReader(body))
+		var rd io.Reader
+		if body != nil {
+			body.Seek(0, io.SeekStart)
+			rd = body
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base+path, rd)
 		if err != nil {
-			return QueueRef{}, err
+			return nil, nil, err
 		}
 		if c.user != "" {
 			req.SetBasicAuth(c.user, c.tok)
 		}
-		if body != "" {
-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		if contentType != "" {
+			req.Header.Set("Content-Type", contentType)
 		}
 		if field != "" {
 			req.Header.Set(field, val)
 		}
-		resp, err := c.hc.Do(req)
+		resp, err := hc.Do(req)
 		if err != nil {
-			return QueueRef{}, classify(err)
+			return nil, nil, classify(err)
 		}
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
 		resp.Body.Close()
@@ -114,7 +146,7 @@ func (c *Client) Trigger(ctx context.Context, fullName string, params map[string
 			refresh = true
 			continue
 		case resp.StatusCode == http.StatusUnauthorized:
-			return QueueRef{}, ErrAuth
+			return nil, nil, ErrAuth
 		case resp.StatusCode == http.StatusForbidden:
 			what := "403 Forbidden"
 			if strings.Contains(strings.ToLower(string(b)), "crumb") {
@@ -123,13 +155,9 @@ func (c *Client) Trigger(ctx context.Context, fullName string, params map[string
 			if d := serverDetail(b); d != "" {
 				what += ": " + d
 			}
-			return QueueRef{}, fmt.Errorf("%w (%s)", ErrForbidden, what)
-		case resp.StatusCode == http.StatusNotFound:
-			return QueueRef{}, fmt.Errorf("job %q not found", fullName)
-		case resp.StatusCode >= 400:
-			return QueueRef{}, fmt.Errorf("jenkins returned %s for POST %s", resp.Status, path)
+			return nil, nil, fmt.Errorf("%w (%s)", ErrForbidden, what)
 		}
-		return parseQueueLocation(resp.Header.Get("Location"))
+		return resp, b, nil
 	}
 }
 

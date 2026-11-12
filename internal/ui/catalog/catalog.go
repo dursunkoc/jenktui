@@ -70,6 +70,12 @@ func (s *Screen) canOpen() bool { return s.opener != nil && s.jobURL != nil }
 // Option customises New.
 type Option func(*Screen)
 
+// WithFilter starts the catalog with text typed into the filter box (a
+// literal match: wildcard characters are escaped by the caller if needed).
+func WithFilter(text string) Option {
+	return func(s *Screen) { s.list.SetFilter(text) }
+}
+
 // WithBranchFilter supplies the Branch Filter patterns and persistence. The
 // filter starts on when there are patterns.
 func WithBranchFilter(st Settings) Option {
@@ -148,6 +154,9 @@ func (s *Screen) fetch() tea.Cmd {
 }
 
 func (s *Screen) Init() tea.Cmd { return tea.Batch(s.load.Start(), s.fetch()) }
+
+// Busy is true while the catalog loads.
+func (s *Screen) Busy() bool { return s.loading }
 
 func (s *Screen) Title() string {
 	if s.parent == "" {
