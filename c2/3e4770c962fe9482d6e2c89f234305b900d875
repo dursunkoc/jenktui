@@ -1,0 +1,21 @@
+TODO.md
+  s_1c16aed3d161c7::t_90e3e47f9e4770 82
+docs/HANDOFF.md
+  s_1c16aed3d161c7::t_b3c777be63bf29 48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c23e4770c962fe9482d6e2c89f234305b900d875",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "unknown"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
