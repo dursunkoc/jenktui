@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -212,5 +213,70 @@ func TestTestReport(t *testing.T) {
 	s.Job("y").TestReportFor(1, jenkinstest.TestReport{FailCount: 3, PassCount: 9})
 	if _, m := getJSON(t, s, "/job/y/1/testReport/api/json"); m["failCount"] != float64(3) || m["passCount"] != float64(9) {
 		t.Fatalf("%v", m)
+	}
+}
+
+func TestStopAndCancel(t *testing.T) {
+	s := jenkinstest.New(t)
+	s.Job("x").Builds(jenkinstest.Build{Number: 1, Result: "SUCCESS"}, jenkinstest.Build{Number: 2, Building: true})
+	id := s.AddQueueItem(jenkinstest.QueueItem{Job: "x", Why: "waiting"})
+	other := s.AddQueueItem(jenkinstest.QueueItem{Job: "x", Why: "waiting"})
+
+	if r := req(t, s, "POST", "/job/x/2/stop", nil, ""); r.StatusCode != 200 {
+		t.Fatalf("stop %d", r.StatusCode)
+	}
+	_, b := getJSON(t, s, "/job/x/2/api/json")
+	if b["result"] != "ABORTED" || b["building"] != false {
+		t.Fatalf("after stop: %v", b)
+	}
+	if got := s.Stops(); len(got) != 1 || got[0] != (jenkinstest.Stop{Job: "x", Number: 2}) {
+		t.Fatalf("stops %v", got)
+	}
+	if r := req(t, s, "POST", "/job/x/9/stop", nil, ""); r.StatusCode != 404 {
+		t.Fatalf("stop missing build: %d", r.StatusCode)
+	}
+	if r := req(t, s, "GET", "/job/x/2/stop", nil, ""); r.StatusCode != 404 {
+		t.Fatalf("GET stop: %d", r.StatusCode)
+	}
+
+	path := "/queue/cancelItem?id=" + strconv.Itoa(id)
+	if r := req(t, s, "POST", path, nil, ""); r.StatusCode != 200 {
+		t.Fatalf("cancel %d", r.StatusCode)
+	}
+	if got := s.Cancels(); len(got) != 1 || got[0] != id {
+		t.Fatalf("cancels %v", got)
+	}
+	if r := req(t, s, "GET", "/queue/item/"+strconv.Itoa(id)+"/api/json", nil, ""); r.StatusCode != 404 {
+		t.Fatalf("cancelled item still there: %d", r.StatusCode)
+	}
+	if r := req(t, s, "GET", "/queue/item/"+strconv.Itoa(other)+"/api/json", nil, ""); r.StatusCode != 200 {
+		t.Fatalf("other item gone: %d", r.StatusCode)
+	}
+	if r := req(t, s, "POST", path, nil, ""); r.StatusCode != 404 {
+		t.Fatalf("cancel twice: %d", r.StatusCode)
+	}
+}
+
+func TestStopAndCancelNeedCrumb(t *testing.T) {
+	s := jenkinstest.New(t).EnableCrumb(true)
+	s.Job("x").LastBuild(jenkinstest.Build{Number: 1, Building: true})
+	id := s.AddQueueItem(jenkinstest.QueueItem{Job: "x"})
+	cancel := "/queue/cancelItem?id=" + strconv.Itoa(id)
+	for _, p := range []string{"/job/x/1/stop", cancel} {
+		if r := req(t, s, "POST", p, nil, ""); r.StatusCode != 403 {
+			t.Fatalf("%s without crumb: %d", p, r.StatusCode)
+		}
+	}
+	if len(s.Stops()) != 0 || len(s.Cancels()) != 0 {
+		t.Fatal("rejected calls must not be recorded")
+	}
+	h := map[string]string{jenkinstest.CrumbHeaderName: s.Crumb()}
+	for _, p := range []string{"/job/x/1/stop", cancel} {
+		if r := req(t, s, "POST", p, h, ""); r.StatusCode != 200 {
+			t.Fatalf("%s with crumb: %d", p, r.StatusCode)
+		}
+	}
+	if len(s.Stops()) != 1 || len(s.Cancels()) != 1 {
+		t.Fatal("calls with a crumb must be recorded")
 	}
 }

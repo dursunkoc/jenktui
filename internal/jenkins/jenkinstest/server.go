@@ -172,6 +172,12 @@ type Trigger struct {
 	QueueID  int
 }
 
+// Stop records one POST to /job/x/<n>/stop.
+type Stop struct {
+	Job    string
+	Number int
+}
+
 type node struct {
 	name     string
 	folder   bool
@@ -206,6 +212,8 @@ type Server struct {
 	queue          []QueueItem
 	nextQueue      int
 	triggers       []Trigger
+	stops          []Stop
+	cancels        []int             // queue item ids passed to /queue/cancelItem
 	rejects        map[string]reject // job full name -> forced answer to trigger POSTs
 }
 
@@ -531,6 +539,20 @@ func (s *Server) Triggers() []Trigger {
 	return append([]Trigger(nil), s.triggers...)
 }
 
+// Stops returns all recorded build stops in order.
+func (s *Server) Stops() []Stop {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]Stop(nil), s.stops...)
+}
+
+// Cancels returns the queue item ids cancelled through /queue/cancelItem, in order.
+func (s *Server) Cancels() []int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]int(nil), s.cancels...)
+}
+
 // LastTrigger returns the most recent trigger, if any.
 func (s *Server) LastTrigger() (Trigger, bool) {
 	s.mu.Lock()
@@ -646,6 +668,15 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, s.buildJSON(full, b))
+	case len(rest) == 2 && rest[1] == "stop" && r.Method == http.MethodPost:
+		b := n.find(rest[0])
+		if n.folder || b == nil {
+			http.NotFound(w, r)
+			return
+		}
+		b.Result, b.Building = "ABORTED", false
+		s.stops = append(s.stops, Stop{Job: full, Number: b.Number})
+		w.WriteHeader(http.StatusOK)
 	case len(rest) == 4 && rest[1] == "testReport" && rest[2] == "api" && rest[3] == "json" && r.Method == http.MethodGet:
 		b := n.find(rest[0])
 		if n.folder || b == nil || n.report(b) == nil {
@@ -939,6 +970,21 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 		return m
 	}
 	switch {
+	case len(segs) == 2 && segs[1] == "cancelItem" && r.Method == http.MethodPost:
+		id, err := strconv.Atoi(r.URL.Query().Get("id"))
+		if err != nil {
+			http.Error(w, "id is required", http.StatusBadRequest)
+			return
+		}
+		for i := range s.queue {
+			if s.queue[i].ID == id {
+				s.queue = append(s.queue[:i], s.queue[i+1:]...)
+				s.cancels = append(s.cancels, id)
+				w.WriteHeader(http.StatusOK)
+				return
+			}
+		}
+		http.NotFound(w, r)
 	case len(segs) == 3 && segs[1] == "api" && segs[2] == "json":
 		items := []map[string]any{}
 		for _, q := range s.queue {
