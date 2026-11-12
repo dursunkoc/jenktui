@@ -1,14 +1,14 @@
 package monitor
 
 import (
-	"time"
-
-	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 )
 
 // MD1: the header spinner shows for the first load and for R only.
@@ -111,5 +111,48 @@ func TestProgressAndAgeInRows(t *testing.T) {
 	}
 	if r := row(fin(30 * time.Hour)); !strings.Contains(r, "yesterday") {
 		t.Errorf("finished day: %q", r)
+	}
+}
+
+func TestFmtEstRoundsToMinutes(t *testing.T) {
+	for d, want := range map[time.Duration]string{
+		45 * time.Second:                           "45s",
+		4*time.Minute + 23*time.Second:             "4m",
+		4*time.Minute + 40*time.Second:             "5m",
+		10 * time.Minute:                           "10m",
+		time.Hour:                                  "1h",
+		time.Hour + 5*time.Minute:                  "1h05m",
+		time.Hour + 5*time.Minute + 20*time.Second: "1h05m",
+	} {
+		if got := fmtEst(d); got != want {
+			t.Errorf("fmtEst(%v) = %q, want %q", d, got, want)
+		}
+	}
+}
+
+func TestRowEdgeCases(t *testing.T) {
+	now := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	m, _ := newModel(&fakeClient{}, Run{Job: "a"})
+	m.deps.Now = func() time.Time { return now }
+	row := func(st runState) string {
+		st.run, st.num = Run{Job: "a"}, 1
+		m.runs[0] = st
+		return ansi.Strip(m.block(0, 0)[0])
+	}
+	r := row(runState{phase: phFinished, result: "SUCCESS", build: jenkins.Build{Duration: time.Minute}})
+	if strings.Contains(r, "ago") || strings.Contains(r, "just now") {
+		t.Errorf("no timestamp must show no age: %q", r)
+	}
+	r = row(runState{phase: phFinished, result: "SUCCESS", build: jenkins.Build{Duration: time.Minute, Timestamp: now.Add(time.Hour)}})
+	if !strings.Contains(r, "just now") {
+		t.Errorf("clock skew finished: %q", r)
+	}
+	r = row(runState{phase: phRunning, build: jenkins.Build{Building: true, Timestamp: now.Add(time.Hour)}})
+	if !strings.Contains(r, "0s") {
+		t.Errorf("clock skew running: %q", r)
+	}
+	r = row(runState{phase: phRunning, build: jenkins.Build{Building: true, Timestamp: now.Add(-10 * time.Minute), EstimatedDuration: time.Hour + 5*time.Minute}})
+	if !strings.Contains(r, "10m00s / ~1h05m") {
+		t.Errorf("hour estimate: %q", r)
 	}
 }
