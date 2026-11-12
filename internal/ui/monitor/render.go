@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
@@ -12,7 +14,23 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
+// View is the body; an open confirm prompt takes its last line.
 func (m *model) View() string {
+	v := m.body()
+	if m.confirm == nil {
+		return v
+	}
+	rows := strings.Split(v, "\n")
+	if m.h > 0 {
+		for len(rows) < m.h {
+			rows = append(rows, "")
+		}
+		rows = rows[:m.h-1]
+	}
+	return strings.Join(append(rows, m.fit(m.th.Selected.Render(m.confirm.text)+" "+m.th.MutedTxt.Render("y/n"))), "\n")
+}
+
+func (m *model) body() string {
 	if m.log != nil {
 		return m.logView()
 	}
@@ -60,6 +78,9 @@ func (m *model) View() string {
 // Subtitle is the status line shown on the title row while the runs list is
 // on screen (not over the details view, a notice or the first-load modal).
 func (m *model) Subtitle() string {
+	if m.noticeShown() {
+		return m.notice
+	}
 	if len(m.runs) == 0 || m.details || m.log != nil || m.load.Active() && m.unpolled() || len(m.visible()) == 0 {
 		return ""
 	}
@@ -289,6 +310,9 @@ func (m *model) detailView() string {
 	if t := m.note(st); t != "" {
 		head = append(head, m.fit(m.th.MutedTxt.Render(t)))
 	}
+	for _, l := range m.detailHeader(st) {
+		head = append(head, m.fit(l))
+	}
 	head = append(head, "")
 	switch {
 	case len(st.stages) > 0:
@@ -350,4 +374,69 @@ func (m *model) jobName(job string) string {
 		return n.Render(m.th)
 	}
 	return core.RelName(job, m.deps.Parent)
+}
+
+// Render hooks. Features add to the display through these instead of editing
+// View: flash for a timed status text, detail sections for the details header,
+// and a confirm prompt for a yes/no question.
+
+// noticeFor is how long a flash stays in the Subtitle.
+const noticeFor = 4 * time.Second
+
+// flash shows text in the title-row status line for noticeFor, using the
+// injected clock. It is drawn on the next render (the poll cycle re-renders
+// at least every SlowInterval).
+func (m *model) flash(text string) {
+	m.notice, m.noticeUntil = text, m.deps.Now().Add(noticeFor)
+}
+
+func (m *model) noticeShown() bool {
+	return m.notice != "" && m.deps.Now().Before(m.noticeUntil)
+}
+
+// detailSection returns the lines one feature adds under the details header
+// of a row (nil for none).
+type detailSection func(runState) []string
+
+// addDetailSection registers a section; sections show in registration order.
+func (m *model) addDetailSection(s detailSection) { m.sections = append(m.sections, s) }
+
+// initHooks is where features register their detail sections; newBase calls it.
+func (m *model) initHooks() {}
+
+// detailHeader joins the registered sections' lines for st.
+func (m *model) detailHeader(st runState) []string {
+	var out []string
+	for _, s := range m.sections {
+		out = append(out, s(st)...)
+	}
+	return out
+}
+
+// confirmPrompt is a yes/no question drawn above the help bar. y runs yes;
+// n and esc dismiss it; every other key is ignored.
+type confirmPrompt struct {
+	text string  // e.g. "Abort api/deploy #57?"
+	yes  tea.Cmd // may be nil
+}
+
+var (
+	keyConfirmYes = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yes"))
+	keyConfirmNo  = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "no"))
+)
+
+// ask opens the confirm prompt.
+func (m *model) ask(text string, yes tea.Cmd) { m.confirm = &confirmPrompt{text: text, yes: yes} }
+
+// confirmKey handles a key while the prompt is open.
+func (m *model) confirmKey(msg tea.KeyMsg) tea.Cmd {
+	switch {
+	case key.Matches(msg, keyConfirmYes):
+		yes := m.confirm.yes
+		m.confirm = nil
+		return yes
+	case key.Matches(msg, keyConfirmNo):
+		m.confirm = nil
+	}
+	return nil
 }

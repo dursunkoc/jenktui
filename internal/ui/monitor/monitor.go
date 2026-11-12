@@ -14,6 +14,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
+	"github.com/dursunkoc/jenktui/internal/sysint"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
 
@@ -37,6 +38,16 @@ type Client interface {
 	StageSteps(ctx context.Context, fullName string, number int, stageID string) ([]jenkins.Stage, error)
 }
 
+// Sys is the operating-system integration the monitor uses (open a URL, copy
+// text, notify, ring the bell). sysint.Sys satisfies it; tests fake it. A nil
+// Deps.Sys hides the keys that need it.
+type Sys interface {
+	Open(url string) error
+	Copy(text string) (sysint.Route, error)
+	Notify(title, body string) error
+	Bell()
+}
+
 // Deps are the monitor's dependencies. Zero durations get defaults.
 type Deps struct {
 	Client       Client
@@ -45,6 +56,13 @@ type Deps struct {
 	SlowInterval time.Duration // every other row (default 30s)
 	PollTimeout  time.Duration // per-request context timeout (default 10s)
 	Now          func() time.Time
+
+	Sys     Sys    // open, copy, notify, bell; nil hides the keys that need it
+	SaveDir string // where `S` saves a log; empty means the working directory
+	Notify  string // "failures", "all" or "off" (config notify); empty means "failures"
+	// Rerun builds the screen that reruns job with params (wired to the
+	// trigger form in main.go); nil hides `r`.
+	Rerun func(job string, params map[string]string) core.Screen
 }
 
 // Run is one triggered build to track. Err, when set, is the trigger failure
@@ -139,6 +157,13 @@ type model struct {
 	pending int          // results outstanding in the current cycle
 	load    core.Loading // spinner; active exactly while pending > 0
 
+	manual bool // the running cycle was started by `R`, not by the tick chain
+
+	notice      string    // timed status text for Subtitle (flash)
+	noticeUntil time.Time // when the notice stops showing
+	sections    []detailSection
+	confirm     *confirmPrompt // yes/no question over the help bar, or nil
+
 	schedule func(d time.Duration, gen int) tea.Cmd // injectable for tests
 }
 
@@ -158,6 +183,7 @@ func newBase(deps Deps, name string) *model {
 	th := core.NewTheme()
 	m := &model{deps: deps, th: th, load: core.NewLoading(th), name: name, triggered: deps.Now()}
 	m.load.SetNow(deps.Now)
+	m.initHooks()
 	m.schedule = func(d time.Duration, gen int) tea.Cmd {
 		return tea.Tick(d, func(time.Time) tea.Msg { return tickMsg{gen} })
 	}
@@ -353,11 +379,11 @@ var keyRefresh = key.NewBinding(key.WithKeys("R"), key.WithHelp("R", "refresh"))
 var keyShow = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "show/hide successful"))
 
 func (m *model) Keys() []key.Binding {
+	if m.confirm != nil {
+		return []key.Binding{keyConfirmYes, keyConfirmNo}
+	}
 	if m.log != nil {
-		if m.log.prompt != promptNone {
-			return []key.Binding{keyPromptOK, keyPromptEsc}
-		}
-		return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
+		return m.logKeys()
 	}
 	if m.details {
 		return []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll,
@@ -373,7 +399,7 @@ var keyDetails = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "de
 // FullHelp groups every key of the runs list for the help panel. The
 // details view has few keys and shows them all in the help bar.
 func (m *model) FullHelp() []core.HelpGroup {
-	if m.details || m.log != nil {
+	if m.details || m.log != nil || m.confirm != nil {
 		return nil
 	}
 	return []core.HelpGroup{
@@ -458,12 +484,14 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 }
 
 func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
-	if m.log != nil {
+	if m.log != nil && m.confirm == nil {
 		if cmd, ok := m.logKey(msg); ok {
 			return m, cmd
 		}
 	}
 	switch {
+	case m.confirm != nil:
+		return m, m.confirmKey(msg)
 	case key.Matches(msg, keyLog) && m.details:
 		return m, m.openLog(m.stageLines() > 0) // the selected stage or step when there are stages
 	case key.Matches(msg, keyLogAll) && m.details:
@@ -561,16 +589,17 @@ func (m *model) detailOpen(i int) bool {
 
 // startCycle opens a new generation and polls every due row concurrently,
 // delivering each result as a message. With force every pollable row is
-// polled regardless of due-ness (manual refresh). Bumping the generation
+// polled regardless of due-ness (manual refresh, manual = true). Bumping the generation
 // drops the previous cycle's results and its scheduled tick, so only one tick
 // chain stays alive.
-func (m *model) startCycle(force bool) tea.Cmd {
+func (m *model) startCycle(manual bool) tea.Cmd {
 	m.gen++
+	m.manual = manual
 	m.modal = m.unpolled()
 	now := m.deps.Now()
 	var cmds []tea.Cmd
 	for i := range m.runs {
-		if force && !m.runs[i].pollable() || !force && !m.due(m.runs[i], now) {
+		if manual && !m.runs[i].pollable() || !manual && !m.due(m.runs[i], now) {
 			continue
 		}
 		m.runs[i].lastPolled = now
