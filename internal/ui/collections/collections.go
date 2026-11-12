@@ -135,8 +135,12 @@ func badge(color string) core.Status {
 	switch jenkins.StatusFromColor(color) {
 	case jenkins.JobSuccess:
 		return core.StatusSuccess
-	case jenkins.JobFailed, jenkins.JobUnstable:
+	case jenkins.JobFailed:
 		return core.StatusFailed
+	case jenkins.JobUnstable:
+		return core.StatusUnstable
+	case jenkins.JobAborted:
+		return core.StatusAborted
 	case jenkins.JobRunning:
 		return core.StatusRunning
 	}

@@ -12,6 +12,8 @@ const (
 	StatusRunning
 	StatusQueued
 	StatusMissing // job no longer exists on the server
+	StatusUnstable
+	StatusAborted
 )
 
 // Theme holds every style screens should use; do not build ad-hoc colors.
@@ -58,6 +60,10 @@ func (t Theme) Badge(s Status) string {
 		label, c = "QUEUED", t.Warn
 	case StatusMissing:
 		label, c = "MISSING", t.Warn
+	case StatusUnstable:
+		label, c = "UNSTABLE", t.Warn
+	case StatusAborted:
+		label, c = "ABORTED", t.Muted
 	}
 	return lipgloss.NewStyle().Bold(true).Foreground(c).Render("● " + label)
 }
