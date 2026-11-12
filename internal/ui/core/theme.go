@@ -34,24 +34,37 @@ type Theme struct {
 	// counts, error messages). With colour it is only the Fail colour; with
 	// NO_COLOR it is bold, so the text still stands out.
 	FailTxt lipgloss.Style
+	// WarnTxt is FailTxt for the Warn colour (bold under NO_COLOR).
+	WarnTxt lipgloss.Style
+	// Placeholder is for text input placeholders and completions; set it as
+	// PlaceholderStyle and CompletionStyle, or bubbles uses its own grey.
+	Placeholder lipgloss.Style
 }
 
-// NewTheme returns the default theme, adaptive to light/dark terminals.
+// noColor is set by ApplyColorEnv; NewTheme only reads it, so it has no side
+// effects and tests can build themes freely.
+var noColor bool
+
+// ApplyColorEnv reads NO_COLOR and CLICOLOR once; main calls it before
+// building the Router.
 //
 // NO_COLOR (and CLICOLOR=0) are honoured by lipgloss/termenv on their own, but
 // termenv's Ascii profile also drops bold and reverse video, which the cursor
-// row, the log find highlight and the status badges rely on. When the
-// environment asks for no colour and the terminal could show colour, NewTheme
-// therefore makes every theme colour empty (no colour sequence is written)
-// and switches the default renderer to the ANSI profile so that bold and
-// reverse still come out. Output that is not a terminal stays plain.
-func NewTheme() Theme {
-	noColor := termenv.EnvNoColor()
+// row, the log find highlight and bold text rely on. When the environment asks
+// for no colour and stdout is a colour-capable terminal, the theme colours
+// become empty (no colour sequence) and the default renderer switches to the
+// ANSI profile so bold and reverse still come out. Output that is not a
+// terminal stays plain.
+func ApplyColorEnv() {
+	noColor = termenv.EnvNoColor()
 	if noColor && termenv.NewOutput(os.Stdout).ColorProfile() != termenv.Ascii {
 		lipgloss.SetColorProfile(termenv.ANSI)
 	}
-	return newTheme(noColor)
 }
+
+// NewTheme returns the default theme, adaptive to light/dark terminals, with
+// no colours after ApplyColorEnv saw NO_COLOR.
+func NewTheme() Theme { return newTheme(noColor) }
 
 func newTheme(noColor bool) Theme {
 	t := Theme{
@@ -74,6 +87,8 @@ func newTheme(noColor bool) Theme {
 	t.Box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).Padding(0, 1)
 	t.ErrTitle = lipgloss.NewStyle().Bold(true).Foreground(t.Fail)
 	t.FailTxt = lipgloss.NewStyle().Foreground(t.Fail).Bold(noColor)
+	t.WarnTxt = lipgloss.NewStyle().Foreground(t.Warn).Bold(noColor)
+	t.Placeholder = lipgloss.NewStyle().Foreground(t.Muted)
 	return t
 }
 

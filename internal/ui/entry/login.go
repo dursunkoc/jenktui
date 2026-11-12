@@ -154,7 +154,7 @@ func (l *Login) View() string {
 	case l.busy:
 		lines = append(lines, "", l.th.MutedTxt.Render("signing in..."))
 	case l.msg != "":
-		lines = append(lines, "", lipgloss.NewStyle().Foreground(l.th.Warn).Render(l.msg))
+		lines = append(lines, "", l.th.WarnTxt.Render(l.msg))
 	}
 	// The note sits at the bottom, under a thin rule as wide as the form,
 	// muted and wrapped to that width.

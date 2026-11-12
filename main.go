@@ -39,6 +39,7 @@ func main() {
 		os.Exit(1)
 	}
 	sess := &core.Session{}
+	core.ApplyColorEnv()
 	p := tea.NewProgram(core.NewRouter(sess, entry.NewSplash(sess, newDeps(dir))), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

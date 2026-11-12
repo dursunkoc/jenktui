@@ -182,7 +182,7 @@ func (m *model) dot(b jenkins.Build) string {
 	glyph, col := "●", m.th.Muted
 	switch {
 	case b.Building:
-		col = m.th.Running
+		glyph, col = "◌", m.th.Running
 	case b.Result == "SUCCESS":
 		col = m.th.OK
 	case b.Result == "FAILURE":

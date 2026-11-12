@@ -89,16 +89,32 @@ func TestFailTxtWithColourIsOnlyColoured(t *testing.T) {
 	}
 }
 
-func TestNewThemeHonoursNoColorEnv(t *testing.T) {
-	// Under go test stdout is not a terminal, so the profile stays Ascii and
+func TestApplyColorEnv(t *testing.T) {
+	// Under go test stdout is not a terminal, so the profile stays as set and
 	// only the colours are emptied.
 	setProfile(t, termenv.Ascii, true)
+	old := noColor
+	t.Cleanup(func() { noColor = old })
+
 	t.Setenv("NO_COLOR", "1")
-	if NewTheme().Fail != (lipgloss.AdaptiveColor{}) {
-		t.Error("NO_COLOR: Fail should be empty")
+	ApplyColorEnv()
+	if th := NewTheme(); th.Fail != (lipgloss.AdaptiveColor{}) || th.Placeholder.GetForeground() != (lipgloss.AdaptiveColor{}) {
+		t.Error("NO_COLOR: colours should be empty")
 	}
 	t.Setenv("NO_COLOR", "")
+	ApplyColorEnv()
 	if NewTheme().Fail == (lipgloss.AdaptiveColor{}) {
 		t.Error("without NO_COLOR the theme keeps its colours")
+	}
+}
+
+func TestNewThemeIsPure(t *testing.T) {
+	setProfile(t, termenv.TrueColor, true)
+	old := noColor
+	t.Cleanup(func() { noColor = old })
+	noColor = true
+	NewTheme()
+	if lipgloss.ColorProfile() != termenv.TrueColor {
+		t.Error("NewTheme must not change the renderer profile")
 	}
 }
