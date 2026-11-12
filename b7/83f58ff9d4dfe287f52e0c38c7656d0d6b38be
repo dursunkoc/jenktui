@@ -1,0 +1,27 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_3e3a6e0cb18e99 20
+README.md
+  s_1c16aed3d161c7::t_b20d1277b8bc17 25,119,155
+e2e_test.go
+  s_1c16aed3d161c7::t_c4516c8071395d 1279
+internal/ui/trigger/trigger.go
+  s_1c16aed3d161c7::t_fd99d7a64db66d 59,89,95-101,154,157-160,208-209,232-234,264,320-322,352-361,377,389,397,406,421,423-425,448,452-494,499,546,548-556,562-566,579,588-596,598,602,681,688-690,694
+internal/ui/trigger/trigger_test.go
+  s_1c16aed3d161c7::t_0be805bff3b0a2 238,240-241,245-247,254-265,268,270-275,277,283-290,294,297,299-302,304-305,307-310,312-334
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "b783f58ff9d4dfe287f52e0c38c7656d0d6b38be",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
