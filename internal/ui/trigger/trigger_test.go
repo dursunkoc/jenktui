@@ -241,19 +241,78 @@ func TestManyJobsCommonPerJobOverride(t *testing.T) {
 	}
 }
 
-func TestManyJobsAllCommonSkipsPerJob(t *testing.T) {
+func TestManyJobsNoCommonSkipsCommonStep(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("X", "", "1"))
+	srv.Job("b").Params(jenkinstest.StringParam("Y", "", "2"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.wantView("a (1/2)") // no Common Parameters: straight to the per-job steps
+	h.keys("enter")
+	h.wantView("b (2/2)")
+	h.keys("enter")
+	h.wantView("Ready to trigger 2 job")
+	h.keys("esc", "esc")
+	h.wantView("a (1/2)")
+	h.keys("esc")
+	if _, ok := h.nav[len(h.nav)-1].(core.Pop); !ok {
+		t.Fatalf("nav %v", h.nav)
+	}
+}
+
+// A job whose parameters are all common still gets a per-job step, so it can
+// override a Common Parameter.
+func TestManyJobsOnlyCommonStillOverridable(t *testing.T) {
 	srv := jenkinstest.New(t)
 	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
 	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
 	h := start(t, realClient(t, srv), nil, "a", "b")
-	h.keys("enter")
+	h.wantView("Common Parameters")
+	h.keys("enter") // accept dev
+	h.wantView("a (1/2)")
+	h.wantView("[common")
+	h.keys("enter") // a keeps dev
+	h.wantView("b (2/2)")
+	for range 3 {
+		h.send(tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	h.keys("qa", "enter")
 	h.wantView("Ready to trigger 2 job")
-	// back goes to common, esc there pops.
-	h.keys("esc")
+	// back goes through the per-job steps to common, esc there pops.
+	h.keys("esc", "esc", "esc")
 	h.wantView("Common Parameters")
 	h.keys("esc")
 	if _, ok := h.nav[len(h.nav)-1].(core.Pop); !ok {
 		t.Fatalf("nav %v", h.nav)
+	}
+}
+
+// One job has only Common Parameters, the other has its own as well; the
+// first overrides a Common Parameter.
+func TestManyJobsJobWithOnlyCommonOverrides(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"), jenkinstest.StringParam("ONLYB", "", "x"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter") // common ENV = dev
+	h.wantView("a (1/2)")
+	for range 3 {
+		h.send(tea.KeyMsg{Type: tea.KeyBackspace})
+	}
+	h.keys("qa", "enter")
+	h.wantView("b (2/2)")
+	h.keys("enter", "enter") // ONLYB -> ENV -> submit
+	h.wantView("Ready to trigger 2 job")
+	h.keys("y")
+	byJob := map[string]jenkinstest.Trigger{}
+	for _, tr := range srv.Triggers() {
+		byJob[tr.Job] = tr
+	}
+	a, b := byJob["a"].Params, byJob["b"].Params
+	if a.Get("ENV") != "qa" || len(a) != 1 {
+		t.Errorf("a: %v", a)
+	}
+	if b.Get("ENV") != "dev" || b.Get("ONLYB") != "x" || len(b) != 2 {
+		t.Errorf("b: %v", b)
 	}
 }
 
@@ -302,6 +361,7 @@ func TestTriggerErrorsCollectedAndRedacted(t *testing.T) {
 	}
 	h := start(t, c, nil, "a", "b")
 	h.keys("s3cr3t", "enter") // common form: PW
+	h.keys("enter", "enter")  // per-job steps for a and b: keep PW
 	h.keys("y")
 	v := h.view()
 	if strings.Contains(v, "s3cr3t") {

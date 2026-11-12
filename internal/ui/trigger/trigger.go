@@ -85,7 +85,7 @@ type screen struct {
 	form       *params.Form // single-job form
 	commonForm *params.Form
 	commonVals map[string]string
-	jobSeq     []string // jobs with per-job parameters
+	jobSeq     []string // jobs with a per-job step
 	pos        int
 	jobForms   map[string]*params.Form
 	baseline   map[string]map[string]string // job -> common name -> prefilled value
@@ -247,7 +247,9 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 	}
 	s.plan = paramsmerge.Build(s.jobs, s.defs)
 	for _, j := range s.jobs {
-		if len(s.plan.PerJob[j]) > 0 {
+		// A job gets its own step when it has parameters of its own or Common
+		// Parameters it can override.
+		if len(s.plan.PerJob[j]) > 0 || len(s.plan.Common) > 0 {
 			s.jobSeq = append(s.jobSeq, j)
 		}
 	}

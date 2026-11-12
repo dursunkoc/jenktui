@@ -113,7 +113,7 @@ Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
-- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
+- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then one step per job with that job's own parameters and its Common Parameters, which it can override (a job with only Common Parameters gets this step too), then a summary to confirm. Passwords are shown as `••••`.
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
   - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
   - `l` shows the log of the highlighted stage or step (a stage is its steps' output together); `L` shows the whole build.
