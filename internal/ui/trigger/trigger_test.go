@@ -235,44 +235,15 @@ func TestManyJobsCommonPerJobOverride(t *testing.T) {
 	}
 }
 
-func TestManyJobsNoCommonSkipsCommonStep(t *testing.T) {
-	srv := jenkinstest.New(t)
-	srv.Job("a").Params(jenkinstest.StringParam("X", "", "1"))
-	srv.Job("b").Params(jenkinstest.StringParam("Y", "", "2"))
-	h := start(t, realClient(t, srv), nil, "a", "b")
-	h.wantView("a (1/2)") // no Common Parameters: straight to the per-job steps
-	h.keys("enter")
-	h.wantView("b (2/2)")
-	h.keys("enter")
-	h.wantView("Ready to trigger 2 job")
-	h.keys("esc", "esc")
-	h.wantView("a (1/2)")
-	h.keys("esc")
-	if _, ok := h.nav[len(h.nav)-1].(core.Pop); !ok {
-		t.Fatalf("nav %v", h.nav)
-	}
-}
-
-// A job whose parameters are all common still gets a per-job step, so it can
-// override a Common Parameter.
-func TestManyJobsOnlyCommonStillOverridable(t *testing.T) {
+func TestManyJobsAllCommonSkipsPerJob(t *testing.T) {
 	srv := jenkinstest.New(t)
 	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
 	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
 	h := start(t, realClient(t, srv), nil, "a", "b")
-	h.wantView("Common Parameters")
-	h.keys("enter") // accept dev
-	h.wantView("a (1/2)")
-	h.wantView("[common")
-	h.keys("enter") // a keeps dev
-	h.wantView("b (2/2)")
-	for range 3 {
-		h.send(tea.KeyMsg{Type: tea.KeyBackspace})
-	}
-	h.keys("qa", "enter")
+	h.keys("enter")
 	h.wantView("Ready to trigger 2 job")
-	// back goes through the per-job steps to common, esc there pops.
-	h.keys("esc", "esc", "esc")
+	// back goes to common, esc there pops.
+	h.keys("esc")
 	h.wantView("Common Parameters")
 	h.keys("esc")
 	if _, ok := h.nav[len(h.nav)-1].(core.Pop); !ok {
@@ -280,33 +251,87 @@ func TestManyJobsOnlyCommonStillOverridable(t *testing.T) {
 	}
 }
 
-// One job has only Common Parameters, the other has its own as well; the
-// first overrides a Common Parameter.
-func TestManyJobsJobWithOnlyCommonOverrides(t *testing.T) {
+// triggered returns the parameters sent per job.
+func triggered(srv *jenkinstest.Server) map[string]map[string][]string {
+	out := map[string]map[string][]string{}
+	for _, tr := range srv.Triggers() {
+		out[tr.Job] = tr.Params
+	}
+	return out
+}
+
+// A job with only Common Parameters has no per-job step, but can be edited
+// from the summary to override one.
+func TestSummaryEditJobWithOnlyCommonOverrides(t *testing.T) {
 	srv := jenkinstest.New(t)
 	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
 	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"), jenkinstest.StringParam("ONLYB", "", "x"))
 	h := start(t, realClient(t, srv), nil, "a", "b")
-	h.keys("enter") // common ENV = dev
-	h.wantView("a (1/2)")
+	h.keys("enter")       // common ENV = dev
+	h.wantView("b (1/1)") // only b has own parameters
+	h.keys("enter", "enter")
+	h.wantView("Ready to trigger 2 job")
+	h.wantView("e edit job")
+	h.keys("e") // cursor is on a
+	h.wantView("[common")
+	h.wantView("Editing from the summary")
 	for range 3 {
 		h.send(tea.KeyMsg{Type: tea.KeyBackspace})
 	}
 	h.keys("qa", "enter")
-	h.wantView("b (2/2)")
-	h.keys("enter", "enter") // ONLYB -> ENV -> submit
 	h.wantView("Ready to trigger 2 job")
+	v := h.view()
+	if !strings.Contains(v, "ENV = qa") || !strings.Contains(v, "ENV = dev") {
+		t.Fatalf("summary:\n%s", v)
+	}
 	h.keys("y")
-	byJob := map[string]jenkinstest.Trigger{}
-	for _, tr := range srv.Triggers() {
-		byJob[tr.Job] = tr
+	got := triggered(srv)
+	if got["a"]["ENV"][0] != "qa" || got["b"]["ENV"][0] != "dev" || got["b"]["ONLYB"][0] != "x" {
+		t.Errorf("triggered: %v", got)
 	}
-	a, b := byJob["a"].Params, byJob["b"].Params
-	if a.Get("ENV") != "qa" || len(a) != 1 {
-		t.Errorf("a: %v", a)
+}
+
+func TestSummaryEditEscLeavesValues(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter")
+	h.keys("down", "e") // edit b
+	h.wantView("b")
+	h.keys("zzz", "esc")
+	h.wantView("Ready to trigger 2 job")
+	if v := h.view(); strings.Contains(v, "zzz") || strings.Count(v, "ENV = dev") != 2 {
+		t.Fatalf("summary:\n%s", v)
 	}
-	if b.Get("ENV") != "dev" || b.Get("ONLYB") != "x" || len(b) != 2 {
-		t.Errorf("b: %v", b)
+	// Reopening starts from the unchanged values, not the cancelled edit.
+	h.keys("e")
+	if strings.Contains(h.view(), "zzz") {
+		t.Fatalf("cancelled edit kept:\n%s", h.view())
+	}
+	h.keys("esc", "y")
+	for j, p := range triggered(srv) {
+		if p["ENV"][0] != "dev" {
+			t.Errorf("%s: %v", j, p)
+		}
+	}
+}
+
+// Editing a job that has its own parameters keeps them and the earlier
+// overrides, and "back" from the summary shows the edited values.
+func TestSummaryEditJobWithOwnParams(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"), jenkinstest.StringParam("ONLYA", "", "x"))
+	srv.Job("b").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter", "enter", "enter") // common, ONLYA, ENV
+	h.wantView("Ready to trigger 2 job")
+	h.keys("e") // a: ONLYA focused
+	h.keys("1", "enter", "enter")
+	h.wantView("ONLYA = x1")
+	h.keys("y")
+	if got := triggered(srv); got["a"]["ONLYA"][0] != "x1" || got["a"]["ENV"][0] != "dev" {
+		t.Errorf("triggered: %v", got)
 	}
 }
 
@@ -355,7 +380,6 @@ func TestTriggerErrorsCollectedAndRedacted(t *testing.T) {
 	}
 	h := start(t, c, nil, "a", "b")
 	h.keys("s3cr3t", "enter") // common form: PW
-	h.keys("enter", "enter")  // per-job steps for a and b: keep PW
 	h.keys("y")
 	v := h.view()
 	if strings.Contains(v, "s3cr3t") {
