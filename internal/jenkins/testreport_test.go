@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -125,4 +127,98 @@ func TestTestReport(t *testing.T) {
 			t.Fatalf("%+v %v", r2, err)
 		}
 	})
+}
+
+func rawClient(t *testing.T, h http.HandlerFunc) *Client {
+	t.Helper()
+	srv := httptest.NewServer(h)
+	t.Cleanup(srv.Close)
+	c, err := New(Options{BaseURL: srv.URL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return c
+}
+
+// Shape of matrix and Maven-module reports: no top-level suites or passCount.
+// Check on a real Jenkins (O3).
+func TestTestReportAggregated(t *testing.T) {
+	var gotTree string
+	c := rawClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotTree = r.URL.Query().Get("tree")
+		fmt.Fprint(w, `{"failCount":2,"skipCount":1,"totalCount":10,"childReports":[
+		 {"child":{"name":"linux","url":"u"},"result":{"suites":[{"name":"S","cases":[
+		   {"className":"a.A","name":"x","status":"FAILED","errorDetails":"d","errorStackTrace":"st"},
+		   {"className":"a.A","name":"y","status":"PASSED","errorDetails":null,"errorStackTrace":null}]}]}},
+		 {"child":{"name":"win","url":"u"},"result":{"suites":[{"name":"S","cases":[
+		   {"className":"b.B","name":"z","status":"REGRESSION","errorDetails":null,"errorStackTrace":null}]}]}}]}`)
+	})
+	r, err := c.TestReport(context.Background(), "x", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.FailCount != 2 || r.PassCount != 7 || r.SkipCount != 1 || r.Truncated || len(r.Failed) != 2 {
+		t.Fatalf("%+v", r)
+	}
+	if r.Failed[0].Child != "linux" || r.Failed[0].Name != "x" || r.Failed[1].Child != "win" || r.Failed[1].Name != "z" {
+		t.Fatalf("%+v", r.Failed)
+	}
+	if !strings.Contains(gotTree, "childReports[child[name,url],result[suites[") || !strings.Contains(gotTree, "totalCount") {
+		t.Fatalf("tree %q", gotTree)
+	}
+}
+
+func TestTestReportBackstopTruncated(t *testing.T) {
+	c := rawClient(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"failCount":3,"passCount":1,"skipCount":0,"suites":[]}`)
+	})
+	r, err := c.TestReport(context.Background(), "x", 0)
+	if err != nil || !r.Truncated || r.FailCount != 3 || len(r.Failed) != 0 {
+		t.Fatalf("%+v %v", r, err)
+	}
+}
+
+func TestTestReportHTTPErrors(t *testing.T) {
+	for _, code := range []int{http.StatusInternalServerError, http.StatusForbidden} {
+		c := rawClient(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(code) })
+		if _, err := c.TestReport(context.Background(), "x", 0); err == nil || errors.Is(err, ErrNoTestReport) {
+			t.Fatalf("%d: %v", code, err)
+		}
+		if _, err := c.TestCounts(context.Background(), "x", 0); err == nil || errors.Is(err, ErrNoTestReport) {
+			t.Fatalf("%d counts: %v", code, err)
+		}
+	}
+	c := rawClient(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(http.StatusForbidden) })
+	if _, err := c.TestReport(context.Background(), "x", 0); !errors.Is(err, ErrAuth) {
+		t.Fatalf("403: %v", err)
+	}
+}
+
+func TestTestCounts(t *testing.T) {
+	var gotTree string
+	c := rawClient(t, func(w http.ResponseWriter, r *http.Request) {
+		gotTree = r.URL.Query().Get("tree")
+		if strings.Contains(r.URL.Path, "/9/") {
+			http.NotFound(w, r)
+			return
+		}
+		fmt.Fprint(w, `{"failCount":2,"skipCount":1,"totalCount":10}`)
+	})
+	r, err := c.TestCounts(context.Background(), "x", 4)
+	if err != nil || r.FailCount != 2 || r.PassCount != 7 || r.SkipCount != 1 || len(r.Failed) != 0 {
+		t.Fatalf("%+v %v", r, err)
+	}
+	if gotTree != "failCount,passCount,skipCount,totalCount" {
+		t.Fatalf("tree %q", gotTree)
+	}
+	if _, err := c.TestCounts(context.Background(), "x", 9); !errors.Is(err, ErrNoTestReport) {
+		t.Fatalf("got %v", err)
+	}
+	// against the fake
+	s := jenkinstest.New(t)
+	s.Job("x").LastBuild(jenkinstest.Build{Number: 1}).TestReport(jenkinstest.TestReport{FailCount: 1, PassCount: 5, SkipCount: 2})
+	fr, err := newTestClient(t, s).TestCounts(context.Background(), "x", 0)
+	if err != nil || fr.FailCount != 1 || fr.PassCount != 5 || fr.SkipCount != 2 {
+		t.Fatalf("%+v %v", fr, err)
+	}
 }
