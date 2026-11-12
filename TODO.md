@@ -60,7 +60,7 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 ## v0.2
 
-Developer-facing features, in suggested order. The first group is small and does not touch any settled decision. Update README, GLOSSARY, the wiki Keyboard Reference and the screenshots as each one lands.
+Developer-facing features, in suggested order. [docs/plan-v0.2.md](docs/plan-v0.2.md) breaks these and the other open items into issues for parallel agents. The first group is small and does not touch any settled decision. Update README, GLOSSARY, the wiki Keyboard Reference and the screenshots as each one lands.
 
 ### 1. Leaving the app
 - [ ] `o` opens the highlighted job or build in the browser (`Build.URL` is already fetched; `open` on macOS, `xdg-open` on Linux, `rundll32`/`start` on Windows).
