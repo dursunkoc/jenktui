@@ -88,7 +88,7 @@ func newTheme(noColor bool) Theme {
 	t.ErrTitle = lipgloss.NewStyle().Bold(true).Foreground(t.Fail)
 	t.FailTxt = lipgloss.NewStyle().Foreground(t.Fail).Bold(noColor)
 	t.WarnTxt = lipgloss.NewStyle().Foreground(t.Warn).Bold(noColor)
-	t.Placeholder = lipgloss.NewStyle().Foreground(t.Muted)
+	t.Placeholder = lipgloss.NewStyle().Foreground(t.Muted).Faint(noColor)
 	return t
 }
 

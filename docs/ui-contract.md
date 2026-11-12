@@ -63,7 +63,7 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 
 ## Theme
 
-`core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle, FailTxt`. Use `FailTxt` (not a bare `Foreground(th.Fail)`) for text that is only distinguished by the Fail colour: it is the Fail colour, and bold as well under `NO_COLOR`.
+`core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle, FailTxt, WarnTxt, Placeholder`. Use `FailTxt` (not a bare `Foreground(th.Fail)`) for text that is only distinguished by the Fail colour: it is the Fail colour, and bold as well under `NO_COLOR`.
 
 **Colour support (checked against lipgloss v1.1.0 / termenv v0.16.0):**
 - Light and dark: `AdaptiveColor` picks `Light` or `Dark` from `lipgloss.HasDarkBackground()`, which termenv detects by querying the terminal (OSC 11), falling back to `COLORFGBG`, then to dark. There is no `theme` setting; detection failing only means the dark variants on a light terminal.

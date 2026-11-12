@@ -118,3 +118,13 @@ func TestNewThemeIsPure(t *testing.T) {
 		t.Error("NewTheme must not change the renderer profile")
 	}
 }
+
+func TestPlaceholderFaintOnlyWithoutColour(t *testing.T) {
+	setProfile(t, termenv.ANSI, true)
+	if got := newTheme(true).Placeholder.Render("x"); !strings.Contains(got, "\x1b[2m") || colourSGR.MatchString(got) {
+		t.Errorf("NO_COLOR placeholder should be faint and uncoloured: %q", got)
+	}
+	if got := newTheme(false).Placeholder.Render("x"); strings.Contains(got, "\x1b[2m") || !colourSGR.MatchString(got) {
+		t.Errorf("coloured placeholder should be muted, not faint: %q", got)
+	}
+}
