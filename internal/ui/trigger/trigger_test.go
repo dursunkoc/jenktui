@@ -317,6 +317,24 @@ func TestSummaryEditEscLeavesValues(t *testing.T) {
 	}
 }
 
+// e on a job without parameters does nothing (and must not crash).
+func TestSummaryEditNoParamsJobIsNoop(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("a").Params(jenkinstest.StringParam("ENV", "", "dev"))
+	srv.Job("b")
+	h := start(t, realClient(t, srv), nil, "a", "b")
+	h.keys("enter") // a's own step (or summary)
+	if !strings.Contains(h.view(), "Ready to trigger") {
+		h.keys("enter")
+	}
+	h.wantView("Ready to trigger 2 job")
+	h.keys("down", "e")
+	h.wantView("Ready to trigger 2 job")
+	if strings.Contains(h.view(), "e edit job") {
+		t.Fatalf("edit hint shown for a job without parameters:\n%s", h.view())
+	}
+}
+
 // Editing a job that has its own parameters keeps them and the earlier
 // overrides, and "back" from the summary shows the edited values.
 func TestSummaryEditJobWithOwnParams(t *testing.T) {

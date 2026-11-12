@@ -131,3 +131,9 @@ func TestCursorBlinks(t *testing.T) {
 		t.Fatal("moving onto a text field did not start its cursor blinking")
 	}
 }
+
+func TestEmptyFormViewDoesNotPanic(t *testing.T) {
+	if v := NewForm("none", nil, Options{}).View(); !strings.Contains(v, "none") {
+		t.Fatalf("view: %q", v)
+	}
+}

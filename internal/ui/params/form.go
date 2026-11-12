@@ -240,6 +240,9 @@ func (f *Form) View() string {
 		head = append(head, f.th.MutedTxt.Render(f.hint))
 	}
 	head = append(head, "")
+	if len(f.fields) == 0 {
+		return strings.Join(head, "\n")
+	}
 	blocks := make([][]string, len(f.fields))
 	for i, fd := range f.fields {
 		blocks[i] = fd.render(f.th, i == f.focus)

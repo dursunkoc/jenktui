@@ -155,8 +155,12 @@ func (s *screen) Keys() []key.Binding {
 		return []key.Binding{next, key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "next/submit")), core.KeyBack}
 	case stSummary:
 		if len(s.jobs) > 1 {
-			edit := key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job"))
-			return []key.Binding{confirm, no, edit, core.KeyUp, core.KeyDown, core.KeyBack}
+			paging := key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "scroll"))
+			ks := []key.Binding{confirm, no}
+			if s.canEdit() {
+				ks = append(ks, key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job")))
+			}
+			return append(ks, core.KeyUp, core.KeyDown, paging, core.KeyBack)
 		}
 		return []key.Binding{confirm, no, core.KeyUp, core.KeyDown, core.KeyBack}
 	case stTriggering, stLoading:
@@ -319,7 +323,7 @@ func (s *screen) effectiveCommon(job string) map[string]string {
 
 // buildJobForm builds job's per-job form. A non-nil cur prefills every field
 // with that job's current final values (used when editing from the summary).
-func (s *screen) buildJobForm(job string, cur map[string]string) *params.Form {
+func (s *screen) buildJobForm(job string, cur map[string]string, hint string) *params.Form {
 	var defs []jenkins.ParamDef
 	per := map[string]bool{}
 	for _, p := range s.plan.PerJob[job] {
@@ -356,7 +360,7 @@ func (s *screen) buildJobForm(job string, cur map[string]string) *params.Form {
 	}
 	if cur != nil {
 		opts.Prefill = cur
-		opts.Hint = "Editing from the summary: Enter on the last field applies, Esc cancels."
+		opts.Hint = hint
 	}
 	f := params.NewForm(title, defs, opts)
 	f.SetSize(s.w, max(s.h-len(s.notes)-2, 5))
@@ -386,7 +390,7 @@ func (s *screen) enterJob(i int) tea.Cmd {
 	j := s.jobSeq[i]
 	f := s.jobForms[j]
 	if f == nil {
-		f = s.buildJobForm(j, nil)
+		f = s.buildJobForm(j, nil, "")
 		s.jobForms[j] = f
 	}
 	f.Reopen()
@@ -482,11 +486,19 @@ func (s *screen) moveCursor(d int) {
 	s.scroll = max(min(s.scroll, max(len(s.summary)-rows, 0)), 0)
 }
 
+// canEdit reports whether the highlighted job has parameters to edit.
+func (s *screen) canEdit() bool {
+	return len(s.jobs) > 1 && len(s.final[s.jobs[s.cursor]]) > 0
+}
+
 // editFromSummary opens the highlighted job's form, prefilled with its
 // current final values.
 func (s *screen) editFromSummary() tea.Cmd {
+	if !s.canEdit() {
+		return nil
+	}
 	s.editJob = s.jobs[s.cursor]
-	s.editForm = s.buildJobForm(s.editJob, s.final[s.editJob])
+	s.editForm = s.buildJobForm(s.editJob, s.final[s.editJob], "Editing from the summary: Enter on the last field applies, Esc cancels.")
 	s.editForm.SetSize(s.w, max(s.h-len(s.notes)-2, 5))
 	s.st = stEdit
 	return s.editForm.Init()
@@ -551,9 +563,7 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 		case "pgdown":
 			s.scroll = min(s.scroll+s.summaryRows(), max(len(s.summary)-s.summaryRows(), 0))
 		case "e":
-			if len(s.jobs) > 1 {
-				return s, s.editFromSummary()
-			}
+			return s, s.editFromSummary()
 		}
 		return s, nil
 	}
@@ -588,7 +598,8 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 	case stEdit:
 		s.collectOverrides(s.editJob, f.Values())
 		if slicesIndex(s.jobSeq, s.editJob) >= 0 {
-			s.jobForms[s.editJob] = f // keep "back" consistent with the edit
+			// Keep "back" consistent with the edit, with the normal form.
+			s.jobForms[s.editJob] = s.buildJobForm(s.editJob, f.Values(), "")
 		}
 		s.editForm = nil
 		scroll := s.scroll
@@ -686,10 +697,14 @@ func (s *screen) view() string {
 		head := s.th.Title.Render(fmt.Sprintf("Ready to trigger %d job(s)", len(s.jobs)))
 		foot := s.th.MutedTxt.Render("y/enter trigger, n/esc back")
 		if len(s.jobs) > 1 {
-			foot = s.th.MutedTxt.Render("y/enter trigger, e edit job, up/down select, n/esc back")
+			hint := "y/enter trigger, up/down select job, n/esc back"
+			if s.canEdit() {
+				hint = "y/enter trigger, e edit job, up/down select job, n/esc back"
+			}
+			foot = s.th.MutedTxt.Render(hint)
 		}
 		if len(s.summary) > rows {
-			foot += s.th.MutedTxt.Render(fmt.Sprintf("  (%d-%d of %d lines, up/down scroll)", s.scroll+1, end, len(s.summary)))
+			foot += s.th.MutedTxt.Render(fmt.Sprintf("  (%d-%d of %d lines, pgup/pgdn scroll)", s.scroll+1, end, len(s.summary)))
 		}
 		return s.banner() + head + "\n\n" + strings.Join(s.summaryLines()[s.scroll:end], "\n") + "\n\n" + foot
 	case stResult:
