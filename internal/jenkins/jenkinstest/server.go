@@ -82,13 +82,36 @@ func TextParam(name, desc, def string) Param {
 	return Param{Type: TypeText, Name: name, Description: desc, Default: def}
 }
 
-// Build describes a job's last build.
+// Build describes one build of a job.
 type Build struct {
 	Number    int
 	Result    string // SUCCESS, FAILURE, UNSTABLE, ABORTED; ignored while Building
 	Building  bool
 	Timestamp time.Time
 	Duration  time.Duration
+
+	// EstimatedDuration is Jenkins' estimate for a running build; zero is
+	// served as -1, as Jenkins does when it has no estimate.
+	EstimatedDuration time.Duration
+	Causes            []Cause      // why the build started
+	Changes           []Change     // commits in the build's change set
+	Params            []BuildParam // parameter values the build ran with
+}
+
+// Cause is one reason a build started (a CauseAction entry).
+type Cause struct {
+	Description string // shortDescription, e.g. "Started by user Ada"
+	User        string // userId; omitted from the JSON when empty
+}
+
+// Change is one commit in a build's change set.
+type Change struct {
+	Commit, Author, Message string
+}
+
+// BuildParam is a parameter value a build ran with.
+type BuildParam struct {
+	Name, Value string
 }
 
 // Stage is a pipeline stage; Children model parallel branches.
@@ -791,6 +814,44 @@ func (s *Server) buildJSON(full string, b *Build) map[string]any {
 	} else {
 		m["result"] = b.Result
 	}
+	est := b.EstimatedDuration.Milliseconds()
+	if b.EstimatedDuration == 0 {
+		est = -1
+	}
+	m["estimatedDuration"] = est
+
+	// "actions" is a mixed list on real Jenkins: parameter and cause actions
+	// next to unrelated ones, an empty object for actions with no JSON, and nulls.
+	actions := []any{map[string]any{}}
+	if len(b.Params) > 0 {
+		ps := []map[string]any{}
+		for _, p := range b.Params {
+			ps = append(ps, map[string]any{"_class": "hudson.model.StringParameterValue", "name": p.Name, "value": p.Value})
+		}
+		actions = append(actions, map[string]any{"_class": "hudson.model.ParametersAction", "parameters": ps})
+	}
+	actions = append(actions, nil)
+	if len(b.Causes) > 0 {
+		cs := []map[string]any{}
+		for _, c := range b.Causes {
+			cm := map[string]any{"_class": "hudson.model.Cause$UserIdCause", "shortDescription": c.Description}
+			if c.User != "" {
+				cm["userId"] = c.User
+			}
+			cs = append(cs, cm)
+		}
+		actions = append(actions, map[string]any{"_class": "hudson.model.CauseAction", "causes": cs})
+	}
+	m["actions"] = actions
+
+	items := []map[string]any{}
+	for _, c := range b.Changes {
+		items = append(items, map[string]any{
+			"_class": "hudson.plugins.git.GitChangeSet", "commitId": c.Commit,
+			"author": map[string]any{"_class": "hudson.model.User", "fullName": c.Author}, "msg": c.Message,
+		})
+	}
+	m["changeSets"] = []map[string]any{{"_class": "hudson.plugins.git.GitChangeSetList", "items": items, "kind": "git"}}
 	return m
 }
 

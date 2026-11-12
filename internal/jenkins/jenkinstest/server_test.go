@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
@@ -119,5 +120,59 @@ func TestBuildHistory(t *testing.T) {
 	s.Job("x").LastBuild(jenkinstest.Build{Number: 7, Result: "SUCCESS"})
 	if _, m := getJSON(t, s, "/job/x/api/json"); len(m["builds"].([]any)) != 1 {
 		t.Fatalf("builds %v", m["builds"])
+	}
+}
+
+func TestBuildFields(t *testing.T) {
+	s := jenkinstest.New(t)
+	s.Job("x").LastBuild(jenkinstest.Build{
+		Number: 5, Result: "SUCCESS", EstimatedDuration: 90 * time.Second,
+		Causes:  []jenkinstest.Cause{{Description: "Started by user Ada", User: "ada"}, {Description: "Started by timer"}},
+		Changes: []jenkinstest.Change{{Commit: "abc123", Author: "Ada L", Message: "fix it"}},
+		Params:  []jenkinstest.BuildParam{{Name: "ENV", Value: "prod"}},
+	})
+	s.Job("y").LastBuild(jenkinstest.Build{Number: 1, Result: "SUCCESS"})
+
+	_, b := getJSON(t, s, "/job/x/5/api/json")
+	if b["estimatedDuration"] != float64(90000) {
+		t.Fatalf("estimatedDuration %v", b["estimatedDuration"])
+	}
+	var causes, params []any
+	var sawNull, sawEmpty bool
+	for _, a := range b["actions"].([]any) {
+		switch a := a.(type) {
+		case nil:
+			sawNull = true
+		case map[string]any:
+			if len(a) == 0 {
+				sawEmpty = true
+			}
+			if c, ok := a["causes"]; ok {
+				causes = c.([]any)
+			}
+			if p, ok := a["parameters"]; ok {
+				params = p.([]any)
+			}
+		}
+	}
+	if !sawNull || !sawEmpty {
+		t.Fatalf("actions should be mixed, with nulls and empty objects: %v", b["actions"])
+	}
+	if len(causes) != 2 || causes[0].(map[string]any)["userId"] != "ada" || causes[0].(map[string]any)["shortDescription"] != "Started by user Ada" {
+		t.Fatalf("causes %v", causes)
+	}
+	if _, has := causes[1].(map[string]any)["userId"]; has {
+		t.Fatalf("a cause with no user has no userId: %v", causes[1])
+	}
+	if len(params) != 1 || params[0].(map[string]any)["name"] != "ENV" || params[0].(map[string]any)["value"] != "prod" {
+		t.Fatalf("params %v", params)
+	}
+	item := b["changeSets"].([]any)[0].(map[string]any)["items"].([]any)[0].(map[string]any)
+	if item["commitId"] != "abc123" || item["msg"] != "fix it" || item["author"].(map[string]any)["fullName"] != "Ada L" {
+		t.Fatalf("change %v", item)
+	}
+	_, y := getJSON(t, s, "/job/y/1/api/json")
+	if y["estimatedDuration"] != float64(-1) {
+		t.Fatalf("no estimate should be -1, got %v", y["estimatedDuration"])
 	}
 }
