@@ -79,7 +79,7 @@ Developer-facing features, in suggested order. [docs/plan-v0.2.md](docs/plan-v0.
 
 ### 4. Abort and rerun
 This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions); update HANDOFF when it lands.
-- [ ] Rerun the highlighted build with the same parameters (`r`), read from the build's `actions[parameters]`; password parameters cannot be read back, so ask for them.
+- [x] Rerun the highlighted build with the same parameters (`r`), read from the build's `actions[parameters]`; password parameters cannot be read back, so ask for them.
 - [x] Abort a running or queued build (`X`, with a confirmation): `POST .../stop` for a build, `/queue/cancelItem?id=` for a queue item. Both need the CSRF crumb.
 
 ### 5. Build context

@@ -45,7 +45,7 @@ These were agreed with the user. Change them only if the user asks.
 - **Branch Filter** is one global list of case-sensitive globs on the decoded branch name. It only affects browsing and picking, never branches already in a Collection.
 - **Run Monitor belongs to a Collection.** It tracks the latest build of every job in it, hides successful jobs by default (`s` toggles), polls every job at 30s and running or queued ones at 3s. It is not a global feature.
 - **Missing jobs** stay in a Collection, marked missing, skipped when triggering, and are never removed silently.
-- **Abort is in (v0.2);** rerun is planned (CORE1). Still out: multiple servers, credential storage.
+- **Abort and rerun are in (v0.2).** Still out: multiple servers, credential storage.
 - **URLs to open or copy** are built from the configured `jenkins_url` (`Client.JobURL`, `Client.BuildURL`), never from the `url` Jenkins reports: its own root URL is often internal or a default.
 
 ## Conventions
