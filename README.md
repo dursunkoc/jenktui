@@ -25,6 +25,7 @@
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
 - **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.
 - **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs.
+- **Light and dark terminals, and `NO_COLOR`**: colours adapt to the terminal background. With `NO_COLOR=1` no colours are used; bold and reverse video are kept, and statuses always carry a label or a glyph (`✕ ◐ ● ○`).
 - **Branch Filter**: one global list of globs that limits which Multibranch branches are shown.
 - **Safe by default**: credentials are never stored, and TLS is verified strictly.
 

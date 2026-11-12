@@ -1,6 +1,11 @@
 package core
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+)
 
 // Status is a build/job state shown as a badge.
 type Status int
@@ -25,10 +30,30 @@ type Theme struct {
 	MutedTxt lipgloss.Style
 	Box      lipgloss.Style // bordered panel
 	ErrTitle lipgloss.Style
+	// FailTxt is for text drawn in the Fail colour (error lines, failed
+	// counts, error messages). With colour it is only the Fail colour; with
+	// NO_COLOR it is bold, so the text still stands out.
+	FailTxt lipgloss.Style
 }
 
 // NewTheme returns the default theme, adaptive to light/dark terminals.
+//
+// NO_COLOR (and CLICOLOR=0) are honoured by lipgloss/termenv on their own, but
+// termenv's Ascii profile also drops bold and reverse video, which the cursor
+// row, the log find highlight and the status badges rely on. When the
+// environment asks for no colour and the terminal could show colour, NewTheme
+// therefore makes every theme colour empty (no colour sequence is written)
+// and switches the default renderer to the ANSI profile so that bold and
+// reverse still come out. Output that is not a terminal stays plain.
 func NewTheme() Theme {
+	noColor := termenv.EnvNoColor()
+	if noColor && termenv.NewOutput(os.Stdout).ColorProfile() != termenv.Ascii {
+		lipgloss.SetColorProfile(termenv.ANSI)
+	}
+	return newTheme(noColor)
+}
+
+func newTheme(noColor bool) Theme {
 	t := Theme{
 		Accent:  lipgloss.AdaptiveColor{Light: "#5F3DC4", Dark: "#B197FC"},
 		OK:      lipgloss.AdaptiveColor{Light: "#2B8A3E", Dark: "#69DB7C"},
@@ -38,11 +63,17 @@ func NewTheme() Theme {
 		Muted:   lipgloss.AdaptiveColor{Light: "#868E96", Dark: "#868E96"},
 		Border:  lipgloss.AdaptiveColor{Light: "#CED4DA", Dark: "#495057"},
 	}
+	if noColor {
+		// An empty AdaptiveColor renders no colour sequence at all.
+		none := lipgloss.AdaptiveColor{}
+		t.Accent, t.OK, t.Warn, t.Fail, t.Running, t.Muted, t.Border = none, none, none, none, none, none, none
+	}
 	t.Title = lipgloss.NewStyle().Bold(true).Foreground(t.Accent)
 	t.Selected = lipgloss.NewStyle().Bold(true).Foreground(t.Accent)
 	t.MutedTxt = lipgloss.NewStyle().Foreground(t.Muted)
 	t.Box = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(t.Border).Padding(0, 1)
 	t.ErrTitle = lipgloss.NewStyle().Bold(true).Foreground(t.Fail)
+	t.FailTxt = lipgloss.NewStyle().Foreground(t.Fail).Bold(noColor)
 	return t
 }
 
