@@ -1,0 +1,27 @@
+README.md
+  s_1c16aed3d161c7::t_bbc8b1899a4924 123,156
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_3c4a94a651c179 94
+internal/ui/monitor/logsave.go
+  s_1c16aed3d161c7::t_f370257865f685 1-143
+internal/ui/monitor/logview.go
+  s_1c16aed3d161c7::t_d05ed621170358 41,95-96,395,441-442
+internal/ui/monitor/logview_test.go
+  s_1c16aed3d161c7::t_36f36ab769de7a 4-6,264-361
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "55c64d14592f729543e2d70add72b6fbc726ff2b",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
