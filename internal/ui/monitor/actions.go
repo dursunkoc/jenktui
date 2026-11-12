@@ -1,6 +1,8 @@
 package monitor
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -16,9 +18,13 @@ var (
 	keyCopy = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "copy URL"))
 )
 
-// jobURLer is the optional client method that gives a job's browser URL
-// (*jenkins.Client has it).
-type jobURLer interface{ JobURL(fullName string) string }
+// urler is the optional client part that gives browser URLs built from the
+// configured base URL (*jenkins.Client has it). Jenkins' own reported url is
+// never used: its root URL can be internal or wrong behind a proxy.
+type urler interface {
+	JobURL(fullName string) string
+	BuildURL(fullName string, num int) string
+}
 
 // actionKeys are the keys MA adds to the list and details help; none without Sys.
 func (m *model) actionKeys() []key.Binding {
@@ -39,13 +45,14 @@ func (m *model) targetURL() string {
 	if st.phase == phMissing {
 		return ""
 	}
-	if st.num > 0 && st.build.Number == st.num && st.build.URL != "" {
-		return st.build.URL
+	u, ok := m.deps.Client.(urler)
+	if !ok {
+		return ""
 	}
-	if j, ok := m.deps.Client.(jobURLer); ok {
-		return j.JobURL(st.run.Job)
+	if st.num > 0 {
+		return u.BuildURL(st.run.Job, st.num)
 	}
-	return ""
+	return u.JobURL(st.run.Job)
 }
 
 // sysDone reports the outcome of an open or copy.
@@ -56,15 +63,28 @@ type sysDone struct {
 
 func (d sysDone) apply(m *model) tea.Cmd {
 	if d.err != nil {
-		return m.flash(d.err.Error())
+		return m.flash(shortErr(d.err))
 	}
 	return m.flash(d.text)
+}
+
+// shortErr is an error text fit for the status line: no "sysint: " prefix, at
+// most 60 characters.
+func shortErr(err error) string {
+	t := strings.TrimPrefix(err.Error(), "sysint: ")
+	if r := []rune(t); len(r) > 60 {
+		t = string(r[:59]) + "…"
+	}
+	return t
 }
 
 // actionKey handles o and y; ok is false for any other key.
 func (m *model) actionKey(msg tea.KeyMsg) (cmd tea.Cmd, ok bool) {
 	if m.deps.Sys == nil {
 		return nil, false
+	}
+	if m.load.Active() && m.unpolled() {
+		return nil, true // behind the first-load modal, like R
 	}
 	switch {
 	case key.Matches(msg, keyOpen):

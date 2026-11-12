@@ -2,8 +2,11 @@ package monitor
 
 import (
 	"errors"
+	"strconv"
+	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/dursunkoc/jenktui/internal/jenkins"
@@ -27,12 +30,15 @@ func (s *fakeSys) Bell()                       {}
 // urlClient adds the optional JobURL to the fake client.
 type urlClient struct{ *fakeClient }
 
-func (urlClient) JobURL(job string) string { return "https://ci/job/" + job }
+func (urlClient) JobURL(job string) string { return "https://ci/job/" + job + "/" }
+func (urlClient) BuildURL(job string, n int) string {
+	return "https://ci/job/" + job + "/" + strconv.Itoa(n) + "/"
+}
 
 // actionModel: job "a" has build 7, job "b" was never built, job "c" is missing.
 func actionModel(sys Sys) *model {
 	c := urlClient{&fakeClient{builds: map[string]map[int]jenkins.Build{
-		"a": {0: {Number: 7, Result: "SUCCESS", URL: "https://ci/job/a/7/"}},
+		"a": {0: {Number: 7, Result: "SUCCESS", URL: "http://internal/job/a/7/"}},
 	}}}
 	s := NewCollection(Deps{Client: c, Now: (&clock{t: t0}).now, Sys: sys}, "N", []string{"a", "b", "c"}, map[string]bool{"c": true}).(*model)
 	wire(s)
@@ -87,7 +93,7 @@ func TestNoBuildOpensJobURL(t *testing.T) {
 	m := actionModel(sys)
 	m.cursor = 1 // b, never built
 	press(m, 'o')
-	if len(sys.opened) != 1 || sys.opened[0] != "https://ci/job/b" {
+	if len(sys.opened) != 1 || sys.opened[0] != "https://ci/job/b/" {
 		t.Fatalf("opened %v", sys.opened)
 	}
 }
@@ -143,3 +149,55 @@ func TestYIsYesInConfirm(t *testing.T) {
 		t.Fatal("y answers the prompt, not copy")
 	}
 }
+
+func TestErrorFlashIsShort(t *testing.T) {
+	if got := shortErr(errors.New("sysint: no browser")); got != "no browser" {
+		t.Fatalf("got %q", got)
+	}
+	got := shortErr(errors.New(strings.Repeat("x", 100)))
+	if len([]rune(got)) != 60 || !strings.HasSuffix(got, "…") {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestKeysIgnoredBehindModalLogAndOverlay(t *testing.T) {
+	sys := &fakeSys{route: sysint.RouteTool}
+	// first-load modal: cycle started, nothing delivered
+	c := urlClient{&fakeClient{}}
+	m := NewCollection(Deps{Client: c, Now: (&clock{t: t0}).now, Sys: sys}, "N", []string{"a"}, nil).(*model)
+	wire(m)
+	m.Update(tickMsg{gen: m.gen})
+	if !(m.load.Active() && m.unpolled()) {
+		t.Fatal("setup: modal expected")
+	}
+	pressKey(m, 'o')
+	pressKey(m, 'y')
+
+	m = actionModel(sys)
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	pressKey(m, 'L')
+	if m.log == nil {
+		t.Fatal("setup: log expected")
+	}
+	if cmd := pressKey(m, 'o'); cmd != nil {
+		cmd()
+	}
+	if cmd := pressKey(m, 'y'); cmd != nil {
+		cmd()
+	}
+
+	m = actionModel(sys)
+	m.overlay = stubOverlay{}
+	if cmd := pressKey(m, 'o'); cmd != nil {
+		cmd()
+	}
+	if len(sys.opened)+len(sys.copied) != 0 {
+		t.Fatalf("keys must be ignored: %v %v", sys.opened, sys.copied)
+	}
+}
+
+type stubOverlay struct{}
+
+func (stubOverlay) view(int, int) string           { return "" }
+func (stubOverlay) key(tea.KeyMsg) (tea.Cmd, bool) { return nil, false }
+func (stubOverlay) keys() []key.Binding            { return nil }
