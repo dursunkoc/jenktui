@@ -104,6 +104,9 @@ func (r *Router) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if _, open := r.Top().(PaletteScreen); open {
 				return r, nil
 			}
+			if b, ok := r.Top().(Busy); ok && b.Busy() {
+				return r, nil // its reply would be lost under the palette
+			}
 			return r.push(r.Session.Palette())
 		}
 	case Quit:

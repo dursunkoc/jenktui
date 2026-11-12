@@ -61,6 +61,13 @@ type Pauser interface {
 	Pause()
 }
 
+// Busy is optionally implemented by screens with a one-shot request in flight
+// (a trigger posting, a list loading) whose reply would be lost if another
+// screen covered them. While Busy reports true the Router ignores ctrl+p.
+type Busy interface {
+	Busy() bool
+}
+
 // PaletteScreen marks the jump palette, so the Router does not open one over
 // another.
 type PaletteScreen interface {

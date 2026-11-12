@@ -118,6 +118,10 @@ func New(deps Deps, jobKeys []string) core.Screen {
 
 func (s *screen) Title() string { return "Trigger" }
 
+// Busy is true while parameters load or the builds are posted: the replies
+// would be lost if the jump palette covered the screen.
+func (s *screen) Busy() bool { return s.st == stLoading || s.st == stTriggering }
+
 // name is how job is shown: from Deps.Names, otherwise relative to the
 // Parent Job. Plain text, so it can sit inside a styled title.
 func (s *screen) name(job string) string {

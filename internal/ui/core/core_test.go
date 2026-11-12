@@ -427,3 +427,26 @@ func TestUnwindingReplaceResumesInsteadOfInit(t *testing.T) {
 		t.Fatalf("depth=%d resumed=%d inits=%d", r.Depth(), mon.resumed, mon.inits)
 	}
 }
+
+type busyScreen struct {
+	fake
+	busy bool
+}
+
+func (b *busyScreen) Busy() bool                         { return b.busy }
+func (b *busyScreen) Update(m tea.Msg) (Screen, tea.Cmd) { b.fake.Update(m); return b, nil }
+
+func TestCtrlPIsIgnoredWhileTheTopScreenIsBusy(t *testing.T) {
+	pal := &paletteFake{fake{name: "palette"}}
+	b := &busyScreen{fake: fake{name: "b"}, busy: true}
+	r := NewRouter(&Session{Palette: func() Screen { return pal }}, b)
+	r.Update(ctrlP())
+	if r.Depth() != 1 {
+		t.Fatalf("palette opened over a busy screen: depth %d", r.Depth())
+	}
+	b.busy = false
+	r.Update(ctrlP())
+	if r.Depth() != 2 {
+		t.Fatal("palette did not open once the screen was idle")
+	}
+}

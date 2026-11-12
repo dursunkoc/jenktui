@@ -155,6 +155,9 @@ func (s *Screen) fetch() tea.Cmd {
 
 func (s *Screen) Init() tea.Cmd { return tea.Batch(s.load.Start(), s.fetch()) }
 
+// Busy is true while the catalog loads.
+func (s *Screen) Busy() bool { return s.loading }
+
 func (s *Screen) Title() string {
 	if s.parent == "" {
 		return "Job Catalog"

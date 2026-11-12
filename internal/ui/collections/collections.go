@@ -214,6 +214,10 @@ func (s *listScreen) reload() {
 
 func (s *listScreen) Init() tea.Cmd { return nil }
 
+// Busy is true while `m` waits for the catalog (the reply would be lost if
+// the jump palette covered the screen).
+func (s *listScreen) Busy() bool { return s.monName != "" }
+
 func (s *listScreen) Title() string { return s.titled("Collections") }
 
 func (s *listScreen) Keys() []key.Binding {

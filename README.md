@@ -21,7 +21,7 @@
 ## Features
 
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
-- **Jump** (`Ctrl+P`): from any screen after login, a list of your Collections (`◆`) and every catalog job. Type to filter, `Enter` opens the Collection's Run Monitor, or the Job Catalog filtered to the job; `Esc` clears the filter, then closes it. The screen you came from keeps working underneath.
+- **Jump** (`Ctrl+P`): from any screen after login, a list of your Collections (`◆`) and every catalog job. Type to filter, `Enter` opens the Collection's Run Monitor, or the Job Catalog filtered to the job; `Esc` clears the filter, then closes it. The screen you came from pauses underneath and picks up again when you close the palette.
 - **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
 - **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.

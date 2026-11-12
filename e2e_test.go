@@ -1999,3 +1999,25 @@ func TestPaletteOverARunningMonitorLeavesItPolling(t *testing.T) {
 		t.Fatalf("depth %d after esc, want %d", h.router.Depth(), depth-1)
 	}
 }
+
+func TestCtrlPIsIgnoredWhileATriggerIsPosting(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/api/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("t")
+	h.expect("Trigger team/api/build?")
+	_, post := h.router.Update(keyMsg("y")) // the POST is in flight: its command has not run yet
+	depth := h.router.Depth()
+	h.key("ctrl+p")
+	if h.router.Depth() != depth {
+		t.Fatal("the palette opened over a posting trigger")
+	}
+	h.run(post)
+	h.expectTitle("Run Monitor: Ops")
+	h.expectRow("team/api/build", "QUEUED")
+	if n := len(f.Triggers()); n != 1 {
+		t.Fatalf("%d builds posted, want 1", n)
+	}
+}
