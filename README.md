@@ -1,42 +1,53 @@
-# jenktui
+<h1 align="center">jenktui</h1>
 
-A rich terminal UI for Jenkins. Browse every job under a parent folder, curate named **Collections**, trigger builds from them, and watch each Collection's latest builds live, with pipeline stage info.
+<p align="center">
+  A terminal UI for Jenkins: curate <b>Collections</b> of jobs, trigger builds in one keystroke,<br>
+  and watch the latest build of each job live, down to the stage and step log.
+</p>
+
+<p align="center">
+  <a href="https://github.com/dursunkoc/jenktui/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/dursunkoc/jenktui/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="https://github.com/dursunkoc/jenktui/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/dursunkoc/jenktui"></a>
+  <a href="https://github.com/dursunkoc/jenktui/releases"><img alt="Downloads" src="https://img.shields.io/github/downloads/dursunkoc/jenktui/total"></a>
+  <a href="go.mod"><img alt="Go version" src="https://img.shields.io/github/go-mod/go-version/dursunkoc/jenktui"></a>
+  <img alt="Platforms" src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux%20%7C%20Windows-lightgrey">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/github/license/dursunkoc/jenktui"></a>
+</p>
+
+<p align="center">
+  <img alt="jenktui Run Monitor" src="docs/images/monitor.png" width="900">
+</p>
+
+## Features
+
+- **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
+- **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
+- **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides and a summary to confirm.
+- **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.
+- **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs.
+- **Branch Filter**: one global list of globs that limits which Multibranch branches are shown.
+- **Safe by default**: credentials are never stored, and TLS is verified strictly.
 
 ## Screenshots
 
-The data below is invented (a fake "shop" Jenkins); nothing comes from a real server.
+The data in these screenshots is invented (a fake "shop" Jenkins); nothing comes from a real server.
 
-**Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.
-
-![Job Catalog](docs/images/catalog.png)
-
-**Collection**: a named, ordered group of jobs, ready to trigger or watch.
-
-![Collection](docs/images/collection.png)
-
-**Run Monitor**: the latest build of every job in the Collection, with live pipeline stages.
-
-![Run Monitor](docs/images/monitor.png)
-
-**Build details**: stages and steps; `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.
-
-![Build details](docs/images/details.png)
-
-**Console log**: line numbers, find with wildcards (`*`, `_`), go to line, follow while the build runs.
-
-![Console log](docs/images/log.png)
+| | |
+|---|---|
+| **Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.<br><br><img alt="Job Catalog" src="docs/images/catalog.png"> | **Collection**: a named, ordered group of jobs, ready to trigger or watch.<br><br><img alt="Collection" src="docs/images/collection.png"> |
+| **Build details**: stages and steps. `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.<br><br><img alt="Build details" src="docs/images/details.png"> | **Console log**: line numbers, find with wildcards, go to line, follow while the build runs.<br><br><img alt="Console log" src="docs/images/log.png"> |
 
 ## Install
 
-None of these need Go, except the last two.
+None of these need Go, except the last.
 
-**Homebrew (macOS and Linux):**
+**Homebrew (macOS and Linux)**
 
 ```sh
 brew install dursunkoc/tap/jenktui
 ```
 
-**Install script (macOS and Linux):**
+**Install script (macOS and Linux)**
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/dursunkoc/jenktui/main/install.sh | sh
@@ -44,7 +55,7 @@ curl -fsSL https://raw.githubusercontent.com/dursunkoc/jenktui/main/install.sh |
 
 It picks the right build for your system, checks it against the release checksums, and installs `jenktui` to `/usr/local/bin` (or `~/.local/bin` if that is not writable). Set `INSTALL_DIR` to choose another folder and `JENKTUI_VERSION` for a specific version. Read the [script](install.sh) first if you prefer.
 
-**Windows (PowerShell):**
+**Windows (PowerShell)**
 
 ```powershell
 $v = "0.1.4"   # the version on the Releases page
@@ -58,15 +69,30 @@ Expand-Archive $zip -DestinationPath $dir -Force
 
 Open a new terminal and run `jenktui --version`. Use Windows Terminal; the config is in `%USERPROFILE%\.config\jenktui\`. The [wiki](https://github.com/dursunkoc/jenktui/wiki/Getting-Started) has the checksum check and upgrade steps.
 
-**Download by hand (macOS, Linux):** get the archive for your system from the [Releases](https://github.com/dursunkoc/jenktui/releases) page, unpack it, and put `jenktui` on your `PATH` (Windows: use the steps above). On macOS, a file downloaded in a browser is quarantined; clear it once with `xattr -d com.apple.quarantine jenktui`.
+**Download by hand (macOS, Linux)**
 
-**With Go:** `go install github.com/dursunkoc/jenktui@latest`, or build from a checkout with `go build -o jenktui .`
+Get the archive for your system from the [Releases](https://github.com/dursunkoc/jenktui/releases) page, unpack it, and put `jenktui` on your `PATH` (Windows: use the steps above). On macOS, a file downloaded in a browser is quarantined; clear it once with `xattr -d com.apple.quarantine jenktui`.
 
-`jenktui --version` prints the version.
+**With Go**
+
+```sh
+go install github.com/dursunkoc/jenktui@latest
+```
+
+or build from a checkout with `go build -o jenktui .`. `jenktui --version` prints the version.
+
+## Quick start
+
+1. Run `jenktui`. On first run, if there is no config file, it asks for your Jenkins URL and an optional parent job and writes `config.toml` for you.
+2. Log in with your Jenkins username and a password or an API token (an API token is recommended). Credentials are asked on every start and kept in memory only.
+3. Choose **Collections**, press `n`, name the Collection, then tick its jobs in the picker with `Space` (`/` filters) and press `Enter` to save.
+4. Open the Collection with `Enter`. Press `t` to trigger and `m` to open its Run Monitor.
+
+The [wiki](https://github.com/dursunkoc/jenktui/wiki) walks through each step in more detail.
 
 ## Configuration
 
-`~/.config/jenktui/config.toml` (set `JENKTUI_CONFIG_DIR` to use another directory). On first run, if the file is missing, the app asks for the URL and parent job and writes it for you.
+`~/.config/jenktui/config.toml` (set `JENKTUI_CONFIG_DIR` to use another directory):
 
 ```toml
 jenkins_url = "https://jenkins.example.com"
@@ -77,24 +103,25 @@ insecure_skip_verify = false
 branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch names
 ```
 
-Collections are stored in `~/.config/jenktui/collections.toml` (managed by the app).
+Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app.
 
-**Credentials are never stored.** Log in with your Jenkins username and your password or an API token. An API token is recommended: it can be revoked on its own and does not expose your password. Both are asked on every start and kept in memory only, as a note at the bottom of the login screen says.
+**Security.** Credentials are never stored: your username and password or API token are asked on every start and live in memory only, as a note at the bottom of the login screen says. TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
 
-TLS is verified strictly. For an internal CA, set `ca_cert`; `insecure_skip_verify` is a last resort.
+## Usage
 
-## Flow
-
-Splash → Login → Menu (Collections, Job Catalog, Quit).
+Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
+- **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
+- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
+- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. Leaving it keeps its state for the session.
+  - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
+  - `l` shows the log of the highlighted stage or step (a stage is its steps' output together); `L` shows the whole build.
+  - The log is a modal with line numbers that follows new output while the build runs. `↑`/`↓`/`PgUp`/`PgDn` scroll, `g` goes to the top, `G` follows again, `:` goes to a line number, and `/` finds text (case-insensitive; `*` any text, `_` one character, `\*` `\_` literal), with `n`/`N` for the next and previous match. Matches are highlighted. `Esc` goes back.
 
 Job names are shown relative to the parent job: under `parent_job = "team"`, `team/app/build` is shown as `app/build` (in the catalog, Collections and the Run Monitor). A job outside the parent keeps its full name. Job lists have three aligned columns, titled Pipeline, Branch and Status: the job (for a Multibranch Project, the project) with its folders separated by a grey `›` (`team › api › build`), the branch, decoded (`feature/login` rather than `feature%2Flogin`), and the status. The Run Monitor and the trigger screen show a branch as `digital-ui › feature/login`.
-- **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them.
-- **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then each job's remaining parameters, with a per-job override, then a summary to confirm. Passwords are shown as `••••`.
-- **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. `Enter` opens a build's details and `l` there shows the log of the highlighted stage or step (a stage is its steps' output together; `L` shows the whole build) in a modal with line numbers, following new output while the build runs. `↑`/`↓`/`PgUp`/`PgDn` scroll, `g` top, `G` follow again, `:` goes to a line number, `/` finds text (case-insensitive, `*` any text, `_` one character, `\*` `\_` literal; `n`/`N` next/previous match, matches are highlighted), `Esc` back. Leaving it keeps its state for the session.
 
-## Filtering
+### Filtering
 
 Press `/` in any list and type. Matching is case-insensitive, anywhere in the job's full path (including the parent job's part, even though it is not shown):
 
@@ -110,7 +137,7 @@ Press `↓` to move from the filter box into the list (the filter stays applied)
 
 Limits which branches of Multibranch Projects are shown when browsing or picking. Patterns are case-sensitive globs matched against the decoded branch name (`feature/x`, not `feature%2Fx`); `*` matches any text including `/`, `?` one character, `[a-z]` a set. No patterns means all branches. Folders and ordinary jobs are never filtered, and branches already in a Collection stay there. `b` switches the filter on and off, `B` edits the patterns (saved to `config.toml`).
 
-## Keys
+### Keys
 
 | Where | Keys |
 |---|---|
@@ -124,13 +151,18 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
 | Run Monitor | `Enter` details (`↑`/`↓` move between stages, `l` stage log, `L` full log, with `/` find and `:` go to line), `s` show/hide successful, `R` refresh now, `Esc` back (from details: back to the list) |
 
-A Collection member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
-
 ## Scope
 
-In: job catalog, Collections (create/edit/rename/delete/reorder), triggering with parameters (common + per-job), per-Collection Run Monitor with stages, Branch Filter.
+**In:** job catalog, Collections (create, edit, rename, delete, reorder), triggering with parameters (common and per-job), a per-Collection Run Monitor with stages and logs, Branch Filter.
 
-Out of v1: abort/rerun, multiple servers, credential storage.
+**Out of v1:** abort and rerun, multiple servers, credential storage. See [TODO.md](TODO.md) for remaining work and known gaps.
+
+## Documentation
+
+- [Wiki](https://github.com/dursunkoc/jenktui/wiki): getting started, configuration, filtering, keyboard reference, troubleshooting.
+- [GLOSSARY.md](GLOSSARY.md): the terms used in the app and the docs.
+- [docs/ui-contract.md](docs/ui-contract.md): UI conventions for contributors.
+- [docs/HANDOFF.md](docs/HANDOFF.md): architecture, settled decisions and Jenkins gotchas.
 
 ## Development
 
@@ -138,8 +170,8 @@ Out of v1: abort/rerun, multiple servers, credential storage.
 go vet ./... && go test ./...
 ```
 
-CI runs the same plus `gofmt` and `-race` (`.github/workflows/ci.yml`). Tests run against a fake Jenkins in `internal/jenkins/jenkinstest`; it ignores the `tree=` query that real Jenkins honours, so check changes to queries against a real server. UI conventions are in [docs/ui-contract.md](docs/ui-contract.md), terminology in [GLOSSARY.md](GLOSSARY.md), and remaining work and known gaps in [TODO.md](TODO.md).
+CI runs the same plus `gofmt` and `-race` (`.github/workflows/ci.yml`). Tests run against a fake Jenkins in `internal/jenkins/jenkinstest`; it ignores the `tree=` query that real Jenkins honours, so check changes to queries against a real server. Read [docs/HANDOFF.md](docs/HANDOFF.md) first if you are new to the code. The screenshots above are generated from invented data; see HANDOFF for how to regenerate them.
 
 ## License
 
-MIT
+[MIT](LICENSE)
