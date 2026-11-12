@@ -3,6 +3,8 @@ package trigger
 import (
 	"context"
 	"errors"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -20,27 +22,28 @@ type harness struct {
 	nav []tea.Msg
 }
 
-// pump runs cmd, feeding resulting messages back to the screen (spinner ticks
-// are dropped so the loop terminates).
+// isBlink reports whether c is a cursor-blink command, which only fires after
+// its blink interval and would stall the harness.
+func isBlink(c tea.Cmd) bool {
+	n := runtime.FuncForPC(reflect.ValueOf(c).Pointer()).Name()
+	return n == "github.com/charmbracelet/bubbles/textinput.Blink" ||
+		strings.HasPrefix(n, "github.com/charmbracelet/bubbles/cursor.(*Model).BlinkCmd")
+}
+
+// pump runs cmd, feeding resulting messages back to the screen. Cursor blinks
+// are skipped without running and spinner ticks are dropped, so the loop
+// terminates. A command that does not return fails the test.
 func (h *harness) pump(cmd tea.Cmd) {
-	if cmd == nil {
+	if cmd == nil || isBlink(cmd) {
 		return
 	}
 	ch := make(chan tea.Msg, 1)
 	go func() { ch <- cmd() }()
 	var msg tea.Msg
-	// A form only ever returns cursor-blink commands (which sleep for their
-	// blink interval) and navigation messages (which return at once), so
-	// there is no point waiting long for them. Elsewhere a command may do
-	// real (fake-server) I/O.
-	wait := 250 * time.Millisecond
-	if h.inForm() {
-		wait = 10 * time.Millisecond
-	}
 	select {
 	case msg = <-ch:
-	case <-time.After(wait): // cursor blink, spinner tick
-		return
+	case <-time.After(5 * time.Second):
+		h.t.Fatalf("command did not return")
 	}
 	switch m := msg.(type) {
 	case nil:
@@ -56,15 +59,6 @@ func (h *harness) pump(cmd tea.Cmd) {
 		h.s, c = h.s.Update(m)
 		h.pump(c)
 	}
-}
-
-// inForm reports whether the screen shows a parameter form.
-func (h *harness) inForm() bool {
-	switch h.s.(*screen).st {
-	case stForm, stCommon, stJob:
-		return true
-	}
-	return false
 }
 
 func (h *harness) send(msg tea.Msg) {
