@@ -95,6 +95,7 @@ func TestBadgeAndErrorView(t *testing.T) {
 	for s, want := range map[Status]string{
 		StatusSuccess: "SUCCESS", StatusFailed: "FAILED", StatusRunning: "RUNNING",
 		StatusQueued: "QUEUED", StatusUnknown: "UNKNOWN", StatusMissing: "MISSING",
+		StatusUnstable: "UNSTABLE", StatusAborted: "ABORTED",
 	} {
 		if !strings.Contains(th.Badge(s), want) {
 			t.Errorf("badge %d missing %s", s, want)

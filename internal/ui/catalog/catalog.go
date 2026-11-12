@@ -263,18 +263,20 @@ func PlaceholderRow(it branchfilter.Item, parent string) widgets.Item {
 	return widgets.Item{Key: it.Key(), Label: core.RelName(it.Project, parent), Branch: why, Disabled: true}
 }
 
-// statusFromColor maps a Jenkins "color" hint to a badge status.
-// TODO: switch to jenkins.StatusFromColor once it lands.
+// statusFromColor maps a Jenkins "color" hint to a badge status via
+// jenkins.StatusFromColor.
 func statusFromColor(color string) core.Status {
-	base, anime := strings.CutSuffix(color, "_anime")
-	if anime {
-		return core.StatusRunning
-	}
-	switch base {
-	case "blue", "green":
+	switch jenkins.StatusFromColor(color) {
+	case jenkins.JobSuccess:
 		return core.StatusSuccess
-	case "red", "yellow":
+	case jenkins.JobFailed:
 		return core.StatusFailed
+	case jenkins.JobUnstable:
+		return core.StatusUnstable
+	case jenkins.JobAborted:
+		return core.StatusAborted
+	case jenkins.JobRunning:
+		return core.StatusRunning
 	}
 	return core.StatusUnknown
 }

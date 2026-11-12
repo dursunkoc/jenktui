@@ -129,7 +129,7 @@ func TestEscPopsAndFilterEscDoesNot(t *testing.T) {
 }
 
 func TestStatusFromColor(t *testing.T) {
-	for c, want := range map[string]core.Status{"blue": core.StatusSuccess, "red": core.StatusFailed, "blue_anime": core.StatusRunning, "notbuilt": core.StatusUnknown, "": core.StatusUnknown} {
+	for c, want := range map[string]core.Status{"blue": core.StatusSuccess, "red": core.StatusFailed, "blue_anime": core.StatusRunning, "yellow": core.StatusUnstable, "yellow_anime": core.StatusRunning, "aborted": core.StatusAborted, "notbuilt": core.StatusUnknown, "": core.StatusUnknown} {
 		if got := statusFromColor(c); got != want {
 			t.Errorf("%q = %v want %v", c, got, want)
 		}

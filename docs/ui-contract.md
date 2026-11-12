@@ -65,7 +65,7 @@ Below 60x16 the Router shows `terminal too small, need at least 60x16` (`core.To
 
 `core.NewTheme()` returns `Theme` (also `router.Theme`). Never hardcode colors. Adaptive colors: `Accent, OK, Warn, Fail, Running, Muted, Border`. Styles: `Title, Selected, MutedTxt, Box, ErrTitle`.
 
-- `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing)` returns a colored label.
+- `th.Badge(core.StatusSuccess|Failed|Running|Queued|Unknown|Missing|Unstable|Aborted)` returns a colored label (Unstable in the warning colour, Aborted muted).
 - `th.ErrorView(title, err, hint)` boxed error with a hint line; `th.NoticeView(title, hint)` neutral box. Map domain errors to a `hint` in your own screen; core does not import `internal/jenkins`.
 
 ## Job names
