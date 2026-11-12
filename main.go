@@ -19,6 +19,7 @@ import (
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/entry"
 	"github.com/dursunkoc/jenktui/internal/ui/monitor"
+	"github.com/dursunkoc/jenktui/internal/ui/overview"
 	"github.com/dursunkoc/jenktui/internal/ui/trigger"
 	"github.com/dursunkoc/jenktui/internal/version"
 )
@@ -177,38 +178,65 @@ func newDeps(dir string) entry.Deps {
 		}
 	}
 
-	// openByName finds the Collection (case-insensitive), reads the catalog
-	// off the UI goroutine to flag missing members and name Multibranch
-	// branches, and hands back a closure that builds the monitor on it.
+	// resolveCollection finds the Collection (case-insensitive) and reads the
+	// catalog to flag missing members and name Multibranch branches. It blocks,
+	// so run it in a command; the returned closure builds the monitor and must
+	// run on the UI goroutine. An empty closure with a notice means it failed.
+	resolveCollection := func(s *core.Session, name string) (func() core.Screen, string) {
+		cs, err := config.LoadCollections(collectionsPath)
+		if err != nil {
+			return nil, "cannot read Collections: " + err.Error()
+		}
+		i := cs.Find(name)
+		if i < 0 {
+			return nil, fmt.Sprintf("no Collection named %q", name)
+		}
+		c := cs.Items[i]
+		var missing map[string]bool
+		names := map[string]core.JobName{}
+		if cl := client(s); cl != nil {
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err == nil {
+				names, missing = catalog.NamesOf(c.Jobs, cat, s.Config.ParentJob), catalog.MissingOf(c.Jobs, cat)
+			}
+		}
+		return func() core.Screen {
+			return openMonitor(s)(c.Name, slices.Clone(c.Jobs), missing, names)
+		}, ""
+	}
 	openByName := func(s *core.Session, name string) tea.Cmd {
 		return func() tea.Msg {
-			cs, err := config.LoadCollections(collectionsPath)
-			if err != nil {
-				return entry.Start{Notice: "cannot read Collections: " + err.Error()}
-			}
-			i := cs.Find(name)
-			if i < 0 {
-				return entry.Start{Notice: fmt.Sprintf("no Collection named %q", name)}
-			}
-			c := cs.Items[i]
-			var missing map[string]bool
-			names := map[string]core.JobName{}
-			if cl := client(s); cl != nil {
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				defer cancel()
-				if cat, err := cl.ListCatalog(ctx, s.Config.ParentJob); err == nil {
-					names, missing = catalog.NamesOf(c.Jobs, cat, s.Config.ParentJob), catalog.MissingOf(c.Jobs, cat)
-				}
-			}
-			return entry.Start{Screen: func() core.Screen {
-				return openMonitor(s)(c.Name, slices.Clone(c.Jobs), missing, names)
-			}}
+			scr, notice := resolveCollection(s, name)
+			return entry.Start{Screen: scr, Notice: notice}
 		}
 	}
 
 	return entry.Deps{
 		ConfigDir:      dir,
 		OpenCollection: openByName,
+		Overview: func(s *core.Session) core.Screen {
+			return overview.New(overview.Deps{
+				Client: client(s),
+				Load: func() ([]overview.Collection, error) {
+					cs, err := config.LoadCollections(collectionsPath)
+					if err != nil {
+						return nil, err
+					}
+					out := make([]overview.Collection, len(cs.Items))
+					for i, c := range cs.Items {
+						out[i] = overview.Collection{Name: c.Name, Jobs: c.Jobs}
+					}
+					return out, nil
+				},
+				Open: func(name string) tea.Cmd {
+					return func() tea.Msg {
+						scr, notice := resolveCollection(s, name)
+						return overview.Opened{Screen: scr, Notice: notice}
+					}
+				},
+			})
+		},
 		Catalog: func(s *core.Session) core.Screen {
 			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s)))
 		},

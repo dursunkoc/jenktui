@@ -315,8 +315,13 @@ func TestMenuNavigation(t *testing.T) {
 	if runCmd(cmd).(core.Push).Screen != core.Screen(custom) {
 		t.Fatal("injected factory not used")
 	}
-	if len(menuItems) != 3 || menuItems[2] != "Quit" {
+	if len(menuItems) != 4 || menuItems[2] != "Overview" || menuItems[3] != "Quit" {
 		t.Fatalf("menu entries: %v", menuItems)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	_, cmd = enter(m)
+	if p := runCmd(cmd).(core.Push); p.Screen.Title() != "Overview" {
+		t.Fatal("Overview placeholder expected")
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	_, cmd = enter(m)

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -174,4 +175,49 @@ func newRawServer(t *testing.T, body string) string {
 	}))
 	t.Cleanup(ts.Close)
 	return ts.URL
+}
+
+func TestQueuedJobsCountsItemsPerJob(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("team/a")
+	srv.Job("team/b")
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/a", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/a", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/b", Why: "busy"})
+	srv.AddQueueItem(jenkinstest.QueueItem{Job: "team/b", Cancelled: true})
+	c, err := New(Options{BaseURL: srv.URL, Username: srv.User(), Token: srv.Token(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.QueuedJobs(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, map[string]int{"team/a": 2, "team/b": 1}) {
+		t.Fatalf("queued = %v", got)
+	}
+}
+
+func TestFolderColorsListsAFoldersItems(t *testing.T) {
+	srv := jenkinstest.New(t)
+	srv.Job("team/api/build").LastBuild(jenkinstest.Build{Number: 1, Result: "FAILURE", Timestamp: time.Now()})
+	srv.Job("team/api/deploy").LastBuild(jenkinstest.Build{Number: 2, Building: true, Timestamp: time.Now()})
+	srv.Job("top")
+	c, err := New(Options{BaseURL: srv.URL, Username: srv.User(), Token: srv.Token(), HTTPClient: srv.Client()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := c.FolderColors(context.Background(), "team/api")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got["build"] != "red" || !strings.HasSuffix(got["deploy"], "_anime") || len(got) != 2 {
+		t.Fatalf("colors = %v", got)
+	}
+	if root, err := c.FolderColors(context.Background(), ""); err != nil || len(root) == 0 {
+		t.Fatalf("root = %v, %v", root, err)
+	}
+	if _, err := c.FolderColors(context.Background(), "team/nope"); !errors.Is(err, ErrJobNotFound) {
+		t.Fatalf("an unknown folder must be ErrJobNotFound, got %v", err)
+	}
 }

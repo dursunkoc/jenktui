@@ -13,6 +13,9 @@ The configured Jenkins folder or Multibranch Project whose descendants make up t
 A named, ordered group of Jobs curated by the user from the Job Catalog. Builds are triggered from a Collection.
 _Avoid_: list, sublist.
 
+**Overview**
+The screen that lists every Collection with the number of its Jobs whose latest build failed (or is unstable), is running, or is waiting in the queue. It polls on its own while shown and opens a Collection's Run Monitor.
+
 **Trigger**
 Requesting a new build of one or more Jobs, optionally supplying build parameters.
 

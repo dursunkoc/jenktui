@@ -21,6 +21,7 @@
 ## Features
 
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
+- **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
 - **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
 - **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.
@@ -118,7 +119,7 @@ Collections are stored in `~/.config/jenktui/collections.toml` and managed by th
 
 ## Usage
 
-Flow: Splash → Login → Menu (Collections, Job Catalog, Quit).
+Flow: Splash → Login → Menu (Collections, Job Catalog, Overview, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
 - **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
@@ -156,6 +157,7 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
 | Catalog and picker | `b` Branch Filter on/off, `B` edit patterns, `o` open the highlighted job in the browser (Catalog only) |
+| Overview | `↑`/`↓` pick a Collection, `Enter` open its Run Monitor, `R` refresh now, `Esc` back |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
