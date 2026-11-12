@@ -21,7 +21,7 @@
 ## Features
 
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
-- **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, refreshed every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
+- **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
 - **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
 - **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.

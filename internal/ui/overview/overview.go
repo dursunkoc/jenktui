@@ -6,9 +6,9 @@ package overview
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -31,6 +31,12 @@ const (
 // QueuedJobs (as *jenkins.Client does), queued jobs are counted.
 type Client interface {
 	BuildStatus(ctx context.Context, fullName string, number int) (jenkins.Build, error)
+}
+
+// folderColorer reads one folder's job colours in a request (*jenkins.Client
+// has it); without it every job's latest build is read instead.
+type folderColorer interface {
+	FolderColors(ctx context.Context, folder string) (map[string]string, error)
 }
 
 type queueLister interface {
@@ -67,9 +73,9 @@ type Deps struct {
 
 // counts is one Collection's tally.
 type counts struct {
-	name                                string
-	jobs                                int
-	failed, running, queued, unreadable int
+	name                                         string
+	jobs                                         int
+	failed, running, queued, unreadable, missing int
 }
 
 type (
@@ -91,6 +97,7 @@ type screen struct {
 	cursor  int
 	notice  string
 	opening bool // Enter was pressed; a key cancels
+	busy    bool // a cycle for the current gen is in flight
 	w, h    int
 }
 
@@ -127,11 +134,12 @@ func (s *screen) Resume() tea.Cmd { return s.start() }
 // start begins a poll cycle and drops anything from an earlier one.
 func (s *screen) start() tea.Cmd {
 	s.gen++
+	s.busy = true
 	return s.cycle(s.gen)
 }
 
 // pause drops in-flight and scheduled work (the screen is left or covered).
-func (s *screen) pause() { s.gen++ }
+func (s *screen) pause() { s.gen++; s.busy = false }
 
 func (s *screen) cycle(gen int) tea.Cmd {
 	deps := s.deps
@@ -144,64 +152,81 @@ func (s *screen) cycle(gen int) tea.Cmd {
 	}
 }
 
-// tally reads the latest build of every distinct job (a few at a time) and
-// the queue, then counts per Collection.
+// tally reads each distinct folder's job colours in one request, then the
+// queue, and counts per Collection. A folder that cannot be read falls back
+// to the latest build of each of its members. Everything runs one request at
+// a time inside the command.
 func tally(deps Deps, cols []Collection) []counts {
-	var jobs []string
+	folders := map[string][]string{} // folder -> distinct member job names
+	var order []string
 	seen := map[string]bool{}
 	for _, c := range cols {
 		for _, j := range c.Jobs {
-			if !seen[j] {
-				seen[j] = true
-				jobs = append(jobs, j)
+			if seen[j] {
+				continue
+			}
+			seen[j] = true
+			f := folderOf(j)
+			if _, ok := folders[f]; !ok {
+				order = append(order, f)
+			}
+			folders[f] = append(folders[f], j)
+		}
+	}
+	state := map[string]jobState{}
+	fc, hasColors := deps.Client.(folderColorer)
+	for _, f := range order {
+		var colors map[string]string
+		if hasColors {
+			ctx, cancel := context.WithTimeout(context.Background(), deps.Timeout)
+			var err error
+			colors, err = fc.FolderColors(ctx, f)
+			cancel()
+			if err != nil {
+				colors = nil
+			}
+		}
+		for _, j := range folders[f] {
+			if colors != nil {
+				if col, ok := colors[leafOf(j)]; ok {
+					state[j] = stateOfColor(col)
+				} else {
+					state[j] = stMissing
+				}
+				continue
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), deps.Timeout)
+			b, err := deps.Client.BuildStatus(ctx, j, 0)
+			cancel()
+			switch {
+			case err == nil:
+				state[j] = stateOfBuild(b)
+			case errors.Is(err, jenkins.ErrBuildNotFound):
+				state[j] = stNone // never built
+			default:
+				state[j] = stUnreadable
 			}
 		}
 	}
-	builds := make(map[string]jenkins.Build, len(jobs))
-	bad := map[string]bool{}
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, workers)
-	for _, j := range jobs {
-		wg.Add(1)
-		sem <- struct{}{}
-		go func() {
-			defer wg.Done()
-			defer func() { <-sem }()
-			ctx, cancel := context.WithTimeout(context.Background(), deps.Timeout)
-			defer cancel()
-			b, err := deps.Client.BuildStatus(ctx, j, 0)
-			mu.Lock()
-			defer mu.Unlock()
-			switch {
-			case err == nil:
-				builds[j] = b
-			case err == jenkins.ErrBuildNotFound:
-				// never built: nothing to count, not a problem
-			default:
-				bad[j] = true
-			}
-		}()
-	}
-	wg.Wait()
 	var queued map[string]int
 	if q, ok := deps.Client.(queueLister); ok {
 		ctx, cancel := context.WithTimeout(context.Background(), deps.Timeout)
-		defer cancel()
 		queued, _ = q.QueuedJobs(ctx) // a failed read leaves queued uncounted
+		cancel()
 	}
 	out := make([]counts, len(cols))
 	for i, c := range cols {
 		n := counts{name: c.Name, jobs: len(c.Jobs)}
 		for _, j := range c.Jobs {
-			b, ok := builds[j]
-			switch {
-			case bad[j]:
-				n.unreadable++
-			case ok && b.Building:
-				n.running++
-			case ok && (b.Result == "FAILURE" || b.Result == "UNSTABLE"):
+			switch state[j] {
+			case stFailed:
 				n.failed++
+			case stRunning:
+				n.running++
+			case stMissing:
+				n.missing++
+			case stUnreadable:
+				n.unreadable++
 			}
 			if queued[j] > 0 {
 				n.queued++
@@ -211,6 +236,49 @@ func tally(deps Deps, cols []Collection) []counts {
 	}
 	return out
 }
+
+type jobState int
+
+const (
+	stNone jobState = iota
+	stFailed
+	stRunning
+	stMissing
+	stUnreadable
+)
+
+// stateOfColor maps Jenkins' colour hint: red and yellow (unstable) are
+// failed, anything animated is running; blue, aborted, notbuilt and disabled
+// count nowhere.
+func stateOfColor(color string) jobState {
+	switch jenkins.StatusFromColor(color) {
+	case jenkins.JobRunning:
+		return stRunning
+	case jenkins.JobFailed, jenkins.JobUnstable:
+		return stFailed
+	}
+	return stNone
+}
+
+func stateOfBuild(b jenkins.Build) jobState {
+	switch {
+	case b.Building:
+		return stRunning
+	case b.Result == "FAILURE" || b.Result == "UNSTABLE":
+		return stFailed
+	}
+	return stNone
+}
+
+// folderOf is the job's parent folder path ("" for a top-level job).
+func folderOf(job string) string {
+	if i := strings.LastIndex(job, "/"); i >= 0 {
+		return job[:i]
+	}
+	return ""
+}
+
+func leafOf(job string) string { return job[strings.LastIndex(job, "/")+1:] }
 
 func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 	switch m := msg.(type) {
@@ -225,7 +293,7 @@ func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 		if m.gen != s.gen {
 			return s, nil
 		}
-		s.loaded, s.err = true, m.err
+		s.loaded, s.err, s.busy = true, m.err, false
 		if m.err == nil {
 			s.rows = m.rows
 			s.cursor = max(min(s.cursor, len(s.rows)-1), 0)
@@ -258,6 +326,9 @@ func (s *screen) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 	case key.Matches(msg, core.KeyDown):
 		s.cursor = max(min(s.cursor+1, len(s.rows)-1), 0)
 	case key.Matches(msg, keyRefresh):
+		if s.busy {
+			return s, nil // a cycle is already running
+		}
 		return s, s.start()
 	case key.Matches(msg, keyOpen):
 		if s.deps.Open == nil || s.cursor >= len(s.rows) {
@@ -295,6 +366,9 @@ func (s *screen) View() string {
 		}
 		lines = append(lines, ansi.Truncate(line, s.w, "…"))
 	}
+	if s.busy {
+		lines = append(lines, "", s.th.MutedTxt.Render("refreshing…"))
+	}
 	if s.notice != "" {
 		lines = append(lines, "", s.th.WarnTxt.Render(ansi.Truncate(s.notice, s.w, "…")))
 	}
@@ -316,6 +390,9 @@ func (s *screen) summary(r counts) string {
 	}
 	if r.queued > 0 {
 		parts = append(parts, s.th.WarnTxt.Render(fmt.Sprintf("%d queued", r.queued)))
+	}
+	if r.missing > 0 {
+		parts = append(parts, s.th.WarnTxt.Render(fmt.Sprintf("%d missing", r.missing)))
 	}
 	if r.unreadable > 0 {
 		parts = append(parts, s.th.MutedTxt.Render(fmt.Sprintf("%d unreadable", r.unreadable)))

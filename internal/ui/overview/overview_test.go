@@ -46,8 +46,9 @@ type fixture struct {
 	timers []tea.Msg
 }
 
-func newFixture(c *fakeClient, cols []Collection, open func(string) tea.Cmd) *fixture {
-	f := &fixture{c: c}
+func newFixture(c Client, cols []Collection, open func(string) tea.Cmd) *fixture {
+	f := &fixture{}
+	f.c, _ = c.(*fakeClient)
 	f.s = New(Deps{
 		Client: c,
 		Load:   func() ([]Collection, error) { return cols, nil },
@@ -242,5 +243,88 @@ func TestNoCollectionsMessage(t *testing.T) {
 	f.run(f.s.Init())
 	if !strings.Contains(f.view(), "No Collections yet") {
 		t.Fatalf("view:\n%s", f.view())
+	}
+}
+
+type colorClient struct {
+	*fakeClient
+	colors map[string]map[string]string // folder -> name -> colour
+	errs   map[string]error             // folder -> read error
+	calls  []string
+}
+
+func (c *colorClient) FolderColors(_ context.Context, folder string) (map[string]string, error) {
+	c.calls = append(c.calls, folder)
+	if e := c.errs[folder]; e != nil {
+		return nil, e
+	}
+	return c.colors[folder], nil
+}
+
+func TestCountsFromFolderColorsOneRequestPerFolder(t *testing.T) {
+	cc := &colorClient{
+		fakeClient: sampleClient(),
+		colors: map[string]map[string]string{
+			"team/api": {"build": "red", "deploy": "blue_anime", "lint": "yellow", "old": "blue", "off": "disabled", "nb": "notbuilt", "ab": "aborted"},
+			"team/web": {"test": "red_anime"},
+		},
+	}
+	cols := []Collection{
+		{Name: "One", Jobs: []string{"team/api/build", "team/api/deploy", "team/api/lint", "team/api/old", "team/api/off", "team/api/nb", "team/api/ab", "team/api/gone"}},
+		{Name: "Two", Jobs: []string{"team/api/build", "team/web/test"}},
+	}
+	f := newFixture(cc, cols, nil)
+	f.run(f.s.Init())
+	if got := f.s.rows[0]; got.failed != 2 || got.running != 1 || got.missing != 1 {
+		t.Fatalf("One = %+v", got)
+	}
+	if got := f.s.rows[1]; got.failed != 1 || got.running != 1 {
+		t.Fatalf("Two = %+v", got)
+	}
+	if len(cc.calls) != 2 {
+		t.Fatalf("folder reads = %v, want one per distinct folder", cc.calls)
+	}
+	if len(cc.asked) != 0 {
+		t.Fatalf("BuildStatus used although the folders were readable: %v", cc.asked)
+	}
+	if !strings.Contains(f.view(), "1 missing") {
+		t.Fatalf("missing not shown:\n%s", f.view())
+	}
+}
+
+func TestUnreadableFolderFallsBackToBuildStatus(t *testing.T) {
+	cc := &colorClient{fakeClient: sampleClient(), colors: map[string]map[string]string{}, errs: map[string]error{"": errors.New("403")}}
+	f := newFixture(cc, []Collection{{Name: "N", Jobs: []string{"a", "b", "c"}}}, nil)
+	f.run(f.s.Init())
+	if got := f.s.rows[0]; got.failed != 1 || got.running != 1 || got.missing != 0 {
+		t.Fatalf("row = %+v", got)
+	}
+	if len(cc.asked) != 3 {
+		t.Fatalf("fallback reads = %v", cc.asked)
+	}
+}
+
+func TestRefreshIsIgnoredWhileACycleRunsAndShowsRefreshing(t *testing.T) {
+	f := newFixture(sampleClient(), sampleCols, nil)
+	cmd := f.s.Init() // a cycle is in flight
+	if !strings.Contains(f.view(), "Loading") && !f.s.busy {
+		t.Fatal("not busy during the first cycle")
+	}
+	genBefore := f.s.gen
+	if _, c := f.s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}}); c != nil || f.s.gen != genBefore {
+		t.Fatal("R started a second cycle")
+	}
+	f.run(cmd)
+	// loaded; a new cycle shows "refreshing…" and R is ignored again
+	_, c2 := f.s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}})
+	if c2 == nil || !strings.Contains(f.view(), "refreshing…") {
+		t.Fatalf("no refresh started or no notice:\n%s", f.view())
+	}
+	if _, c := f.s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'R'}}); c != nil {
+		t.Fatal("R piled up a cycle")
+	}
+	f.run(c2)
+	if strings.Contains(f.view(), "refreshing…") {
+		t.Fatal("refreshing stays after the result")
 	}
 }

@@ -2,6 +2,7 @@ package jenkins
 
 import (
 	"context"
+	"net/http"
 	"net/url"
 )
 
@@ -17,7 +18,7 @@ func (c *Client) QueuedJobs(ctx context.Context) (map[string]int, error) {
 		} `json:"items"`
 	}
 	const tree = "items[task[fullName]]"
-	if _, err := c.do(ctx, "GET", "/queue/api/json?tree="+url.QueryEscape(tree), &r); err != nil {
+	if _, err := c.do(ctx, http.MethodGet, "/queue/api/json?tree="+url.QueryEscape(tree), &r); err != nil {
 		return nil, err
 	}
 	out := map[string]int{}

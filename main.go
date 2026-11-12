@@ -178,9 +178,6 @@ func newDeps(dir string) entry.Deps {
 		}
 	}
 
-	// openByName finds the Collection (case-insensitive), reads the catalog
-	// off the UI goroutine to flag missing members and name Multibranch
-	// branches, and hands back a closure that builds the monitor on it.
 	// resolveCollection finds the Collection (case-insensitive) and reads the
 	// catalog to flag missing members and name Multibranch branches. It blocks,
 	// so run it in a command; the returned closure builds the monitor and must
