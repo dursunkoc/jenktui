@@ -25,13 +25,16 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/jenkins/jenkinstest` | Fake Jenkins for tests (`httptest`). Models folders, Multibranch, parameters, queue, wfapi stages, crumbs. |
 | `internal/branchfilter` | Pure glob matcher and filter for Multibranch branch names. |
 | `internal/paramsmerge` | Pure logic that finds Common Parameters across jobs and resolves final values per job. |
-| `internal/ui/core` | `Screen` interface, `Router`, theme, keymap, `Loading` spinner. Frozen contract, documented in `docs/ui-contract.md`. |
+| `internal/ui/core` | `Screen` interface, `Router` (with `Ctrl+P` and the optional `Pauser`, `Resumer` and `Busy` interfaces), theme (`ApplyColorEnv` for `NO_COLOR`), keymap, `Loading` spinner. Documented in `docs/ui-contract.md`. |
+| `internal/ui/overview` | Overview from the menu: each Collection's failed, running, queued and missing jobs, counted from folder `color` listings. |
+| `internal/ui/palette` | `Ctrl+P` jump: Collections and jobs, `Enter` opens a Collection's Run Monitor or the catalog filtered to a job. |
+| `internal/sysint` | Opening the browser, copying, desktop notifications and the bell, with injectable runners. |
 | `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. A blank line, the filter row, a blank line and the column titles (Pipeline, Branch, Status) sit above the rows. |
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
 | `internal/ui/collections` | Collections list, opened Collection view, picker. |
 | `internal/ui/params`, `internal/ui/trigger` | Parameter form widgets and the single/multi-job trigger flow. |
-| `internal/ui/monitor` | Per-Collection Run Monitor and its polling. `logview.go` is the console log modal (see the Jenkins facts below). |
+| `internal/ui/monitor` | Per-Collection Run Monitor and its polling. `seams.go` lists the hooks features use; each feature lives in its own file (`actions.go`, `abort.go`, `rerun.go`, `testreport.go`, `notify.go`, `history.go`, `display.go`, `logview.go`, `logsave.go`). |
 
 Screens receive their dependencies through constructors (listers, factories, file paths) and never import each other. `main.go` is the only place that knows the whole graph. Keep it that way: it is what makes each screen testable with a fake.
 
@@ -52,6 +55,7 @@ These were agreed with the user. Change them only if the user asks.
 
 - **Bubble Tea:** all async work is a `tea.Cmd`; no goroutines of our own. Screens that poll or fetch use a generation counter (monitor) or sequence number (collections) and drop stale messages. Spinner ticks stop when nothing is loading, so idle screens do not redraw.
 - **Loading feedback:** blocking `Modal` when a screen has nothing to show yet, header spinner when old data stays visible (`core.Loading`, 500ms minimum visible time). The Run Monitor shows the header spinner only for its first load and for `R`, never for automatic polls.
+- **Covered screens:** the Router delivers replies only to the top screen. A screen covered by a push gets `Pause()` (if a `Pauser`), and `Resume()` when uncovered; a screen in the middle of a one-shot request reports `Busy()` so `Ctrl+P` waits. A covered Run Monitor does not notify.
 - **Run Monitor seams:** `internal/ui/monitor/seams.go` lists the hooks (appliers, flash, detail sections, confirm prompt, overlay, per-feature state) that let features live in their own files; read it before adding one. Feature data keyed by job and build lives in `md`/`ma` state, never on `runState`, and fetches remember the epoch they started in so a reply lost while the monitor was not on top is fetched again.
 - **Keys:** reuse `core.KeyUp/Down/Enter/Back/Filter/Quit`. Screens with many keys implement `core.FullHelper`: `Keys()` returns only the few main ones for the help bar and `FullHelp()` groups all of them for the `?` panel (see `docs/ui-contract.md`). In a list, text typed into the filter box includes spaces; `↓` moves focus to the list and `↑` on the first row returns to the box.
 - **Job names** are shown relative to the Parent Job, and a Multibranch branch as `project › branch` with the decoded branch name: build them with `catalog.JobName(job, parent)` (a `core.JobName`) or `catalog.Row`. List items keep the full name as `Key` (filtering, selection, saved Collections) and put the project in `Label`, the branch in `Branch`; the list draws name, branch and badge as aligned columns sized to all its items, with the folders in the name column separated by a muted " › ". In e2e tests a job path such as `team/api/build` also matches that list form (helper `has`), so one expectation works on lists and on the Run Monitor and trigger screens, which print the path. The Run Monitor gets the names through `monitor.SetNames` and the trigger screen through `trigger.Deps.Names`; a job they have no name for is shown with `core.RelName`.

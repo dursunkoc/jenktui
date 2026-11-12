@@ -31,7 +31,6 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 ## Known gaps in v1
 
-- Deleting a Collection leaves its monitor in memory. It is re-synced if a new Collection reuses the name.
 - Run Monitor state lives only for the session; nothing survives a restart.
 - Job keys keep Jenkins' URL-encoded branch names (`app/feature%2Fx`), so a hand-edited `collections.toml` must use that form.
 
@@ -44,11 +43,14 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 ## Tech debt
 
-- [ ] Replies reach only the top screen, so a screen pushed over the Run Monitor (for example a `Ctrl+P` palette, CORE4) would swallow its poll results and fetches without bumping its epoch: `pending` would never reach zero and lost-reply detection would not fire. Bump the monitor's epoch when covering it, or forward its messages. Also, two monitors could in theory accept each other's poll results if `gen`, job and `rev` match.
+- [ ] Screens that load or post without being a `core.Pauser` report `Busy()` so `Ctrl+P` waits; a new screen with an async one-shot request must do the same (see `docs/ui-contract.md`).
+- [ ] Monitor counters use per-monitor ranges (`base << 32`), which assumes a 64-bit `int`; releases build only amd64 and arm64.
+
+- [x] Replies reach only the top screen, so a screen pushed over the Run Monitor (for example a `Ctrl+P` palette, CORE4) would swallow its poll results and fetches without bumping its epoch: `pending` would never reach zero and lost-reply detection would not fire. Bump the monitor's epoch when covering it, or forward its messages. Also, two monitors could in theory accept each other's poll results if `gen`, job and `rev` match.
 - [ ] In the test report overlay `q` does not quit, while in the log view it does; pick one rule.
 
-- [ ] `trigger.go` and `control.go` each have their own POST-with-crumb loop; extract a shared helper (plan: CORE5).
-- [ ] Under a Multibranch `parent_job`, a job the Run Monitor or trigger screen has no name for falls back to `core.RelName` and shows the encoded branch (`feature%2Fx`).
+- [x] `trigger.go` and `control.go` each have their own POST-with-crumb loop; extract a shared helper (plan: CORE5).
+- [x] Under a Multibranch `parent_job`, a job the Run Monitor or trigger screen has no name for falls back to `core.RelName` and shows the encoded branch (`feature%2Fx`).
 
 - [x] The catalog has its own `statusFromColor` with a TODO to use `jenkins.StatusFromColor`. Switch and delete the copy.
 - [x] The list widget's filter box is hand-written. `bubbles/textinput` is now available in `go.mod`, so it could replace it.
@@ -89,9 +91,9 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [x] A short result history per job (`●●●○●`, the last five builds) to spot flaky jobs.
 
 ### 6. Getting around faster
-- [ ] Command palette or fuzzy jump (`Ctrl+P`): type part of a job or Collection name, `Enter` to open it, from any screen.
-- [ ] `jenktui <collection>` opens that Collection's Run Monitor straight after login.
-- [ ] An overview of every Collection's failures and running builds from the main menu (moved from Later).
+- [x] Command palette or fuzzy jump (`Ctrl+P`): type part of a job or Collection name, `Enter` to open it, from any screen.
+- [x] `jenktui <collection>` opens that Collection's Run Monitor straight after login.
+- [x] An overview of every Collection's failures and running builds from the main menu (moved from Later).
 
 ### 7. Log viewer
 - [x] Save the log to a local file (`S`), written to the current directory as `<job>-<n>.log`, with the path shown (moved from Later: "Download logs to local upon request").
@@ -99,7 +101,7 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 
 ### 8. Polish
 - [x] Show the monitor's header spinner only for a manual `R`, not on every automatic poll (see Known gaps).
-- [ ] Respect `NO_COLOR`, and offer a light theme.
+- [x] Respect `NO_COLOR`, and offer a light theme.
 
 ### Needs a decision
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
