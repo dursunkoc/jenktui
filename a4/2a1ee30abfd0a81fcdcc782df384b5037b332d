@@ -1,0 +1,48 @@
+internal/ui/monitor/render.go
+  s_68aed7bbf4c6d1::t_0d8ee199f6e2ef 16-18,63
+internal/ui/monitor/monitor.go
+  s_68aed7bbf4c6d1::t_d2b3bc33f84aa6 131
+  s_68aed7bbf4c6d1::t_0d8ee199f6e2ef 35,129-130,354-356,358,371,447-448,456-460,462-463,471,477
+internal/jenkins/log_test.go
+  s_68aed7bbf4c6d1::t_3cc2a9cce07387 1-35
+docs/ui-contract.md
+  s_68aed7bbf4c6d1::t_f64b694daf5312 94
+e2e_test.go
+  s_68aed7bbf4c6d1::t_f64b694daf5312 1432-1453
+internal/ui/monitor/logview.go
+  s_68aed7bbf4c6d1::t_0d8ee199f6e2ef 1-28,30-122,124-126,133-233
+  s_68aed7bbf4c6d1::t_1d05fd7d3c6894 29,123
+  s_68aed7bbf4c6d1::t_77ac99453a98af 127-132
+GLOSSARY.md
+  s_68aed7bbf4c6d1::t_f64b694daf5312 23
+internal/ui/monitor/monitor_test.go
+  s_68aed7bbf4c6d1::t_3cc2a9cce07387 27-30,66-71,907-1007,1010-1033,1035-1038
+  s_68aed7bbf4c6d1::t_2097b4ba7149ab 1008
+  s_68aed7bbf4c6d1::t_839eed4a69a068 6,20-26,31-32,1034
+  s_68aed7bbf4c6d1::t_77ac99453a98af 1009
+  s_68aed7bbf4c6d1::t_0d8ee199f6e2ef 72-73
+internal/jenkins/jenkinstest/server.go
+  s_68aed7bbf4c6d1::t_004d6ad2c58258 130,358-374,533-545
+README.md
+  s_68aed7bbf4c6d1::t_f64b694daf5312 57,87,95
+docs/HANDOFF.md
+  s_68aed7bbf4c6d1::t_f64b694daf5312 48,64
+internal/jenkins/log.go
+  s_68aed7bbf4c6d1::t_004d6ad2c58258 1-54
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "a42a1ee30abfd0a81fcdcc782df384b5037b332d",
+  "prompts": {},
+  "sessions": {
+    "s_68aed7bbf4c6d1": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "dd7a7427-3fa0-4130-bb56-d74a07ea3ea0",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
