@@ -12,7 +12,7 @@ import (
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
 
-func TestBuildStatusContext(t *testing.T) {
+func TestBuildStatusAndContext(t *testing.T) {
 	s := jenkinstest.New(t)
 	s.Job("rich").LastBuild(jenkinstest.Build{
 		Number: 7, Result: "SUCCESS", Duration: time.Minute, EstimatedDuration: 2 * time.Minute,
@@ -42,20 +42,24 @@ func TestBuildStatusContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.EstimatedDuration != 2*time.Minute || b.Duration != time.Minute {
-		t.Fatalf("durations %v %v", b.EstimatedDuration, b.Duration)
+	if b.EstimatedDuration != 2*time.Minute || b.Duration != time.Minute || b.Number != 7 {
+		t.Fatalf("status %+v", b)
+	}
+	bc, err := c.BuildContext(ctx, "rich", 0)
+	if err != nil {
+		t.Fatal(err)
 	}
 	wantCauses := []Cause{{"Started by user Ada", "Ada Lovelace"}, {"Started by user bob", "bob"}, {"Started by timer", ""}}
-	if !reflect.DeepEqual(b.Causes, wantCauses) {
-		t.Fatalf("causes %+v", b.Causes)
+	if !reflect.DeepEqual(bc.Causes, wantCauses) {
+		t.Fatalf("causes %+v", bc.Causes)
 	}
 	wantChanges := []Change{{"abc123", "Ada", "fix it"}, {"def456", "Bob", "more"}}
-	if !reflect.DeepEqual(b.Changes, wantChanges) {
-		t.Fatalf("changes %+v", b.Changes)
+	if !reflect.DeepEqual(bc.Changes, wantChanges) {
+		t.Fatalf("changes %+v", bc.Changes)
 	}
 	wantParams := []BuildParam{{"BRANCH", "main", false}, {"DRY", "true", false}, {"FAST", "false", false}, {"SECRET", "", true}, {"EMPTY", "", false}}
-	if !reflect.DeepEqual(b.Params, wantParams) {
-		t.Fatalf("params %+v", b.Params)
+	if !reflect.DeepEqual(bc.Params, wantParams) {
+		t.Fatalf("params %+v", bc.Params)
 	}
 
 	// Running build: result null, nothing else known.
@@ -66,41 +70,68 @@ func TestBuildStatusContext(t *testing.T) {
 	if !b.Building || b.Result != "" || b.EstimatedDuration != 0 {
 		t.Fatalf("running %+v", b)
 	}
+	if bc, err = c.BuildContext(ctx, "running", 0); err != nil || len(bc.Causes) != 0 {
+		t.Fatalf("running context %+v %v", bc, err)
+	}
 
 	// No causes, changes or params: actions still holds {} and null.
-	b, err = c.BuildStatus(ctx, "plain", 1)
+	bc, err = c.BuildContext(ctx, "plain", 1)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if b.Causes != nil || b.Changes != nil || b.Params != nil || b.EstimatedDuration != 0 {
-		t.Fatalf("plain %+v", b)
+	if bc.Causes != nil || bc.Changes != nil || bc.Params != nil {
+		t.Fatalf("plain %+v", bc)
+	}
+	if _, err = c.BuildContext(ctx, "plain", 99); !errors.Is(err, ErrBuildNotFound) {
+		t.Fatalf("err = %v", err)
 	}
 }
 
-func TestBuildStatusFreestyleChangeSetAndDedup(t *testing.T) {
-	// The fake serves only changeSets, so exercise the freestyle shape with
-	// a hand-written server.
-	srv := newRawServer(t, `{"number":4,"result":"SUCCESS","building":false,"estimatedDuration":-1,
-	  "actions":[null,{},{"causes":[null,{"shortDescription":"x","userId":"u"}]},{"parameters":[null,{"name":"N","value":3}]}],
-	  "changeSets":[null,{"items":[{"commitId":"a","author":{"fullName":"A"},"msg":"m"}]}],
-	  "changeSet":{"items":[{"commitId":"a","author":{"fullName":"A"},"msg":"m"},{"commitId":"b","msg":"n"}]}}`)
-	c, err := New(Options{BaseURL: srv})
+func rawContext(t *testing.T, body string) BuildContext {
+	t.Helper()
+	c, err := New(Options{BaseURL: newRawServer(t, body)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := c.BuildStatus(context.Background(), "j", 4)
+	bc, err := c.BuildContext(context.Background(), "j", 4)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []Change{{"a", "A", "m"}, {"b", "", "n"}}
-	if !reflect.DeepEqual(b.Changes, want) {
-		t.Fatalf("changes %+v", b.Changes)
+	return bc
+}
+
+func TestBuildContextPrefersChangeSets(t *testing.T) {
+	bc := rawContext(t, `{"actions":[null,{},{"causes":[null,{"shortDescription":"x","userId":"u"}]}],
+	  "changeSets":[null,{"items":[{"commitId":"a","author":{"fullName":"A"},"msg":"m\nbody"}]}],
+	  "changeSet":{"items":[{"commitId":"z","msg":"other"}]}}`)
+	if want := []Change{{"a", "A", "m\nbody"}}; !reflect.DeepEqual(bc.Changes, want) {
+		t.Fatalf("changes %+v", bc.Changes)
 	}
-	if len(b.Causes) != 1 || b.Causes[0].User != "u" {
-		t.Fatalf("causes %+v", b.Causes)
+	if len(bc.Causes) != 1 || bc.Causes[0].User != "u" {
+		t.Fatalf("causes %+v", bc.Causes)
 	}
-	if len(b.Params) != 1 || b.Params[0].Value != "3" || b.EstimatedDuration != 0 {
-		t.Fatalf("params %+v est %v", b.Params, b.EstimatedDuration)
+}
+
+func TestBuildContextFreestyleFallback(t *testing.T) {
+	// Pipeline builds serve an empty changeSets; freestyle serves changeSet.
+	bc := rawContext(t, `{"changeSets":[],"changeSet":{"items":[{"commitId":"b","msg":"n"},{"commitId":"b","msg":"n"}]}}`)
+	// Whole-value dedup is gone: two identical items are two changes.
+	if want := []Change{{"b", "", "n"}, {"b", "", "n"}}; !reflect.DeepEqual(bc.Changes, want) {
+		t.Fatalf("changes %+v", bc.Changes)
+	}
+}
+
+func TestBuildContextParamClasses(t *testing.T) {
+	bc := rawContext(t, `{"actions":[null,{"parameters":[
+	  {"_class":"hudson.model.FileParameterValue","name":"F"},
+	  {"_class":"hudson.model.StringParameterValue","name":"S","value":null},
+	  {"_class":"hudson.plugins.git.GitParameterValue","name":"G","value":"v1"},
+	  {"_class":"hudson.model.RunParameterValue","name":"R","value":{"jobName":"x","number":3}},
+	  {"_class":"hudson.model.PasswordParameterValue","name":"P","value":"leaked"},
+	  {"_class":"hudson.model.StringParameterValue","name":"N","value":3}]}]}`)
+	want := []BuildParam{{"F", "", false}, {"S", "", false}, {"G", "v1", false}, {"R", "", false}, {"P", "", true}, {"N", "3", false}}
+	if !reflect.DeepEqual(bc.Params, want) {
+		t.Fatalf("params %+v", bc.Params)
 	}
 }
 

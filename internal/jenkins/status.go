@@ -27,12 +27,13 @@ type Cause struct {
 type Change struct {
 	ID      string
 	Author  string
-	Message string
+	Message string // may be multi-line; consumers show the first line
 }
 
 // BuildParam is a parameter value a build ran with. Booleans are "true" or
-// "false". Jenkins never reveals a password parameter: it has no value, so
-// Password is true and Value is empty.
+// "false". Password is true for a password parameter (detected by its class):
+// Jenkins never reveals it, so Value is empty. Parameters without a plain
+// value (file, run, null) also have an empty Value.
 type BuildParam struct {
 	Name     string
 	Value    string
@@ -48,9 +49,14 @@ type Build struct {
 	Duration          time.Duration
 	EstimatedDuration time.Duration // 0 when Jenkins does not know
 	URL               string
-	Causes            []Cause
-	Changes           []Change
-	Params            []BuildParam // in the order Jenkins lists them
+}
+
+// BuildContext is what started a build and what went into it. It is fetched
+// separately from BuildStatus, which the monitor polls constantly.
+type BuildContext struct {
+	Causes  []Cause
+	Changes []Change
+	Params  []BuildParam // in the order Jenkins lists them
 }
 
 func buildRef(number int) string {
@@ -65,8 +71,10 @@ func buildRef(number int) string {
 const changeSetTree = "items[commitId,author[fullName],msg]"
 
 // buildStatusTree names every field (and sub-field) BuildStatus decodes.
-const buildStatusTree = "number,result,building,timestamp,duration,estimatedDuration,url," +
-	"actions[causes[shortDescription,userId,userName],parameters[name,value]]," +
+const buildStatusTree = "number,result,building,timestamp,duration,estimatedDuration,url"
+
+// buildContextTree names every field BuildContext decodes.
+const buildContextTree = "actions[causes[shortDescription,userId,userName],parameters[_class,name,value]]," +
 	"changeSets[" + changeSetTree + "],changeSet[" + changeSetTree + "]"
 
 type jsonChangeSet struct {
@@ -89,20 +97,6 @@ func (c *Client) BuildStatus(ctx context.Context, fullName string, number int) (
 		Duration          int64   `json:"duration"`
 		EstimatedDuration int64   `json:"estimatedDuration"`
 		URL               string  `json:"url"`
-		// actions mixes entries and holds nulls and {}: every field optional.
-		Actions []*struct {
-			Causes []*struct {
-				ShortDescription string `json:"shortDescription"`
-				UserID           string `json:"userId"`
-				UserName         string `json:"userName"`
-			} `json:"causes"`
-			Parameters []*struct {
-				Name  string `json:"name"`
-				Value any    `json:"value"`
-			} `json:"parameters"`
-		} `json:"actions"`
-		ChangeSets []*jsonChangeSet `json:"changeSets"`
-		ChangeSet  *jsonChangeSet   `json:"changeSet"`
 	}
 	resp, err := c.do(ctx, http.MethodGet, jobPath(fullName)+"/"+buildRef(number)+"/api/json?tree="+url.QueryEscape(buildStatusTree), &r)
 	if err != nil {
@@ -121,6 +115,37 @@ func (c *Client) BuildStatus(ctx context.Context, fullName string, number int) (
 	if r.EstimatedDuration > 0 {
 		b.EstimatedDuration = time.Duration(r.EstimatedDuration) * time.Millisecond
 	}
+	return b, nil
+}
+
+// BuildContext returns the causes, changes and parameters of a build; number 0
+// means the last build.
+func (c *Client) BuildContext(ctx context.Context, fullName string, number int) (BuildContext, error) {
+	var r struct {
+		// actions mixes entries and holds nulls and {}: every field optional.
+		Actions []*struct {
+			Causes []*struct {
+				ShortDescription string `json:"shortDescription"`
+				UserID           string `json:"userId"`
+				UserName         string `json:"userName"`
+			} `json:"causes"`
+			Parameters []*struct {
+				Class string `json:"_class"`
+				Name  string `json:"name"`
+				Value any    `json:"value"`
+			} `json:"parameters"`
+		} `json:"actions"`
+		ChangeSets []*jsonChangeSet `json:"changeSets"`
+		ChangeSet  *jsonChangeSet   `json:"changeSet"`
+	}
+	resp, err := c.do(ctx, http.MethodGet, jobPath(fullName)+"/"+buildRef(number)+"/api/json?tree="+url.QueryEscape(buildContextTree), &r)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return BuildContext{}, ErrBuildNotFound
+		}
+		return BuildContext{}, err
+	}
+	var bc BuildContext
 	for _, a := range r.Actions {
 		if a == nil {
 			continue
@@ -133,47 +158,49 @@ func (c *Client) BuildStatus(ctx context.Context, fullName string, number int) (
 			if user == "" {
 				user = cs.UserID
 			}
-			b.Causes = append(b.Causes, Cause{Text: cs.ShortDescription, User: user})
+			bc.Causes = append(bc.Causes, Cause{Text: cs.ShortDescription, User: user})
 		}
 		for _, p := range a.Parameters {
 			if p == nil {
 				continue
 			}
-			bp := BuildParam{Name: p.Name}
-			switch v := p.Value.(type) {
-			case nil:
-				bp.Password = true
-			case string:
-				bp.Value = v
-			case bool:
-				bp.Value = strconv.FormatBool(v)
-			case float64:
-				bp.Value = strconv.FormatFloat(v, 'f', -1, 64)
-			default:
-				bp.Value = fmt.Sprint(v)
+			bp := BuildParam{Name: p.Name, Password: strings.HasSuffix(p.Class, "PasswordParameterValue")}
+			if !bp.Password {
+				switch v := p.Value.(type) {
+				case string:
+					bp.Value = v
+				case bool:
+					bp.Value = strconv.FormatBool(v)
+				case float64:
+					bp.Value = strconv.FormatFloat(v, 'f', -1, 64)
+				}
 			}
-			b.Params = append(b.Params, bp)
+			bc.Params = append(bc.Params, bp)
 		}
 	}
-	sets := r.ChangeSets
-	sets = append(sets, r.ChangeSet)
-	seen := map[Change]bool{}
-	for _, set := range sets {
-		if set == nil {
-			continue
-		}
-		for _, it := range set.Items {
-			ch := Change{ID: it.CommitID, Message: it.Msg}
-			if it.Author != nil {
-				ch.Author = it.Author.FullName
-			}
-			if !seen[ch] {
-				seen[ch] = true
-				b.Changes = append(b.Changes, ch)
-			}
-		}
+	// changeSets (pipeline, multibranch) wins; freestyle jobs use changeSet.
+	for _, set := range r.ChangeSets {
+		bc.Changes = append(bc.Changes, set.changes()...)
 	}
-	return b, nil
+	if len(bc.Changes) == 0 {
+		bc.Changes = r.ChangeSet.changes()
+	}
+	return bc, nil
+}
+
+func (s *jsonChangeSet) changes() []Change {
+	if s == nil {
+		return nil
+	}
+	var out []Change
+	for _, it := range s.Items {
+		ch := Change{ID: it.CommitID, Message: it.Msg}
+		if it.Author != nil {
+			ch.Author = it.Author.FullName
+		}
+		out = append(out, ch)
+	}
+	return out
 }
 
 // ErrJobNotFound is returned when a job does not exist.
