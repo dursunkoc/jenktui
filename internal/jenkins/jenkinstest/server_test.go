@@ -15,6 +15,9 @@ import (
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
 
+// noRedirect lets tests see the 302 answers of stop and cancelItem.
+var noRedirect = &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+
 func req(t *testing.T, s *jenkinstest.Server, method, path string, hdr map[string]string, body string) *http.Response {
 	t.Helper()
 	r, _ := http.NewRequest(method, s.URL+path, strings.NewReader(body))
@@ -25,7 +28,7 @@ func req(t *testing.T, s *jenkinstest.Server, method, path string, hdr map[strin
 	for k, v := range hdr {
 		r.Header.Set(k, v)
 	}
-	resp, err := http.DefaultClient.Do(r)
+	resp, err := noRedirect.Do(r)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,9 +133,10 @@ func TestBuildFields(t *testing.T) {
 	s := jenkinstest.New(t)
 	s.Job("x").LastBuild(jenkinstest.Build{
 		Number: 5, Result: "SUCCESS", EstimatedDuration: 90 * time.Second,
-		Causes:  []jenkinstest.Cause{{Description: "Started by user Ada", User: "ada"}, {Description: "Started by timer"}},
+		Causes:  []jenkinstest.Cause{{Description: "Started by user Ada", User: "ada", UserName: "Ada L"}, {Description: "Started by timer", Class: jenkinstest.CauseTimer}, {Description: "other"}},
 		Changes: []jenkinstest.Change{{Commit: "abc123", Author: "Ada L", Message: "fix it"}},
-		Params:  []jenkinstest.BuildParam{{Name: "ENV", Value: "prod"}},
+		Params: []jenkinstest.BuildParam{jenkinstest.StringBuildParam("ENV", "prod"), jenkinstest.BoolBuildParam("DRY", true),
+			jenkinstest.PasswordBuildParam("PW"), {Name: "LEGACY", Value: "x"}},
 	})
 	s.Job("y").LastBuild(jenkinstest.Build{Number: 1, Result: "SUCCESS"})
 
@@ -161,20 +165,48 @@ func TestBuildFields(t *testing.T) {
 	if !sawNull || !sawEmpty {
 		t.Fatalf("actions should be mixed, with nulls and empty objects: %v", b["actions"])
 	}
-	if len(causes) != 2 || causes[0].(map[string]any)["userId"] != "ada" || causes[0].(map[string]any)["shortDescription"] != "Started by user Ada" {
+	if len(causes) != 3 || causes[0].(map[string]any)["userId"] != "ada" || causes[0].(map[string]any)["shortDescription"] != "Started by user Ada" {
 		t.Fatalf("causes %v", causes)
 	}
-	if _, has := causes[1].(map[string]any)["userId"]; has {
-		t.Fatalf("a cause with no user has no userId: %v", causes[1])
+	c0, c1, c2 := causes[0].(map[string]any), causes[1].(map[string]any), causes[2].(map[string]any)
+	if c0["_class"] != "hudson.model.Cause$UserIdCause" || c0["userName"] != "Ada L" {
+		t.Fatalf("user cause %v", c0)
 	}
-	if len(params) != 1 || params[0].(map[string]any)["name"] != "ENV" || params[0].(map[string]any)["value"] != "prod" {
+	if c1["_class"] != jenkinstest.CauseTimer || c2["_class"] != "hudson.model.Cause" {
+		t.Fatalf("classes %v %v", c1, c2)
+	}
+	for _, c := range []map[string]any{c1, c2} {
+		if _, has := c["userId"]; has {
+			t.Fatalf("a cause with no user has no userId: %v", c)
+		}
+		if _, has := c["userName"]; has {
+			t.Fatalf("a cause with no user has no userName: %v", c)
+		}
+	}
+	if len(params) != 4 {
 		t.Fatalf("params %v", params)
+	}
+	p := func(i int) map[string]any { return params[i].(map[string]any) }
+	if p(0)["_class"] != "hudson.model.StringParameterValue" || p(0)["name"] != "ENV" || p(0)["value"] != "prod" {
+		t.Fatalf("string param %v", p(0))
+	}
+	if p(1)["_class"] != "hudson.model.BooleanParameterValue" || p(1)["value"] != true {
+		t.Fatalf("bool param %v", p(1))
+	}
+	if _, has := p(2)["value"]; has || p(2)["_class"] != "hudson.model.PasswordParameterValue" {
+		t.Fatalf("password param %v", p(2))
+	}
+	if p(3)["_class"] != "hudson.model.StringParameterValue" || p(3)["value"] != "x" {
+		t.Fatalf("untyped param is a string: %v", p(3))
 	}
 	item := b["changeSets"].([]any)[0].(map[string]any)["items"].([]any)[0].(map[string]any)
 	if item["commitId"] != "abc123" || item["msg"] != "fix it" || item["author"].(map[string]any)["fullName"] != "Ada L" {
 		t.Fatalf("change %v", item)
 	}
 	_, y := getJSON(t, s, "/job/y/1/api/json")
+	if cs, ok := y["changeSets"].([]any); !ok || len(cs) != 0 {
+		t.Fatalf("no changes means no change sets: %v", y["changeSets"])
+	}
 	if y["estimatedDuration"] != float64(-1) {
 		t.Fatalf("no estimate should be -1, got %v", y["estimatedDuration"])
 	}
@@ -224,8 +256,8 @@ func TestStopAndCancel(t *testing.T) {
 	id := s.AddQueueItem(jenkinstest.QueueItem{Job: "x", Why: "waiting"})
 	other := s.AddQueueItem(jenkinstest.QueueItem{Job: "x", Why: "waiting"})
 
-	if r := req(t, s, "POST", "/job/x/2/stop", nil, ""); r.StatusCode != 200 {
-		t.Fatalf("stop %d", r.StatusCode)
+	if r := req(t, s, "POST", "/job/x/2/stop", nil, ""); r.StatusCode != 302 || r.Header.Get("Location") != s.URL+"/job/x/2/" {
+		t.Fatalf("stop %d %q", r.StatusCode, r.Header.Get("Location"))
 	}
 	_, b := getJSON(t, s, "/job/x/2/api/json")
 	if b["result"] != "ABORTED" || b["building"] != false {
@@ -233,6 +265,16 @@ func TestStopAndCancel(t *testing.T) {
 	}
 	if got := s.Stops(); len(got) != 1 || got[0] != (jenkinstest.Stop{Job: "x", Number: 2}) {
 		t.Fatalf("stops %v", got)
+	}
+	// Stopping a finished build is recorded but leaves its result alone.
+	if r := req(t, s, "POST", "/job/x/1/stop", nil, ""); r.StatusCode != 302 {
+		t.Fatalf("stop finished %d", r.StatusCode)
+	}
+	if _, b := getJSON(t, s, "/job/x/1/api/json"); b["result"] != "SUCCESS" {
+		t.Fatalf("finished build changed: %v", b)
+	}
+	if len(s.Stops()) != 2 {
+		t.Fatalf("stops %v", s.Stops())
 	}
 	if r := req(t, s, "POST", "/job/x/9/stop", nil, ""); r.StatusCode != 404 {
 		t.Fatalf("stop missing build: %d", r.StatusCode)
@@ -242,14 +284,23 @@ func TestStopAndCancel(t *testing.T) {
 	}
 
 	path := "/queue/cancelItem?id=" + strconv.Itoa(id)
-	if r := req(t, s, "POST", path, nil, ""); r.StatusCode != 200 {
-		t.Fatalf("cancel %d", r.StatusCode)
+	if r := req(t, s, "POST", path, nil, ""); r.StatusCode != 302 || r.Header.Get("Location") == "" {
+		t.Fatalf("cancel %d %q", r.StatusCode, r.Header.Get("Location"))
 	}
 	if got := s.Cancels(); len(got) != 1 || got[0] != id {
 		t.Fatalf("cancels %v", got)
 	}
-	if r := req(t, s, "GET", "/queue/item/"+strconv.Itoa(id)+"/api/json", nil, ""); r.StatusCode != 404 {
-		t.Fatalf("cancelled item still there: %d", r.StatusCode)
+	// The item stays and answers as a cancelled LeftItem, but leaves the queue list.
+	code, it := getJSON(t, s, "/queue/item/"+strconv.Itoa(id)+"/api/json")
+	if code != 200 || it["cancelled"] != true || it["_class"] != "hudson.model.Queue$LeftItem" {
+		t.Fatalf("cancelled item: %d %v", code, it)
+	}
+	_, ql := getJSON(t, s, "/queue/api/json")
+	if items := ql["items"].([]any); len(items) != 1 || items[0].(map[string]any)["id"] != float64(other) {
+		t.Fatalf("queue list %v", ql)
+	}
+	if _, j := getJSON(t, s, "/job/x/api/json"); j["inQueue"] != true { // the other item is still queued
+		t.Fatalf("inQueue %v", j["inQueue"])
 	}
 	if r := req(t, s, "GET", "/queue/item/"+strconv.Itoa(other)+"/api/json", nil, ""); r.StatusCode != 200 {
 		t.Fatalf("other item gone: %d", r.StatusCode)
@@ -274,7 +325,7 @@ func TestStopAndCancelNeedCrumb(t *testing.T) {
 	}
 	h := map[string]string{jenkinstest.CrumbHeaderName: s.Crumb()}
 	for _, p := range []string{"/job/x/1/stop", cancel} {
-		if r := req(t, s, "POST", p, h, ""); r.StatusCode != 200 {
+		if r := req(t, s, "POST", p, h, ""); r.StatusCode != 302 {
 			t.Fatalf("%s with crumb: %d", p, r.StatusCode)
 		}
 	}
@@ -315,6 +366,31 @@ func TestTreeFilter(t *testing.T) {
 		m := q("name,color")
 		if got := strings.Join(keys(m), ","); got != "_class,color,name" {
 			t.Fatalf("keys %s", got)
+		}
+	})
+	t.Run("a field named without [...] is only a stub", func(t *testing.T) {
+		m := q("lastBuild,builds,name")
+		if got := fmt.Sprint(m["lastBuild"]); got != "map[_class:hudson.model.FreeStyleBuild]" {
+			t.Fatalf("lastBuild %s", got)
+		}
+		for _, b := range m["builds"].([]any) {
+			if got := strings.Join(keys(b.(map[string]any)), ","); got != "_class" {
+				t.Fatalf("build stub keys %s", got)
+			}
+		}
+		if m["name"] != "x" {
+			t.Fatalf("scalars stay whole: %v", m["name"])
+		}
+		w := q("*")
+		if lb := w["lastBuild"].(map[string]any); len(lb) != 1 {
+			t.Fatalf("* must stub objects too: %v", lb)
+		}
+		// Lists of scalars stay whole.
+		s.Job("c").Params(jenkinstest.ChoiceParam("P", "", "a", "b"))
+		_, c := getJSON(t, s, "/job/c/api/json?tree="+url.QueryEscape("property[parameterDefinitions[choices]]"))
+		defs := c["property"].([]any)[0].(map[string]any)["parameterDefinitions"].([]any)[0].(map[string]any)
+		if fmt.Sprint(defs["choices"]) != "[a b]" {
+			t.Fatalf("choices %v", defs)
 		}
 	})
 	t.Run("unknown fields are ignored", func(t *testing.T) {

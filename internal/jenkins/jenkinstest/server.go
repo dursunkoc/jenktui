@@ -101,17 +101,44 @@ type Build struct {
 // Cause is one reason a build started (a CauseAction entry).
 type Cause struct {
 	Description string // shortDescription, e.g. "Started by user Ada"
-	User        string // userId; omitted from the JSON when empty
+	User        string // userId; a cause with a user is a UserIdCause
+	UserName    string // userName; only served together with User
+	Class       string // _class of a cause with no user (CauseTimer, CauseUpstream, ...); empty = generic
 }
+
+// Cause classes for causes without a user.
+const (
+	CauseTimer    = "hudson.triggers.TimerTrigger$TimerTriggerCause"
+	CauseUpstream = "hudson.model.Cause$UpstreamCause"
+	CauseSCM      = "hudson.triggers.SCMTrigger$SCMTriggerCause"
+)
 
 // Change is one commit in a build's change set.
 type Change struct {
 	Commit, Author, Message string
 }
 
-// BuildParam is a parameter value a build ran with.
+// BuildParam is a parameter value a build ran with. Kind is a parameter
+// definition type (TypeString when empty, TypeBoolean, TypePassword); Value is
+// "true" or "false" for a boolean. Passwords are served without a value.
 type BuildParam struct {
 	Name, Value string
+	Kind        string
+}
+
+// StringBuildParam is a string parameter value.
+func StringBuildParam(name, value string) BuildParam {
+	return BuildParam{Name: name, Value: value, Kind: TypeString}
+}
+
+// BoolBuildParam is a boolean parameter value.
+func BoolBuildParam(name string, value bool) BuildParam {
+	return BuildParam{Name: name, Value: strconv.FormatBool(value), Kind: TypeBoolean}
+}
+
+// PasswordBuildParam is a password parameter value; Jenkins never reveals it.
+func PasswordBuildParam(name string) BuildParam {
+	return BuildParam{Name: name, Kind: TypePassword}
 }
 
 // Test case statuses as reported by Jenkins' test result API.
@@ -736,9 +763,35 @@ func applyProp(val any, prop treeProp) any {
 		val = list[lo:max(lo, hi)]
 	}
 	if prop.sub == nil {
-		return val
+		return stub(val)
 	}
 	return filterTree(val, prop.sub)
+}
+
+// stub is what Jenkins returns for a field named without [...]: scalars and
+// lists of scalars whole, an object as just its "_class", a list of objects
+// as a list of such stubs.
+func stub(v any) any {
+	switch x := v.(type) {
+	case map[string]any:
+		out := map[string]any{}
+		if c, ok := x["_class"]; ok {
+			out["_class"] = c
+		}
+		return out
+	case []any:
+		out := make([]any, len(x))
+		for i, e := range x {
+			switch e.(type) {
+			case map[string]any, []any:
+				out[i] = stub(e)
+			default:
+				out[i] = e
+			}
+		}
+		return out
+	}
+	return v
 }
 
 func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
@@ -845,9 +898,12 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			http.NotFound(w, r)
 			return
 		}
-		b.Result, b.Building = "ABORTED", false
+		if b.Building {
+			b.Result, b.Building = "ABORTED", false
+		}
 		s.stops = append(s.stops, Stop{Job: full, Number: b.Number})
-		w.WriteHeader(http.StatusOK)
+		w.Header().Set("Location", fmt.Sprintf("%s%d/", s.itemURL(full), b.Number))
+		w.WriteHeader(http.StatusFound)
 	case len(rest) == 4 && rest[1] == "testReport" && rest[2] == "api" && rest[3] == "json" && r.Method == http.MethodGet:
 		b := n.find(rest[0])
 		if n.folder || b == nil || n.report(b) == nil {
@@ -1003,7 +1059,7 @@ func (s *Server) itemJSON(full string, n *node) map[string]any {
 	m["buildable"] = !n.disabled
 	m["inQueue"] = false
 	for _, q := range s.queue {
-		if q.Job == full && q.Executable == 0 {
+		if q.Job == full && q.Executable == 0 && !q.Cancelled {
 			m["inQueue"] = true
 		}
 	}
@@ -1091,7 +1147,16 @@ func (s *Server) buildJSON(full string, b *Build) map[string]any {
 	if len(b.Params) > 0 {
 		ps := []map[string]any{}
 		for _, p := range b.Params {
-			ps = append(ps, map[string]any{"_class": "hudson.model.StringParameterValue", "name": p.Name, "value": p.Value})
+			pm := map[string]any{"name": p.Name}
+			switch p.Kind {
+			case TypeBoolean:
+				pm["_class"], pm["value"] = "hudson.model.BooleanParameterValue", p.Value == "true"
+			case TypePassword:
+				pm["_class"] = "hudson.model.PasswordParameterValue" // no value
+			default:
+				pm["_class"], pm["value"] = "hudson.model.StringParameterValue", p.Value
+			}
+			ps = append(ps, pm)
 		}
 		actions = append(actions, map[string]any{"_class": "hudson.model.ParametersAction", "parameters": ps})
 	}
@@ -1099,9 +1164,15 @@ func (s *Server) buildJSON(full string, b *Build) map[string]any {
 	if len(b.Causes) > 0 {
 		cs := []map[string]any{}
 		for _, c := range b.Causes {
-			cm := map[string]any{"_class": "hudson.model.Cause$UserIdCause", "shortDescription": c.Description}
+			cm := map[string]any{"_class": "hudson.model.Cause", "shortDescription": c.Description}
+			if c.Class != "" {
+				cm["_class"] = c.Class
+			}
 			if c.User != "" {
-				cm["userId"] = c.User
+				cm["_class"], cm["userId"] = "hudson.model.Cause$UserIdCause", c.User
+				if c.UserName != "" {
+					cm["userName"] = c.UserName
+				}
 			}
 			cs = append(cs, cm)
 		}
@@ -1116,7 +1187,11 @@ func (s *Server) buildJSON(full string, b *Build) map[string]any {
 			"author": map[string]any{"_class": "hudson.model.User", "fullName": c.Author}, "msg": c.Message,
 		})
 	}
-	m["changeSets"] = []map[string]any{{"_class": "hudson.plugins.git.GitChangeSetList", "items": items, "kind": "git"}}
+	changeSets := []map[string]any{}
+	if len(items) > 0 {
+		changeSets = append(changeSets, map[string]any{"_class": "hudson.plugins.git.GitChangeSetList", "items": items, "kind": "git"})
+	}
+	m["changeSets"] = changeSets
 	return m
 }
 
@@ -1134,6 +1209,7 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 		}
 		if q.Cancelled {
 			m["cancelled"] = true
+			m["_class"] = "hudson.model.Queue$LeftItem"
 		}
 		if q.Executable > 0 {
 			m["executable"] = map[string]any{"number": q.Executable, "url": fmt.Sprintf("%s%d/", s.itemURL(q.Job), q.Executable)}
@@ -1148,10 +1224,12 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 			return
 		}
 		for i := range s.queue {
-			if s.queue[i].ID == id {
-				s.queue = append(s.queue[:i], s.queue[i+1:]...)
+			if s.queue[i].ID == id && !s.queue[i].Cancelled && s.queue[i].Executable == 0 {
+				// Like Jenkins, keep the item: it answers as a cancelled LeftItem.
+				s.queue[i].Cancelled = true
 				s.cancels = append(s.cancels, id)
-				w.WriteHeader(http.StatusOK)
+				w.Header().Set("Location", s.URL+"/queue/")
+				w.WriteHeader(http.StatusFound)
 				return
 			}
 		}
@@ -1159,7 +1237,7 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 	case len(segs) == 3 && segs[1] == "api" && segs[2] == "json":
 		items := []map[string]any{}
 		for _, q := range s.queue {
-			if q.Executable == 0 {
+			if q.Executable == 0 && !q.Cancelled {
 				items = append(items, toJSON(q))
 			}
 		}
