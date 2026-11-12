@@ -1,0 +1,23 @@
+internal/jenkins/status.go
+  s_1c16aed3d161c7::t_b4127e0cf714f4 6,20-41,44-53,63-81,85-105,107,121-175,179-213
+internal/jenkins/status_test.go
+  s_1c16aed3d161c7::t_96359c886bf047 1-146
+internal/jenkins/trigger_status_test.go
+  s_1c16aed3d161c7::t_cc7a4e9a2fa464 122,180
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "712ebe2626585aa9886a8b350a3b816651944ea2",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
