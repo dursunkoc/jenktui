@@ -226,7 +226,8 @@ func (s *pickerScreen) Subtitle() string {
 			n++
 		}
 	}
-	head := fmt.Sprintf("%d jobs · %d selected · %s", s.list.Total(), n, s.bp.Status())
+	_, total := s.list.JobCounts()
+	head := fmt.Sprintf("%d jobs · %d selected · %s", total, n, s.bp.Status())
 	if s.bp.Notice() != "" {
 		head += " · " + s.bp.Notice()
 	}
