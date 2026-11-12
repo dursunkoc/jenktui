@@ -182,8 +182,8 @@ func (l *List) visible() []int {
 
 // statusOrder is the order the status filter cycles through.
 var statusOrder = []core.Status{
-	core.StatusFailed, core.StatusRunning, core.StatusQueued,
-	core.StatusSuccess, core.StatusUnknown, core.StatusMissing,
+	core.StatusFailed, core.StatusUnstable, core.StatusRunning, core.StatusQueued,
+	core.StatusSuccess, core.StatusAborted, core.StatusUnknown, core.StatusMissing,
 }
 
 // StatusName is the lower-case name of a status, as shown in the filter row.
@@ -199,6 +199,10 @@ func StatusName(s core.Status) string {
 		return "queued"
 	case core.StatusMissing:
 		return "missing"
+	case core.StatusUnstable:
+		return "unstable"
+	case core.StatusAborted:
+		return "aborted"
 	}
 	return "unknown"
 }

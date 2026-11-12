@@ -518,3 +518,12 @@ func shown(s core.Screen) string {
 	}
 	return s.View()
 }
+
+func TestBadgeUnstableAndAborted(t *testing.T) {
+	for c, want := range map[string]core.Status{"yellow": core.StatusUnstable, "aborted": core.StatusAborted, "red": core.StatusFailed,
+		"yellow_anime": core.StatusRunning, "aborted_anime": core.StatusRunning, "grey": core.StatusUnknown, "disabled": core.StatusUnknown} {
+		if got := badge(c); got != want {
+			t.Errorf("badge(%q) = %v, want %v", c, got, want)
+		}
+	}
+}

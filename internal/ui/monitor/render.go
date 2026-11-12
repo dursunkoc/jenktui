@@ -188,9 +188,9 @@ func (m *model) badge(st runState) string {
 	case "FAILURE":
 		return m.th.Badge(core.StatusFailed)
 	case "UNSTABLE":
-		return lipgloss.NewStyle().Bold(true).Foreground(m.th.Warn).Render("● UNSTABLE")
+		return m.th.Badge(core.StatusUnstable)
 	case "ABORTED":
-		return lipgloss.NewStyle().Bold(true).Foreground(m.th.Muted).Render("● ABORTED")
+		return m.th.Badge(core.StatusAborted)
 	}
 	return lipgloss.NewStyle().Bold(true).Foreground(m.th.Muted).Render("● " + strings.ToUpper(st.result))
 }

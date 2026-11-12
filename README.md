@@ -134,7 +134,7 @@ Press `/` in any list and type. Matching is case-insensitive, anywhere in the jo
 | `_` | exactly one character |
 | `\*` `\_` `\\` | a literal `*`, `_` or `\` |
 
-Press `↓` to move from the filter box into the list (the filter stays applied) and `↑` on the first row to edit the filter again. `s` cycles a status filter (failed, running, queued, success, unknown, missing, off) and combines with the text filter.
+Press `↓` to move from the filter box into the list (the filter stays applied) and `↑` on the first row to edit the filter again. `s` cycles a status filter (failed, unstable, running, queued, success, aborted, unknown, missing, off) and combines with the text filter.
 
 ### Branch Filter
 

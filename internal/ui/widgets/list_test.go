@@ -390,3 +390,29 @@ func TestFolderSeparator(t *testing.T) {
 		t.Errorf("keys must keep their slashes: %v", got)
 	}
 }
+
+func TestStatusFilterUnstableAndAborted(t *testing.T) {
+	l := NewList(core.NewTheme(), Options{})
+	l.SetItems([]Item{
+		{Key: "a/ok", Badge: core.StatusSuccess, ShowBadge: true},
+		{Key: "a/warn", Badge: core.StatusUnstable, ShowBadge: true},
+		{Key: "a/stop", Badge: core.StatusAborted, ShowBadge: true},
+	})
+	var seen []string
+	for i := 0; i < 8; i++ {
+		run(l, "s")
+		seen = append(seen, l.StatusFilter())
+	}
+	idx := func(name string) int {
+		for i, s := range seen {
+			if s == name {
+				return i
+			}
+		}
+		t.Fatalf("status filter never reached %q: %v", name, seen)
+		return -1
+	}
+	if idx("unstable") >= idx("success") || idx("success") >= idx("aborted") {
+		t.Fatalf("unexpected cycle order: %v", seen)
+	}
+}
