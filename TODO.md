@@ -31,10 +31,6 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 ## Known gaps in v1
 
-- If `parent_job` is itself a Multibranch Project, its branches are listed as plain jobs and the Branch Filter does not apply.
-- A job with no job-specific parameters cannot override a Common Parameter, because its per-job step is skipped.
-- The text cursor in parameter forms is solid, not blinking.
-- The catalog's "N of M jobs" count can include a Branch Filter placeholder row while the text filter is active.
 - Deleting a Collection leaves its monitor in memory. It is re-synced if a new Collection reuses the name.
 - Run Monitor state lives only for the session; nothing survives a restart.
 - The Run Monitor's header spinner flashes on every automatic poll (every 3 seconds while builds run). If that distracts, show it only for manual `R`.
@@ -42,17 +38,19 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 
 - The console log has no horizontal scroll: long lines are cut with `…`. It caps at 10,000 lines (numbering keeps counting) and has no `?` help panel, since `?` is typeable in the find prompt.
 - A running build's stage or step log is refetched whole every 3 seconds (the stage endpoint has no byte offset), which is wasteful for very long stages.
-- The README and wiki Windows snippets hardcode a version (`$v = "0.1.4"`) that goes stale after each release.
 - The README screenshots are generated (see HANDOFF) and do not update on their own; regenerate them when a screen changes.
 
 ## Tech debt
 
-- [ ] The catalog has its own `statusFromColor` with a TODO to use `jenkins.StatusFromColor`. Switch and delete the copy.
-- [ ] The list widget's filter box is hand-written. `bubbles/textinput` is now available in `go.mod`, so it could replace it.
-- [ ] `core.Status` has no unstable or aborted values, so the monitor draws its own labels for them. Add them to the shared theme.
-- [ ] `core.Loading`'s tests cannot detect a replayed first spinner tick, because the spinner's public API hides its tag.
-- [ ] The fake Jenkins ignores the `tree=` query, so a mistake in a query would pass the tests. Make the fake honour `tree=`, or add a recorded real response as a fixture.
-- [ ] The trigger tests take about 8 seconds because the harness waits out cursor-blink commands.
+- [ ] `trigger.go` and `control.go` each have their own POST-with-crumb loop; extract a shared helper (plan: CORE5).
+- [ ] Under a Multibranch `parent_job`, a job the Run Monitor or trigger screen has no name for falls back to `core.RelName` and shows the encoded branch (`feature%2Fx`).
+
+- [x] The catalog has its own `statusFromColor` with a TODO to use `jenkins.StatusFromColor`. Switch and delete the copy.
+- [x] The list widget's filter box is hand-written. `bubbles/textinput` is now available in `go.mod`, so it could replace it.
+- [x] `core.Status` has no unstable or aborted values, so the monitor draws its own labels for them. Add them to the shared theme.
+- [x] `core.Loading`'s tests cannot detect a replayed first spinner tick, because the spinner's public API hides its tag.
+- [x] The fake Jenkins ignores the `tree=` query, so a mistake in a query would pass the tests. Make the fake honour `tree=`, or add a recorded real response as a fixture.
+- [x] The trigger tests take about 8 seconds because the harness waits out cursor-blink commands.
 
 ## Decisions you may want written down
 
@@ -80,7 +78,7 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [ ] Abort a running or queued build (`X`, with a confirmation): `POST .../stop` for a build, `/queue/cancelItem?id=` for a queue item. Both need the CSRF crumb.
 
 ### 5. Build context
-- [ ] Add `changeSets` (commit, author, message), `causes` (who or what started it) and `estimatedDuration` to `BuildStatus`'s `tree=`, and name them in the fake.
+- [ ] Client part done: `BuildStatus` has `estimatedDuration`; `BuildContext` returns causes, changes and parameters; `BuildHistory` the last results. Left: the UI below.
 - [ ] Monitor: a progress bar or ETA for running builds ("1m36s / ~4m") and when each build started ("2m ago").
 - [ ] Details view: who started the build and which commits it contains.
 - [ ] A short result history per job (`●●●○●`, the last five builds) to spot flaky jobs.
