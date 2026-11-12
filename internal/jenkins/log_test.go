@@ -8,6 +8,22 @@ import (
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
 )
 
+func TestStageLog(t *testing.T) {
+	s := jenkinstest.New(t)
+	s.Job("pipe").LastBuild(jenkinstest.Build{Number: 3, Result: "FAILURE"}).Pipeline(
+		jenkinstest.Stage{Name: "Build", Status: jenkinstest.StageFailed, Children: []jenkinstest.Stage{
+			{Name: "sh", Status: jenkinstest.StageFailed, Log: "+ make <all>\nerror & stop\n"},
+		}})
+	c := newTestClient(t, s)
+	got, err := c.StageLog(context.Background(), "pipe", 3, "101")
+	if err != nil || got != "[Pipeline] sh\n+ make <all>\nerror & stop\n" {
+		t.Fatalf("step log %q %v", got, err)
+	}
+	if _, err = c.StageLog(context.Background(), "pipe", 3, "999"); !errors.Is(err, ErrNoStages) {
+		t.Fatalf("unknown node: %v", err)
+	}
+}
+
 func TestConsoleText(t *testing.T) {
 	s := jenkinstest.New(t)
 	s.Job("team/app").LastBuild(jenkinstest.Build{Number: 4, Building: true}).Log("one\ntwo\n")

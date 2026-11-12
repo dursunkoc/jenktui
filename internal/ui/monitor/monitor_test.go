@@ -28,8 +28,10 @@ type fakeClient struct {
 	logMore   bool
 	logErr    error
 	logStarts []int64
-	buildN    map[string]int // BuildStatus calls per job
-	stageN    map[string]int // Stages calls per job
+	stageLogs map[string]string // node id -> output
+	stageLogN []string          // node ids asked for
+	buildN    map[string]int    // BuildStatus calls per job
+	stageN    map[string]int    // Stages calls per job
 }
 
 func (f *fakeClient) ResolveQueue(ctx context.Context, r jenkins.QueueRef) (jenkins.QueueStatus, error) {
@@ -69,6 +71,18 @@ func (f *fakeClient) ConsoleText(_ context.Context, _ string, _ int, start int64
 	}
 	f.logStarts = append(f.logStarts, start)
 	return jenkins.LogChunk{Text: f.log[min(int(start), len(f.log)):], Next: int64(len(f.log)), More: f.logMore}, nil
+}
+
+func (f *fakeClient) StageLog(_ context.Context, _ string, _ int, id string) (string, error) {
+	f.stageLogN = append(f.stageLogN, id)
+	if f.logErr != nil {
+		return "", f.logErr
+	}
+	txt, ok := f.stageLogs[id]
+	if !ok {
+		return "", jenkins.ErrNoStages
+	}
+	return txt, nil
 }
 
 var t0 = time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
@@ -915,8 +929,10 @@ func logTail(t *testing.T) (*model, *fakeClient) {
 	return m, c
 }
 
-func pressL(m *model) tea.Cmd {
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'l'}})
+func pressL(m *model) tea.Cmd { return pressKey(m, 'L') }
+
+func pressKey(m *model, r rune) tea.Cmd {
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	return cmd
 }
 
@@ -1202,5 +1218,95 @@ func TestLogLineNumbersSurviveTrimming(t *testing.T) {
 	lv.gotoLine("100", len(lv.lines), 5)
 	if lv.focus != 94 {
 		t.Fatalf("line 100 is index 94, got %d", lv.focus)
+	}
+}
+
+// stagedLog opens the details of a failed build with a parallel-less stage
+// that has two steps, and a plain stage.
+func stagedLog(t *testing.T) (*model, *fakeClient) {
+	t.Helper()
+	m, c := logTail(t)
+	c.stageLogs = map[string]string{"11": "step one out\n", "12": "step two out", "2": "plain stage out\n"}
+	m.runs[1].stages = []jenkins.Stage{
+		{ID: "1", Name: "Build", Status: jenkins.StageFailed, Children: []jenkins.Stage{
+			{ID: "11", Name: "sh one", Status: jenkins.StageSuccess}, {ID: "12", Name: "sh two", Status: jenkins.StageFailed}}},
+		{ID: "2", Name: "Deploy", Status: jenkins.StageNotExecuted},
+	}
+	m.h, m.w = 12, 70
+	return m, c
+}
+
+func TestStageLogOfSelectedStageStepAndWholeBuild(t *testing.T) {
+	m, c := stagedLog(t)
+	// Line 0 is the stage "Build": its steps' output, each under a heading.
+	m.Update(pressKey(m, 'l')())
+	v := ansi.Strip(m.View())
+	for _, want := range []string{"stage Build", "── sh one ──", "step one out", "── sh two ──", "step two out"} {
+		if !strings.Contains(v, want) {
+			t.Fatalf("stage log missing %q:\n%s", want, v)
+		}
+	}
+	if strings.Join(c.stageLogN, ",") != "11,12" || len(c.logStarts) != 0 {
+		t.Fatalf("fetched %v / %v", c.stageLogN, c.logStarts)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// Line 1 is the step "sh two": only its own output, named with its stage.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	v = ansi.Strip(m.View())
+	if !strings.Contains(v, "step sh two (Build)") || !strings.Contains(v, "step two out") || strings.Contains(v, "step one out") {
+		t.Fatalf("step log:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// A stage without steps shows its own node.
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(pressKey(m, 'l')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "plain stage out") {
+		t.Fatalf("plain stage:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// L is always the whole console log.
+	c.log = "whole build\n"
+	m.Update(pressKey(m, 'L')())
+	if v = ansi.Strip(m.View()); !strings.Contains(v, "whole build") || strings.Contains(v, "›") {
+		t.Fatalf("full log:\n%s", v)
+	}
+}
+
+func TestStageLogFallsBackAndReportsErrors(t *testing.T) {
+	// No stages known: l shows the whole build log.
+	c := collClient()
+	m, _, _ := collMonitor(c)
+	m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m.runs[1].stages, m.runs[1].noStages = nil, true
+	c.log = "everything\n"
+	m.Update(pressKey(m, 'l')())
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "everything") {
+		t.Fatalf("no stages => whole log:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	// A node Jenkins does not know is an error and is not retried.
+	m, c = stagedLog(t)
+	c.stageLogs = nil
+	_, next := m.Update(pressKey(m, 'l')())
+	if v := ansi.Strip(m.View()); next != nil || !strings.Contains(v, "error:") {
+		t.Fatalf("unknown node:\n%s", v)
+	}
+}
+
+func TestStageLogRefetchesWhileBuildRuns(t *testing.T) {
+	m, c := stagedLog(t)
+	m.runs[1].phase = phRunning
+	m.Update(pressKey(m, 'l')())
+	if !m.log.more {
+		t.Fatal("a running build keeps polling its stage log")
+	}
+	c.stageLogs["11"] = "step one out\nmore\n"
+	m.Update(logTickMsg{gen: m.logGen})
+	m.Update(m.fetchLog(0)())
+	if got := strings.Join(m.log.lines, "|"); !strings.Contains(got, "more") || strings.Count(got, "step one out") != 1 {
+		t.Fatalf("content is replaced, not appended: %q", got)
 	}
 }

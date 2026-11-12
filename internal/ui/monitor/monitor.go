@@ -33,6 +33,7 @@ type Client interface {
 	BuildStatus(ctx context.Context, fullName string, number int) (jenkins.Build, error)
 	Stages(ctx context.Context, fullName string, number int) ([]jenkins.Stage, error)
 	ConsoleText(ctx context.Context, fullName string, number int, start int64) (jenkins.LogChunk, error)
+	StageLog(ctx context.Context, fullName string, number int, nodeID string) (string, error)
 }
 
 // Deps are the monitor's dependencies. Zero durations get defaults.
@@ -358,7 +359,7 @@ func (m *model) Keys() []key.Binding {
 		return []key.Binding{core.KeyUp, core.KeyDown, keyLogPage, keyLogFind, keyLogNext, keyLogGoto, keyLogEnd, keyLogBack, core.KeyQuit}
 	}
 	if m.details {
-		return []key.Binding{core.KeyUp, core.KeyDown, keyLog,
+		return []key.Binding{core.KeyUp, core.KeyDown, keyLog, keyLogAll,
 			key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "hide details")),
 			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "back to list")),
 			core.KeyQuit}
@@ -463,7 +464,9 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 	}
 	switch {
 	case key.Matches(msg, keyLog) && m.details:
-		return m, m.openLog()
+		return m, m.openLog(m.stageLines() > 0) // the selected stage or step when there are stages
+	case key.Matches(msg, keyLogAll) && m.details:
+		return m, m.openLog(false)
 	case key.Matches(msg, core.KeyBack):
 		if m.details {
 			m.details = false // esc in the details view returns to the runs list

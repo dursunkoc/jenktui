@@ -78,6 +78,7 @@ const (
 
 // Stage is one pipeline stage; Children preserve parallel branches / nested nodes.
 type Stage struct {
+	ID       string // node id; the key of its console output
 	Name     string
 	Status   StageStatus
 	Duration time.Duration
@@ -105,6 +106,7 @@ func normaliseStage(s string) StageStatus {
 }
 
 type wfStage struct {
+	ID       string    `json:"id"`
 	Name     string    `json:"name"`
 	Status   string    `json:"status"`
 	Duration int64     `json:"durationMillis"`
@@ -112,7 +114,7 @@ type wfStage struct {
 }
 
 func (w wfStage) convert() Stage {
-	st := Stage{Name: w.Name, Status: normaliseStage(w.Status), Duration: time.Duration(w.Duration) * time.Millisecond}
+	st := Stage{ID: w.ID, Name: w.Name, Status: normaliseStage(w.Status), Duration: time.Duration(w.Duration) * time.Millisecond}
 	for _, ch := range w.Children {
 		st.Children = append(st.Children, ch.convert())
 	}

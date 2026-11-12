@@ -24,7 +24,8 @@ import (
 const maxLogLines = 10000
 
 var (
-	keyLog     = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "console log"))
+	keyLog     = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "stage log"))
+	keyLogAll  = key.NewBinding(key.WithKeys("L"), key.WithHelp("L", "full log"))
 	keyLogEnd  = key.NewBinding(key.WithKeys("G", "end"), key.WithHelp("G", "follow"))
 	keyLogTop  = key.NewBinding(key.WithKeys("g", "home"), key.WithHelp("g", "top"))
 	keyLogPage = key.NewBinding(key.WithKeys("pgup", "pgdown"), key.WithHelp("pgup/pgdn", "page"))
@@ -53,7 +54,12 @@ const (
 // logView is the console log of one build, opened from the details view and
 // drawn as a bordered modal with line numbers. It follows new output until the
 // user scrolls up, and polls Jenkins while the build is still producing output.
+// logNode is one pipeline node whose output makes up a stage or step log.
+type logNode struct{ id, name string }
+
 type logView struct {
+	nodes   []logNode // non-empty: the log of a stage or step, not the whole build
+	what    string    // "stage Build" / "step sh"; empty for the whole build
 	job     string
 	num     int
 	lines   []string // complete lines
@@ -84,16 +90,49 @@ type (
 	logTickMsg struct{ gen int }
 )
 
-// openLog starts the log view of the selected row's build.
-func (m *model) openLog() tea.Cmd {
+// openLog starts the log view of the selected row's build: the whole console
+// log, or with stage the log of the stage or step highlighted in the details.
+func (m *model) openLog(stage bool) tea.Cmd {
 	i := m.selected()
 	if i < 0 || m.runs[i].num == 0 {
 		return nil
 	}
 	st := m.runs[i]
+	lv := &logView{job: st.run.Job, num: st.num, follow: true, focus: -1}
+	if stage {
+		if lv.what, lv.nodes = m.stageAt(st); len(lv.nodes) == 0 {
+			return nil
+		}
+	}
 	m.logGen++
-	m.log = &logView{job: st.run.Job, num: st.num, follow: true, focus: -1}
+	m.log = lv
 	return m.fetchLog(0)
+}
+
+// stageAt resolves the highlighted details line to the nodes that hold its
+// output: a stage is the concatenation of its steps, a step is itself.
+func (m *model) stageAt(st runState) (string, []logNode) {
+	n := 0
+	for _, s := range st.stages {
+		if n == m.stageCur {
+			if len(s.Children) == 0 {
+				return "stage " + s.Name, []logNode{{s.ID, s.Name}}
+			}
+			var nodes []logNode
+			for _, c := range s.Children {
+				nodes = append(nodes, logNode{c.ID, c.Name})
+			}
+			return "stage " + s.Name, nodes
+		}
+		n++
+		for _, c := range s.Children {
+			if n == m.stageCur {
+				return "step " + c.Name + " (" + s.Name + ")", []logNode{{c.ID, c.Name}}
+			}
+			n++
+		}
+	}
+	return "", nil
 }
 
 func (m *model) closeLog() {
@@ -103,6 +142,27 @@ func (m *model) closeLog() {
 
 func (m *model) fetchLog(start int64) tea.Cmd {
 	client, timeout, gen, job, num := m.deps.Client, m.deps.PollTimeout, m.logGen, m.log.job, m.log.num
+	if nodes := m.log.nodes; len(nodes) > 0 {
+		return func() tea.Msg {
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			defer cancel()
+			var sb strings.Builder
+			for _, n := range nodes {
+				text, err := client.StageLog(ctx, job, num, n.id)
+				if err != nil {
+					return logMsg{gen: gen, start: start, err: err}
+				}
+				if len(nodes) > 1 {
+					fmt.Fprintf(&sb, "── %s ──\n", n.name)
+				}
+				sb.WriteString(text)
+				if !strings.HasSuffix(text, "\n") {
+					sb.WriteString("\n")
+				}
+			}
+			return logMsg{gen: gen, start: start, chunk: jenkins.LogChunk{Text: sb.String()}}
+		}
+	}
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
@@ -125,15 +185,25 @@ func (m *model) updateLog(msg tea.Msg) tea.Cmd {
 		lv.loaded = true
 		if msg.err != nil {
 			lv.err = msg.err
-			if errors.Is(msg.err, jenkins.ErrBuildNotFound) {
+			if errors.Is(msg.err, jenkins.ErrBuildNotFound) || errors.Is(msg.err, jenkins.ErrNoStages) {
 				lv.more = false
 				return nil
 			}
 			return m.logSchedule(m.deps.SlowInterval)
 		}
 		lv.err = nil
-		lv.append(msg.chunk.Text)
-		lv.next, lv.more = msg.chunk.Next, msg.chunk.More
+		if len(lv.nodes) > 0 {
+			// A stage log has no offset: refetch it whole while the build runs.
+			lv.lines, lv.part, lv.dropped = nil, "", 0
+			lv.append(msg.chunk.Text)
+			lv.more = false
+			if i := m.index(lv.job); i >= 0 && m.runs[i].phase == phRunning && m.runs[i].num == lv.num {
+				lv.more = true
+			}
+		} else {
+			lv.append(msg.chunk.Text)
+			lv.next, lv.more = msg.chunk.Next, msg.chunk.More
+		}
 		if lv.more {
 			return m.logSchedule(m.deps.FastInterval)
 		}
@@ -393,7 +463,11 @@ func (m *model) logView() string {
 	if len(all) > 0 {
 		pos = fmt.Sprintf("  lines %d-%d of %d", lv.dropped+first+1, lv.dropped+last, lv.dropped+len(all))
 	}
-	head := m.badge(st) + "  " + m.jobName(lv.job) + fmt.Sprintf(" #%d", lv.num) + "  " + m.th.MutedTxt.Render(state+pos)
+	what := ""
+	if lv.what != "" {
+		what = " › " + lv.what
+	}
+	head := m.badge(st) + "  " + m.jobName(lv.job) + fmt.Sprintf(" #%d", lv.num) + what + "  " + m.th.MutedTxt.Render(state+pos)
 	rows := []string{fit(head, iw)}
 
 	gw := len(strconv.Itoa(lv.dropped + len(all)))

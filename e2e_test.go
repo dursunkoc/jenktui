@@ -1429,6 +1429,36 @@ func TestMonitorOpensHidingSuccessAndToggles(t *testing.T) {
 	h.expect("4 jobs")
 }
 
+// In the details view l shows the log of the highlighted stage or step, L the whole build.
+func TestMonitorStageLog(t *testing.T) {
+	f := mixFixture(t)
+	f.Job("team/api/deploy").Log("whole build output\n").Pipeline(
+		jenkinstest.Stage{Name: "Build", Status: jenkinstest.StageSuccess, Children: []jenkinstest.Stage{
+			{Name: "compile", Status: jenkinstest.StageSuccess, Log: "compiled fine\n"}}},
+		jenkinstest.Stage{Name: "Deploy", Status: jenkinstest.StageFailed, Children: []jenkinstest.Stage{
+			{Name: "sh", Status: jenkinstest.StageFailed, Log: "kubectl: connection refused\n"}}})
+	h := newApp(t, f, withCollections(collectionsTOML("Mix", mixJobs...)))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Mix")
+	h.key("m")
+	h.key("enter")
+	h.expect("team/api/deploy #7", "Build", "Deploy")
+	h.key("down", "down") // Build, compile, Deploy
+	h.key("l")
+	h.expect("stage Deploy", "kubectl: connection refused")
+	h.expectNot("compiled fine", "whole build output")
+	h.key("esc")
+	h.key("up") // compile
+	h.key("l")
+	h.expect("step compile (Build)", "compiled fine")
+	h.expectNot("kubectl")
+	h.key("esc")
+	h.key("L")
+	h.expect("whole build output")
+	h.expectNot("stage ", "compiled fine")
+}
+
 // l in the details view shows the build's console log; esc returns to details.
 func TestMonitorConsoleLog(t *testing.T) {
 	f := mixFixture(t)

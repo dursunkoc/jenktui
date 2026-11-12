@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -96,6 +97,7 @@ type Stage struct {
 	Status   string
 	Duration time.Duration
 	Children []Stage
+	Log      string // console output of this node, served by wfapi/log
 }
 
 // QueueItem is an entry in the build queue.
@@ -543,6 +545,19 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-More-Data", "true")
 		}
 		_, _ = io.WriteString(w, n.log[start:])
+	case len(rest) == 6 && rest[1] == "execution" && rest[2] == "node" && rest[4] == "wfapi" && rest[5] == "log":
+		if !n.pipeline || n.last == nil || (rest[0] != "lastBuild" && rest[0] != strconv.Itoa(n.last.Number)) {
+			http.NotFound(w, r)
+			return
+		}
+		st, ok := findStage(n.stages, rest[3])
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		text := `<span class="pipeline-new-node">[Pipeline] ` + html.EscapeString(st.Name) + `</span>` + "\n" +
+			`<span class="pipeline-node-` + rest[3] + `">` + html.EscapeString(st.Log) + `</span>`
+		writeJSON(w, map[string]any{"nodeId": rest[3], "nodeStatus": st.Status, "length": len(text), "hasMore": false, "text": text})
 	case len(rest) == 2 && rest[0] == "wfapi" && rest[1] == "runs":
 		if !n.pipeline {
 			http.NotFound(w, r)
@@ -769,6 +784,21 @@ func (s *Server) serveQueue(w http.ResponseWriter, r *http.Request, segs []strin
 	default:
 		http.NotFound(w, r)
 	}
+}
+
+// findStage looks up a stage or flow node by the ids stageJSON hands out.
+func findStage(stages []Stage, id string) (Stage, bool) {
+	for i, st := range stages {
+		if strconv.Itoa(i+1) == id {
+			return st, true
+		}
+		for j, c := range st.Children {
+			if strconv.Itoa((i+1)*100+j+1) == id {
+				return c, true
+			}
+		}
+	}
+	return Stage{}, false
 }
 
 func lastSeg(p string) string {

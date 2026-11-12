@@ -3,8 +3,10 @@ package jenkins
 import (
 	"context"
 	"fmt"
+	"html"
 	"io"
 	"net/http"
+	"net/url"
 	"strconv"
 )
 
@@ -51,4 +53,23 @@ func (c *Client) ConsoleText(ctx context.Context, fullName string, number int, s
 		next = n
 	}
 	return LogChunk{Text: string(body), Next: next, More: resp.Header.Get("X-More-Data") == "true"}, nil
+}
+
+// StageLog returns the console output of one pipeline node (a stage's step,
+// by the id of Stage.ID) of a build, from the Pipeline REST API. The API
+// answers HTML, which is reduced to plain text. ErrNoStages is returned when
+// the API does not know the node (404).
+func (c *Client) StageLog(ctx context.Context, fullName string, number int, nodeID string) (string, error) {
+	var r struct {
+		Text string `json:"text"`
+	}
+	path := fmt.Sprintf("%s/%s/execution/node/%s/wfapi/log", jobPath(fullName), buildRef(number), url.PathEscape(nodeID))
+	resp, err := c.do(ctx, http.MethodGet, path, &r)
+	if err != nil {
+		if resp != nil && resp.StatusCode == http.StatusNotFound {
+			return "", ErrNoStages
+		}
+		return "", err
+	}
+	return html.UnescapeString(htmlTag.ReplaceAllString(r.Text, "")), nil
 }
