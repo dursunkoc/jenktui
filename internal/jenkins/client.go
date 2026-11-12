@@ -161,7 +161,6 @@ func (c *Client) Ping(ctx context.Context) (string, error) {
 type Job struct {
 	FullName string // path with Jenkins' own (URL-encoded) branch names, usable with the client
 	Color    string // Jenkins "color" status hint, e.g. "blue", "red", "blue_anime"
-	URL      string // the job's own web URL as Jenkins reports it; empty when unknown
 
 	// Multibranch is the full path of the owning Multibranch Project; empty
 	// for ordinary jobs. Branch is the decoded branch name ("feature/x").
@@ -181,7 +180,6 @@ type jobNode struct {
 	Class string     `json:"_class"`
 	Name  string     `json:"name"`
 	Color string     `json:"color"`
-	URL   string     `json:"url"`
 	Jobs  *[]jobNode `json:"jobs"` // non-nil for folder-like items
 }
 
@@ -204,7 +202,7 @@ func (c *Client) ListCatalog(ctx context.Context, parent string) (Catalog, error
 			Class string    `json:"_class"`
 			Jobs  []jobNode `json:"jobs"`
 		}
-		if _, err := c.do(ctx, http.MethodGet, jobPath(folder)+"/api/json?tree=_class,jobs[_class,name,url,color,jobs[name]]", &resp); err != nil {
+		if _, err := c.do(ctx, http.MethodGet, jobPath(folder)+"/api/json?tree=_class,jobs[_class,name,color,jobs[name]]", &resp); err != nil {
 			return err
 		}
 		// The parent itself may be a Multibranch Project: its children are
@@ -233,9 +231,9 @@ func (c *Client) ListCatalog(ctx context.Context, parent string) (Catalog, error
 				if err != nil {
 					branch = n.Name
 				}
-				cat.Jobs = append(cat.Jobs, Job{FullName: full, Color: n.Color, URL: n.URL, Multibranch: project, Branch: branch})
+				cat.Jobs = append(cat.Jobs, Job{FullName: full, Color: n.Color, Multibranch: project, Branch: branch})
 			default:
-				cat.Jobs = append(cat.Jobs, Job{FullName: full, Color: n.Color, URL: n.URL})
+				cat.Jobs = append(cat.Jobs, Job{FullName: full, Color: n.Color})
 			}
 		}
 		return nil

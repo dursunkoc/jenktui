@@ -567,9 +567,10 @@ func pressOpen(s core.Screen) core.Screen {
 func TestViewOpenKey(t *testing.T) {
 	o := &recOpener{}
 	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{
-		{FullName: "a", Color: "blue", URL: "http://j/job/a/"}, {FullName: "nourl", Color: "blue"}}},
-		config.Collection{Name: "C", Jobs: []string{"a", "nourl", "gone"}})
+		{FullName: "a", Color: "blue"}, {FullName: "b", Color: "blue"}}},
+		config.Collection{Name: "C", Jobs: []string{"a", "b", "gone"}})
 	r.deps.Opener = o
+	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
 	s, navs := send(New(r.deps), "enter")
 	v := open(pushed(t, navs))
 
@@ -578,10 +579,13 @@ func TestViewOpenKey(t *testing.T) {
 		t.Fatalf("opened %v\n%s", o.urls, shown(v))
 	}
 	v, _ = send(v, "down")
-	v = pressOpen(v) // no URL
+	v = pressOpen(v)
+	if len(o.urls) != 2 || o.urls[1] != "http://j/job/b/" {
+		t.Fatalf("opened %v", o.urls)
+	}
 	v, _ = send(v, "down")
 	v = pressOpen(v) // missing member
-	if len(o.urls) != 1 {
+	if len(o.urls) != 2 {
 		t.Fatalf("opened %v", o.urls)
 	}
 	_ = s
@@ -595,7 +599,8 @@ func TestViewOpenKey(t *testing.T) {
 }
 
 func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a", URL: "http://j/"}}}, config.Collection{Name: "C", Jobs: []string{"a"}})
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a"}}}, config.Collection{Name: "C", Jobs: []string{"a"}})
+	r.deps.Opener = &recOpener{} // an opener without JobURL is not enough
 	_, navs := send(New(r.deps), "enter")
 	v := open(pushed(t, navs))
 	if _, cmd := v.Update(kmsg("o")); cmd != nil {
@@ -610,8 +615,9 @@ func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
 
 func TestViewOpenKeyTypesInFilterBox(t *testing.T) {
 	o := &recOpener{}
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "foo", URL: "http://j/job/foo/"}}}, config.Collection{Name: "C", Jobs: []string{"foo"}})
+	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "foo"}}}, config.Collection{Name: "C", Jobs: []string{"foo"}})
 	r.deps.Opener = o
+	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
 	_, navs := send(New(r.deps), "enter")
 	v := open(pushed(t, navs))
 	v, _ = send(v, "/", "o")

@@ -140,9 +140,9 @@ func TestListCatalogMultibranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Job{
-		{FullName: "team/app/feature%2Fx%20y", Color: "red", URL: s.URL + "/job/team/job/app/job/feature%2Fx%20y/", Multibranch: "team/app", Branch: "feature/x y"},
-		{FullName: "team/app/main", Color: "blue", URL: s.URL + "/job/team/job/app/job/main/", Multibranch: "team/app", Branch: "main"},
-		{FullName: "team/plain", Color: "blue", URL: s.URL + "/job/team/job/plain/"},
+		{FullName: "team/app/feature%2Fx%20y", Color: "red", Multibranch: "team/app", Branch: "feature/x y"},
+		{FullName: "team/app/main", Color: "blue", Multibranch: "team/app", Branch: "main"},
+		{FullName: "team/plain", Color: "blue"},
 	}
 	if !reflect.DeepEqual(cat.Jobs, want) {
 		t.Fatalf("jobs:\n got %+v\nwant %+v", cat.Jobs, want)
@@ -173,8 +173,8 @@ func TestListCatalogParentIsMultibranch(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := []Job{
-		{FullName: "team/app/feature%2Fx", Color: "red", URL: s.URL + "/job/team/job/app/job/feature%2Fx/", Multibranch: "team/app", Branch: "feature/x"},
-		{FullName: "team/app/main", Color: "blue", URL: s.URL + "/job/team/job/app/job/main/", Multibranch: "team/app", Branch: "main"},
+		{FullName: "team/app/feature%2Fx", Color: "red", Multibranch: "team/app", Branch: "feature/x"},
+		{FullName: "team/app/main", Color: "blue", Multibranch: "team/app", Branch: "main"},
 	}
 	if !reflect.DeepEqual(cat.Jobs, want) {
 		t.Fatalf("jobs:\n got %+v\nwant %+v", cat.Jobs, want)

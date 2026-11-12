@@ -89,7 +89,7 @@ func (s *viewScreen) Keys() []key.Binding {
 		return s.list.FilterEditKeys()
 	}
 	keys := []key.Binding{keyTrigger, keyMonitor, widgets.KeySelect, core.KeyFilter}
-	if s.deps.Opener != nil {
+	if s.canOpen() {
 		keys = append(keys, catalog.KeyOpen)
 	}
 	return append(keys, core.KeyBack)
@@ -102,7 +102,7 @@ func (s *viewScreen) FullHelp() []core.HelpGroup {
 		return nil
 	}
 	actions := []key.Binding{keyTrigger, keyMonitor, keyEdit, keyRemove, keyRefresh}
-	if s.deps.Opener != nil {
+	if s.canOpen() {
 		actions = append(actions, catalog.KeyOpen)
 	}
 	return []core.HelpGroup{
@@ -189,19 +189,13 @@ func (s *viewScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 			s.rebuild()
 			return nil
 		})})
-	case s.deps.Opener != nil && key.Matches(m, catalog.KeyOpen):
+	case s.canOpen() && key.Matches(m, catalog.KeyOpen):
 		it, ok := s.list.Cursor()
-		u := ""
-		for _, j := range s.cat.Jobs {
-			if ok && j.FullName == it.Key {
-				u = j.URL
-			}
-		}
-		if u == "" {
+		if !ok || it.Missing {
 			return s, nil
 		}
 		s.notice = ""
-		return s, catalog.OpenCmd(s.deps.Opener, u)
+		return s, catalog.OpenCmd(s.deps.Opener, s.deps.JobURL(it.Key))
 	case key.Matches(m, keyTrigger):
 		return s.trigger()
 	case key.Matches(m, keyMonitor):
@@ -311,3 +305,5 @@ func (s *viewScreen) Subtitle() string {
 	}
 	return head
 }
+
+func (s *viewScreen) canOpen() bool { return s.deps.Opener != nil && s.deps.JobURL != nil }

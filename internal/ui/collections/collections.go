@@ -49,6 +49,9 @@ type Deps struct {
 	// Opener opens the highlighted job in the browser (`o` in an opened
 	// Collection). May be nil: the key is then hidden.
 	Opener catalog.Opener
+	// JobURL builds a job's web URL from its full name (the client's JobURL).
+	// `o` needs both Opener and JobURL.
+	JobURL func(fullName string) string
 	// BranchFilter wires the Branch Filter patterns and their persistence into
 	// the picker, exactly as for the Job Catalog.
 	BranchFilter catalog.Settings

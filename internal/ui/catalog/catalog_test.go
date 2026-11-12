@@ -413,10 +413,12 @@ type recOpener struct {
 
 func (r *recOpener) Open(u string) error { r.urls = append(r.urls, u); return r.err }
 
+func testJobURL(n string) string { return "http://j/job/" + n + "/" }
+
 func openScreen(t *testing.T, o Opener, jobs ...jenkins.Job) *Screen {
 	t.Helper()
 	f := &fakeCatalog{cat: jenkins.Catalog{Jobs: jobs, MultibranchProjects: []string{"empty"}}}
-	s := New(f, "", WithOpener(o))
+	s := New(f, "", WithOpener(o), WithJobURL(testJobURL))
 	feed(t, s, s.Init())
 	s.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
 	return s
@@ -432,7 +434,7 @@ func press(s *Screen, k string) {
 
 func TestOpenKeyOpensHighlightedJob(t *testing.T) {
 	o := &recOpener{}
-	s := openScreen(t, o, jenkins.Job{FullName: "a", URL: "http://j/job/a/"}, jenkins.Job{FullName: "b", URL: "http://j/job/b/"})
+	s := openScreen(t, o, jenkins.Job{FullName: "a"}, jenkins.Job{FullName: "b"})
 	press(s, "o")
 	press(s, "down")
 	press(s, "o")
@@ -447,10 +449,9 @@ func TestOpenKeyOpensHighlightedJob(t *testing.T) {
 	}
 }
 
-func TestOpenKeyPlaceholderAndMissingURLDoNothing(t *testing.T) {
+func TestOpenKeyPlaceholderDoesNothing(t *testing.T) {
 	o := &recOpener{}
-	s := openScreen(t, o, jenkins.Job{FullName: "nourl"})
-	press(s, "o") // job without URL
+	s := openScreen(t, o, jenkins.Job{FullName: "plain"})
 	for i := 0; i < 3; i++ {
 		if it, ok := s.list.Cursor(); ok && it.Disabled {
 			break
@@ -468,7 +469,7 @@ func TestOpenKeyPlaceholderAndMissingURLDoNothing(t *testing.T) {
 
 func TestOpenKeyErrorShowsNotice(t *testing.T) {
 	o := &recOpener{err: errors.New("sysint: no display")}
-	s := openScreen(t, o, jenkins.Job{FullName: "a", URL: "http://j/job/a/"})
+	s := openScreen(t, o, jenkins.Job{FullName: "a"})
 	press(s, "o")
 	if v := shown(s); !strings.Contains(v, "could not open: no display") {
 		t.Errorf("no error notice:\n%s", v)
@@ -476,7 +477,7 @@ func TestOpenKeyErrorShowsNotice(t *testing.T) {
 }
 
 func TestOpenKeyHiddenWithoutOpener(t *testing.T) {
-	f := &fakeCatalog{cat: jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a", URL: "http://j/"}}}}
+	f := &fakeCatalog{cat: jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a"}}}}
 	s := New(f, "")
 	feed(t, s, s.Init())
 	if strings.Contains(helpText(s), "open in browser") {
@@ -503,7 +504,7 @@ func helpText(s *Screen) string {
 
 func TestOpenKeyTypesInFilterBox(t *testing.T) {
 	o := &recOpener{}
-	s := openScreen(t, o, jenkins.Job{FullName: "foo", URL: "http://j/job/foo/"})
+	s := openScreen(t, o, jenkins.Job{FullName: "foo"})
 	press(s, "/")
 	press(s, "o")
 	if len(o.urls) != 0 || s.list.Filter() != "o" {

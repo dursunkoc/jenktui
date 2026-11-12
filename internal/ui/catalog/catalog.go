@@ -53,10 +53,19 @@ func OpenNotice(m OpenedMsg) string {
 // KeyOpen opens the highlighted job in the browser.
 var KeyOpen = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser"))
 
-// WithOpener enables `o` (open the highlighted job in the browser).
+// WithOpener enables `o` (open the highlighted job in the browser) together
+// with WithJobURL; without both the key is hidden.
 func WithOpener(o Opener) Option {
 	return func(s *Screen) { s.opener = o }
 }
+
+// WithJobURL says how a job's web URL is built from its full name, e.g.
+// (*jenkins.Client).JobURL (from the configured base URL).
+func WithJobURL(f func(fullName string) string) Option {
+	return func(s *Screen) { s.jobURL = f }
+}
+
+func (s *Screen) canOpen() bool { return s.opener != nil && s.jobURL != nil }
 
 // Option customises New.
 type Option func(*Screen)
@@ -93,7 +102,7 @@ type Screen struct {
 	w, h    int
 
 	opener Opener
-	urls   map[string]string // job key to web URL
+	jobURL func(fullName string) string
 	cat    jenkins.Catalog
 	BranchPanel
 }
@@ -121,12 +130,6 @@ func (s *Screen) rebuild() {
 		rows[i] = Row(it.Job, s.parent, statusFromColor(it.Job.Color))
 	}
 	s.list.SetItems(rows)
-	s.urls = map[string]string{}
-	for _, j := range s.cat.Jobs {
-		if j.URL != "" {
-			s.urls[j.FullName] = j.URL
-		}
-	}
 }
 
 // Selected returns the selected job full paths in list order.
@@ -165,7 +168,7 @@ func (s *Screen) Keys() []key.Binding {
 		return s.list.FilterEditKeys()
 	}
 	keys := []key.Binding{core.KeyFilter, widgets.KeySelect, KeyBranch}
-	if s.opener != nil {
+	if s.canOpen() {
 		keys = append(keys, KeyOpen)
 	}
 	return append(keys, core.KeyBack)
@@ -178,7 +181,7 @@ func (s *Screen) FullHelp() []core.HelpGroup {
 		return nil
 	}
 	general := []key.Binding{core.KeyBack, core.KeyQuit}
-	if s.opener != nil {
+	if s.canOpen() {
 		general = append([]key.Binding{KeyOpen}, general...)
 	}
 	return []core.HelpGroup{
@@ -247,14 +250,13 @@ func (s *Screen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
 	case s.loading || s.err != nil:
 		return s, nil
 	}
-	if s.opener != nil && key.Matches(m, KeyOpen) {
+	if s.canOpen() && key.Matches(m, KeyOpen) {
 		it, ok := s.list.Cursor()
-		u := s.urls[it.Key]
-		if !ok || it.Disabled || u == "" {
+		if !ok || it.Disabled {
 			return s, nil
 		}
 		s.notice = ""
-		return s, OpenCmd(s.opener, u)
+		return s, OpenCmd(s.opener, s.jobURL(it.Key))
 	}
 	if handled, changed := s.HandleKey(m); handled {
 		if changed {

@@ -71,6 +71,15 @@ func newDeps(dir string) entry.Deps {
 		return c
 	}
 
+	// jobURL builds a job's web URL from the configured base URL (never from
+	// the URL Jenkins reports); nil without a real client, hiding `o`.
+	jobURL := func(s *core.Session) func(string) string {
+		if c := client(s); c != nil {
+			return c.JobURL
+		}
+		return nil
+	}
+
 	collectionsPath := filepath.Join(dir, "collections.toml")
 	sys := sysint.New(os.Stdout)
 
@@ -139,7 +148,7 @@ func newDeps(dir string) entry.Deps {
 	return entry.Deps{
 		ConfigDir: dir,
 		Catalog: func(s *core.Session) core.Screen {
-			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys))
+			return catalog.New(s.Client, s.Config.ParentJob, catalog.WithBranchFilter(branchSettings(s)), catalog.WithOpener(sys), catalog.WithJobURL(jobURL(s)))
 		},
 		Collections: func(s *core.Session) core.Screen {
 			return collections.New(collections.Deps{
@@ -150,6 +159,7 @@ func newDeps(dir string) entry.Deps {
 				Monitor:      openMonitor(s),
 				Renamed:      renamed,
 				Opener:       sys,
+				JobURL:       jobURL(s),
 				BranchFilter: branchSettings(s),
 			})
 		},
