@@ -26,10 +26,7 @@ func (m *model) notifyOnFinish(prev, st runState) tea.Cmd {
 	job := st.run.Job
 	seen := m.ma.seen[job]
 	if st.live() {
-		if m.ma.seen == nil {
-			m.ma.seen = map[string]bool{}
-		}
-		m.ma.seen[job] = true
+		m.markSeen(job)
 	}
 	if st.phase != phFinished || !prev.live() || !seen {
 		return nil
@@ -70,4 +67,11 @@ func noticeWord(result string) string {
 		return "FINISHED"
 	}
 	return result
+}
+
+func (m *model) markSeen(job string) {
+	if m.ma.seen == nil {
+		m.ma.seen = map[string]bool{}
+	}
+	m.ma.seen[job] = true
 }

@@ -1,10 +1,13 @@
 package monitor
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/dursunkoc/jenktui/internal/jenkins"
 )
 
 type noteSys struct {
@@ -112,5 +115,37 @@ func TestNotifyRunsInsideACommand(t *testing.T) {
 	msgs(cmd)
 	if len(s.notes) != 1 {
 		t.Fatal("the command notifies")
+	}
+}
+
+func TestNotifyForgetsSeenRowsWhenLeft(t *testing.T) {
+	s := &noteSys{}
+	m := noteModel("failures", s)
+	feed(m, phRunning, "", 1)
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc}) // leaves the monitor
+	if len(m.ma.seen) != 0 {
+		t.Fatal("seen must be cleared")
+	}
+	m.gen++
+	feed(m, phFinished, "FAILURE", 1) // finished while away: no burst on return
+	if len(s.notes) != 0 {
+		t.Fatalf("notes %v", s.notes)
+	}
+}
+
+func TestNotifyTriggeredRunFailingBeforeFirstPoll(t *testing.T) {
+	s := &noteSys{}
+	m := noteModel("failures", s)
+	Add(m, []Run{{Job: "api/deploy", Ref: jenkins.QueueRef{ID: 3}}})
+	feed(m, phFinished, "FAILURE", 8) // the first poll already sees it failed
+	if len(s.notes) != 1 || s.notes[0] != "jenktui|FAILED api/deploy #8" {
+		t.Fatalf("notes %v", s.notes)
+	}
+	// a trigger that failed to start is not watched
+	s2 := &noteSys{}
+	m = noteModel("all", s2)
+	Add(m, []Run{{Job: "api/deploy", Err: errors.New("boom")}})
+	if len(m.ma.seen) != 0 {
+		t.Fatal("failed start is not seen")
 	}
 }
