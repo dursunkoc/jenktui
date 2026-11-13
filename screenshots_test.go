@@ -38,12 +38,35 @@ func shotBuild(n int, result string, ago, d time.Duration) jenkinstest.Build {
 	return jenkinstest.Build{Number: n, Result: result, Timestamp: time.Now().Add(-ago), Duration: d}
 }
 
+// shotHistory builds a job's history: results oldest first, ending with the
+// last build number, each build 30 minutes apart and the newest "ago" old.
+func shotHistory(last int, ago time.Duration, results ...string) []jenkinstest.Build {
+	var bs []jenkinstest.Build
+	for i, r := range results {
+		n := last - len(results) + 1 + i
+		bs = append(bs, shotBuild(n, r, ago+time.Duration(len(results)-1-i)*30*time.Minute, 2*time.Minute))
+	}
+	return bs
+}
+
 func shopFixture(t *testing.T) *jenkinstest.Server {
 	f := jenkinstest.New(t).SetAuth("demo", "demo-token")
 	f.Job("shop/api/build").LastBuild(shotBuild(128, "SUCCESS", 2*time.Hour, 94*time.Second))
-	f.Job("shop/api/unit-tests").LastBuild(shotBuild(412, "SUCCESS", 2*time.Hour, 3*time.Minute+12*time.Second))
-	f.Job("shop/api/deploy").LastBuild(shotBuild(57, "FAILURE", 40*time.Minute, 2*time.Minute+8*time.Second)).
-		Log("Started by user demo\n[Pipeline] stage\n[Pipeline] { (Build)\n+ make build\nok\n[Pipeline] { (Deploy)\n+ docker pull registry.example.com/shop/api:57\n+ kubectl apply -f k8s/\nerror: the server is currently unable to handle the request\nERROR: deploy failed after 3 attempts\nFinished: FAILURE\n").
+	f.Job("shop/api/unit-tests").Builds(shotHistory(412, 2*time.Hour, "SUCCESS", "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS")...)
+	deploy := shotHistory(57, 40*time.Minute, "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "FAILURE")
+	deploy[len(deploy)-1].Duration = 2*time.Minute + 8*time.Second
+	deploy[len(deploy)-1].Causes = []jenkinstest.Cause{{Description: "Started by user Dana Ortiz", User: "dana", UserName: "Dana Ortiz"}}
+	deploy[len(deploy)-1].Changes = []jenkinstest.Change{
+		{Commit: "a1b2c3d4e5f6", Author: "Dana Ortiz", Message: "Retry the rollout on 503"},
+		{Commit: "9f8e7d6c5b4a", Author: "Sam Lee", Message: "Bump api image to 57"},
+	}
+	f.Job("shop/api/deploy").Builds(deploy...).
+		TestReport(jenkinstest.TestReport{Suites: []jenkinstest.TestSuite{{Name: "smoke", Cases: []jenkinstest.TestCase{
+			{ClassName: "smoke.Health", Name: "TestHealthEndpoint", Status: jenkinstest.CasePassed},
+			{ClassName: "smoke.Catalog", Name: "TestListProducts", Status: jenkinstest.CasePassed},
+			{ClassName: "smoke.Cart", Name: "TestCheckoutSmoke", Status: jenkinstest.CaseFailed, ErrorDetails: "expected 200, got 503"},
+		}}}}).
+		Log("Started by user Dana Ortiz\n[Pipeline] stage\n[Pipeline] { (Build)\n+ make build\nok\n[Pipeline] { (Deploy)\n+ docker pull registry.example.com/shop/api:57\n+ kubectl apply -f k8s/\nerror: the server is currently unable to handle the request\nERROR: deploy failed after 3 attempts\nsmoke.Cart.TestCheckoutSmoke FAILED: expected 200, got 503\nFinished: FAILURE\n").
 		Pipeline(
 			jenkinstest.Stage{Name: "Build", Status: jenkinstest.StageSuccess, Duration: 70 * time.Second, Children: []jenkinstest.Stage{
 				{Name: "git checkout", Status: jenkinstest.StageSuccess, Duration: 4 * time.Second, Log: "Cloning https://git.example.com/shop/api.git\nChecked out main (a1b2c3d)\n"},
@@ -57,18 +80,20 @@ func shopFixture(t *testing.T) *jenkinstest.Server {
 				{Name: "kubectl apply", Status: jenkinstest.StageFailed, Duration: 18 * time.Second, Log: "+ kubectl apply -f k8s/\nerror: the server is currently unable to handle the request\nERROR: deploy failed after 3 attempts\n"},
 			}},
 		)
-	f.Job("shop/api/integration").LastBuild(jenkinstest.Build{Number: 301, Building: true, Timestamp: time.Now().Add(-95 * time.Second)}).
+	integ := shotHistory(300, 20*time.Minute, "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "SUCCESS")
+	integ = append(integ, jenkinstest.Build{Number: 301, Building: true, Timestamp: time.Now().Add(-96 * time.Second), EstimatedDuration: 4 * time.Minute})
+	f.Job("shop/api/integration").Builds(integ...).
 		Pipeline(
 			jenkinstest.Stage{Name: "Provision", Status: jenkinstest.StageSuccess, Duration: 20 * time.Second},
 			jenkinstest.Stage{Name: "Run suites", Status: jenkinstest.StageInProgress},
 			jenkinstest.Stage{Name: "Teardown", Status: jenkinstest.StageNotExecuted},
 		)
 	f.Job("shop/web/build").LastBuild(shotBuild(92, "SUCCESS", 3*time.Hour, 2*time.Minute+5*time.Second))
-	f.Job("shop/web/e2e").LastBuild(shotBuild(33, "UNSTABLE", time.Hour, 8*time.Minute+40*time.Second))
+	f.Job("shop/web/e2e").Builds(shotHistory(33, time.Hour, "SUCCESS", "SUCCESS", "UNSTABLE", "SUCCESS", "UNSTABLE")...)
 	f.Job("shop/docs/publish").LastBuild(shotBuild(14, "SUCCESS", 26*time.Hour, 41*time.Second))
 	pay := f.Multibranch("shop/payments")
 	pay.Branch("main").LastBuild(shotBuild(76, "SUCCESS", 5*time.Hour, 4*time.Minute))
-	pay.Branch("feature/refund-flow").LastBuild(shotBuild(9, "FAILURE", 20*time.Minute, 2*time.Minute+30*time.Second))
+	pay.Branch("feature/refund-flow").Builds(shotHistory(9, 20*time.Minute, "FAILURE", "SUCCESS", "FAILURE", "FAILURE")...)
 	pay.Branch("release/2.4").LastBuild(shotBuild(5, "SUCCESS", 2*24*time.Hour, 4*time.Minute+2*time.Second))
 	return f
 }
@@ -86,7 +111,9 @@ func TestScreenshots(t *testing.T) {
 		withConfigExtra(`parent_job = "shop"`),
 		withCollections(collectionsTOML("Release checklist",
 			"shop/api/build", "shop/api/unit-tests", "shop/api/deploy", "shop/api/integration",
-			"shop/web/build", "shop/web/e2e", "shop/payments/main", "shop/payments/feature%2Frefund-flow")))
+			"shop/web/build", "shop/web/e2e", "shop/payments/main", "shop/payments/feature%2Frefund-flow")+
+			collectionsTOML("Docs and web", "shop/docs/publish", "shop/web/build")+
+			collectionsTOML("Payments", "shop/payments/main", "shop/payments/feature%2Frefund-flow")))
 	snap := func(name string, rows int) {
 		t.Helper()
 		h.router.Update(tea.WindowSizeMsg{Width: shotW, Height: rows})
@@ -98,6 +125,14 @@ func TestScreenshots(t *testing.T) {
 	h.router.Update(tea.WindowSizeMsg{Width: shotW, Height: 30})
 	h.loginOK()
 	h.router.Update(tea.WindowSizeMsg{Width: shotW, Height: 30})
+
+	h.menuTo(2)
+	h.expectTitle("Overview")
+	h.expect("Release checklist")
+	snap("overview", 16)
+	h.key("esc")
+	h.expectTitle("jenktui")
+	h.key("up", "up") // back on Collections, where openCatalog expects the cursor
 
 	h.openCatalog()
 	h.expect("shop")
@@ -123,7 +158,7 @@ func TestScreenshots(t *testing.T) {
 	h.key("enter")
 	h.expect("kubectl apply")
 	h.key("down", "down", "down", "down", "down", "down", "down") // kubectl apply
-	snap("details", 16)
+	snap("details", 20)
 
 	h.key("L")
 	h.expect("deploy failed")
