@@ -4,7 +4,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.1.4` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
+`v0.2.0` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
@@ -13,7 +13,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
 - [ ] Run the Windows PowerShell install steps (README, wiki Getting Started) on a Windows machine; they were written without one.
-- [ ] Test `brew install dursunkoc/tap/jenktui` on macOS and, if possible, Linux. The tap now holds a formula (from `v0.1.3`); the cask upgrade to `v0.1.2` worked on the owner's Mac, the formula is untried.
+- [ ] Test `brew install dursunkoc/tap/jenktui` on Linux. On macOS the formula works: `brew upgrade` took the owner's Mac from `0.1.4` to `0.2.0`.
 - [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
 ### Real-Jenkins checklist
@@ -106,7 +106,7 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 ### Before releasing v0.2.0
 - [x] Integration pass (plan I1): README, GLOSSARY, `docs/ui-contract.md` and HANDOFF agree with the code; wiki pages updated; screenshots regenerated, with a new Overview shot.
 - [ ] Real-Jenkins check of the new features (plan O3): matrix and Maven test reports, stop and cancel, commits on freestyle jobs, causes and parameters, the folder colours and queue names the Overview reads, notifications on your desktop, copy over SSH and in tmux.
-- [ ] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing").
+- [x] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing"). Released before the real-Jenkins check above, at the owner's request; the tap formula installed `0.2.0` on the owner's Mac.
 
 ### Needs a decision
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
