@@ -421,7 +421,7 @@ func (h *harness) loginNoMenu() {
 	h.submitLogin(h.fake.User(), h.fake.Token())
 }
 
-// menuTo selects a menu entry (0 Collections, 1 Job Catalog) and opens it.
+// menuTo selects a menu entry (0 Collections, 1 Job Catalog, 2 Overview) and opens it.
 func (h *harness) menuTo(index int) {
 	h.t.Helper()
 	h.expectTitle("jenktui")
