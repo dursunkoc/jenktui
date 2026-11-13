@@ -1,0 +1,27 @@
+GLOSSARY.md
+  s_1c16aed3d161c7::t_a72a80dc76e711 29
+README.md
+  s_1c16aed3d161c7::t_28cc2f0419d0a0 28,46-47,167
+TODO.md
+  s_1c16aed3d161c7::t_2b748b09b4a2cf 40,80
+docs/HANDOFF.md
+  s_1c16aed3d161c7::t_c855eca0b1fb6c 11,77
+docs/ui-contract.md
+  s_1c16aed3d161c7::t_db2e4d8b0441bd 103,113,124-127
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "181a3dc39e93f611f4d95153d494c97810799309",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
