@@ -39,12 +39,15 @@ func shotBuild(n int, result string, ago, d time.Duration) jenkinstest.Build {
 }
 
 // shotHistory builds a job's history: results oldest first, ending with the
-// last build number, each build 30 minutes apart and the newest "ago" old.
-func shotHistory(last int, ago time.Duration, results ...string) []jenkinstest.Build {
+// last build number, each build 30 minutes apart, the newest "ago" old and lastDur long.
+func shotHistory(last int, ago, lastDur time.Duration, results ...string) []jenkinstest.Build {
 	var bs []jenkinstest.Build
 	for i, r := range results {
 		n := last - len(results) + 1 + i
 		bs = append(bs, shotBuild(n, r, ago+time.Duration(len(results)-1-i)*30*time.Minute, 2*time.Minute))
+	}
+	if len(bs) > 0 {
+		bs[len(bs)-1].Duration = lastDur
 	}
 	return bs
 }
@@ -52,9 +55,8 @@ func shotHistory(last int, ago time.Duration, results ...string) []jenkinstest.B
 func shopFixture(t *testing.T) *jenkinstest.Server {
 	f := jenkinstest.New(t).SetAuth("demo", "demo-token")
 	f.Job("shop/api/build").LastBuild(shotBuild(128, "SUCCESS", 2*time.Hour, 94*time.Second))
-	f.Job("shop/api/unit-tests").Builds(shotHistory(412, 2*time.Hour, "SUCCESS", "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS")...)
-	deploy := shotHistory(57, 40*time.Minute, "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "FAILURE")
-	deploy[len(deploy)-1].Duration = 2*time.Minute + 8*time.Second
+	f.Job("shop/api/unit-tests").Builds(shotHistory(412, 2*time.Hour, 3*time.Minute+12*time.Second, "SUCCESS", "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS")...)
+	deploy := shotHistory(57, 40*time.Minute, 2*time.Minute+8*time.Second, "SUCCESS", "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "FAILURE")
 	deploy[len(deploy)-1].Causes = []jenkinstest.Cause{{Description: "Started by user Dana Ortiz", User: "dana", UserName: "Dana Ortiz"}}
 	deploy[len(deploy)-1].Changes = []jenkinstest.Change{
 		{Commit: "a1b2c3d4e5f6", Author: "Dana Ortiz", Message: "Retry the rollout on 503"},
@@ -80,7 +82,7 @@ func shopFixture(t *testing.T) *jenkinstest.Server {
 				{Name: "kubectl apply", Status: jenkinstest.StageFailed, Duration: 18 * time.Second, Log: "+ kubectl apply -f k8s/\nerror: the server is currently unable to handle the request\nERROR: deploy failed after 3 attempts\n"},
 			}},
 		)
-	integ := shotHistory(300, 20*time.Minute, "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "SUCCESS")
+	integ := shotHistory(300, 20*time.Minute, 3*time.Minute+50*time.Second, "SUCCESS", "FAILURE", "SUCCESS", "SUCCESS", "SUCCESS")
 	integ = append(integ, jenkinstest.Build{Number: 301, Building: true, Timestamp: time.Now().Add(-96 * time.Second), EstimatedDuration: 4 * time.Minute})
 	f.Job("shop/api/integration").Builds(integ...).
 		Pipeline(
@@ -89,11 +91,11 @@ func shopFixture(t *testing.T) *jenkinstest.Server {
 			jenkinstest.Stage{Name: "Teardown", Status: jenkinstest.StageNotExecuted},
 		)
 	f.Job("shop/web/build").LastBuild(shotBuild(92, "SUCCESS", 3*time.Hour, 2*time.Minute+5*time.Second))
-	f.Job("shop/web/e2e").Builds(shotHistory(33, time.Hour, "SUCCESS", "SUCCESS", "UNSTABLE", "SUCCESS", "UNSTABLE")...)
+	f.Job("shop/web/e2e").Builds(shotHistory(33, time.Hour, 8*time.Minute+40*time.Second, "SUCCESS", "SUCCESS", "UNSTABLE", "SUCCESS", "UNSTABLE")...)
 	f.Job("shop/docs/publish").LastBuild(shotBuild(14, "SUCCESS", 26*time.Hour, 41*time.Second))
 	pay := f.Multibranch("shop/payments")
 	pay.Branch("main").LastBuild(shotBuild(76, "SUCCESS", 5*time.Hour, 4*time.Minute))
-	pay.Branch("feature/refund-flow").Builds(shotHistory(9, 20*time.Minute, "FAILURE", "SUCCESS", "FAILURE", "FAILURE")...)
+	pay.Branch("feature/refund-flow").Builds(shotHistory(9, 20*time.Minute, 2*time.Minute+30*time.Second, "FAILURE", "SUCCESS", "FAILURE", "FAILURE")...)
 	pay.Branch("release/2.4").LastBuild(shotBuild(5, "SUCCESS", 2*24*time.Hour, 4*time.Minute+2*time.Second))
 	return f
 }
