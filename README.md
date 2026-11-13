@@ -23,10 +23,15 @@
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
 - **Jump** (`Ctrl+P`): from any screen after login, a list of your Collections (`◆`) and every catalog job. Type to filter, `Enter` opens the Collection's Run Monitor, or the Job Catalog filtered to the job; `Esc` clears the filter, then closes it. The screen you came from pauses underneath and picks up again when you close the palette.
 - **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
-- **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions.
+- **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions. `jenktui <collection>` opens that Collection's Run Monitor right after login.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
-- **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left.
-- **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs.
+- **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise; the first load shows a modal and the header spinner only a manual `R`), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left. Running rows show progress against Jenkins' estimate, finished rows when they started, and rows with history the last five results as dots.
+- **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs. Details also show why the build started and its commits.
+- **Why did it fail?** `f` jumps to the next failed job; details open on the first failed stage, and its log opens at the end. Error lines are highlighted in the log, `e`/`E` jump between them, and the test report lists the failed tests with their stack traces.
+- **Log tools**: `w` wraps long lines, `S` saves the log to a file, `y` copies the current line.
+- **Abort and rerun**: `X` aborts a running build or cancels a queued one after a confirmation; `r` reruns a build with its parameters filled in.
+- **Notifications**: the Run Monitor rings the bell and sends a desktop notification when a build it was watching finishes (configurable, see below).
+- **Open and copy**: `o` opens the highlighted job or build in the browser, `y` copies its URL.
 - **Light and dark terminals, and `NO_COLOR`**: colours adapt to the terminal background. With `NO_COLOR=1` no colours are used; bold and reverse video are kept, and statuses always carry a label or a glyph (`✕ ◐ ● ○ ◌`).
 - **Branch Filter**: one global list of globs that limits which Multibranch branches are shown.
 - **Safe by default**: credentials are never stored, and TLS is verified strictly.
@@ -38,7 +43,8 @@ The data in these screenshots is invented (a fake "shop" Jenkins); nothing comes
 | | |
 |---|---|
 | **Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.<br><br><img alt="Job Catalog" src="docs/images/catalog.png"> | **Collection**: a named, ordered group of jobs, ready to trigger or watch.<br><br><img alt="Collection" src="docs/images/collection.png"> |
-| **Build details**: stages and steps. `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.<br><br><img alt="Build details" src="docs/images/details.png"> | **Console log**: line numbers, find with wildcards, go to line, follow while the build runs.<br><br><img alt="Console log" src="docs/images/log.png"> |
+| **Build details**: who started it, commits, test counts, stages and steps. `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.<br><br><img alt="Build details" src="docs/images/details.png"> | **Console log**: line numbers, error lines highlighted, find with wildcards, go to line, follow while the build runs.<br><br><img alt="Console log" src="docs/images/log.png"> |
+| **Overview**: every Collection with its failed, running, queued and missing jobs.<br><br><img alt="Overview" src="docs/images/overview.png"> | |
 
 ## Install
 
@@ -153,12 +159,12 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 
 | Where | Keys |
 |---|---|
-| Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit, `Ctrl+P` jump to a Collection (opens its Run Monitor) or a job (opens the Job Catalog filtered to it) from any screen after login |
+| Everywhere | `↑`/`↓` (or `k`/`j`), `Enter`, `Esc` back, `q` quit, `Ctrl+C` quit, `Ctrl+P` jump to a Collection (opens its Run Monitor) or a job (opens the Job Catalog filtered to it) from any screen after login, except over a screen still waiting for a reply |
 | Help | The bar at the bottom shows the main keys of the screen. Where it ends in `? all keys`, `?` opens a panel with every key, grouped; `Esc` or `?` closes it |
 | Lists | `/` filter, `s` status filter, `Space` select, `a` select all visible, `n` clear selection |
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
 | Catalog and picker | `b` Branch Filter on/off, `B` edit patterns, `o` open the highlighted job in the browser (Catalog only) |
-| Overview | `↑`/`↓` pick a Collection, `Enter` open its Run Monitor, `R` refresh now, `Esc` back |
+| Overview | `↑`/`↓` pick a Collection, `Enter` open its Run Monitor, `R` refresh now, `Esc` back, `q` quit |
 | Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
 | Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
