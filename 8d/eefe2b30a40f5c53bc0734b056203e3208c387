@@ -1,0 +1,19 @@
+screenshots_test.go
+  s_1c16aed3d161c7::t_8a15d4e6eb5d2f 41-51,55-69,83-85,92,96,114-116,129-136,161
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "8deefe2b30a40f5c53bc0734b056203e3208c387",
+  "prompts": {},
+  "sessions": {
+    "s_1c16aed3d161c7": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "f153197b-defc-4c77-bacc-454345ea990d",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
