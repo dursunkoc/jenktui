@@ -37,7 +37,7 @@ Things the fake server cannot prove. If any of these looks wrong on your Jenkins
 - The console log has no horizontal scroll; `w` wraps long lines, but a single line taller than the screen shows only its first screenful. It caps at 10,000 lines (numbering keeps counting; the error count covers the kept lines) and has no `?` help panel, since `?` is typeable in the find prompt.
 - Notifications fire only while that Collection's Run Monitor is the screen on show: the Router delivers replies only to the top screen, so a monitor you left stops polling. Notifying from a monitor not on show needs a Router change.
 - Saving a very large log still reads Jenkins' first response whole into memory; a streaming client method (`ConsoleTo`) would avoid it.
-- `o`/`y` copy over OSC 52 when no clipboard tool is available; some terminals drop large OSC 52 payloads silently, so `y` on a huge line may say "sent to terminal clipboard" and copy nothing.
+- `y` copies over OSC 52 when no clipboard tool is available; some terminals drop large OSC 52 payloads silently, so `y` on a huge line may say "sent to terminal clipboard" and copy nothing.
 - A running build's stage or step log is refetched whole every 3 seconds (the stage endpoint has no byte offset), which is wasteful for very long stages.
 - The README screenshots are generated (see HANDOFF) and do not update on their own; regenerate them when a screen changes.
 
