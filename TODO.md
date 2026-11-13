@@ -103,6 +103,11 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [x] Show the monitor's header spinner only for a manual `R`, not on every automatic poll (see Known gaps).
 - [x] Respect `NO_COLOR`, and offer a light theme.
 
+### Before releasing v0.2.0
+- [x] Integration pass (plan I1): README, GLOSSARY, `docs/ui-contract.md` and HANDOFF agree with the code; wiki pages updated; screenshots regenerated, with a new Overview shot.
+- [ ] Real-Jenkins check of the new features (plan O3): matrix and Maven test reports, stop and cancel, commits on freestyle jobs, causes and parameters, the folder colours and queue names the Overview reads, notifications on your desktop, copy over SSH and in tmux.
+- [ ] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing").
+
 ### Needs a decision
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
 
@@ -112,3 +117,4 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - Credential storage in the OS keychain.
 - A Branch Filter per Multibranch Project instead of one global list.
 - Keep Run Monitor state across restarts.
+- Notify from a Run Monitor that is not on show (needs a Router change; see Known gaps).
