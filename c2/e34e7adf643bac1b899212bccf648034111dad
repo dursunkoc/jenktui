@@ -1,0 +1,22 @@
+TODO.md
+  s_40952eb7451ddc::t_a073ada1abce5d 7,16
+docs/HANDOFF.md
+  s_40952eb7451ddc::t_a073ada1abce5d 11
+  s_40952eb7451ddc::t_e28cec667324bd 12
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "c2e34e7adf643bac1b899212bccf648034111dad",
+  "prompts": {},
+  "sessions": {
+    "s_40952eb7451ddc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3f2cbe-464d-4861-8876-f45a8fbddb08",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
