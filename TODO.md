@@ -12,13 +12,13 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] `install.sh` tested against the real release: latest-release lookup, a pinned version, a strict POSIX shell.
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
-- [ ] Run the Windows PowerShell install steps (README, wiki Getting Started) on a Windows machine; they were written without one.
-- [ ] Test `brew install dursunkoc/tap/jenktui` on Linux. On macOS the formula works: `brew upgrade` took the owner's Mac from `0.1.4` to `0.2.0`, and then to `0.3.0`.
+- [x] Run the Windows PowerShell install steps (README, wiki Getting Started) on a Windows machine; they were written without one.
+- [x] Test `brew install dursunkoc/tap/jenktui` on Linux. On macOS the formula works: `brew upgrade` took the owner's Mac from `0.1.4` to `0.2.0`, and then to `0.3.0`.
 - [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
 ### Real-Jenkins checklist
 
-Things the fake server cannot prove. If any of these looks wrong on your Jenkins, report the exact behaviour and fix the fixtures too.
+Done: the owner ran this whole checklist against their real Jenkins on 2026-11-27, after the `v0.3.0` release. Things the fake server cannot prove. If any of these looks wrong on your Jenkins, report the exact behaviour and fix the fixtures too.
 
 - Login succeeds with a username and API token, and with a username and password (including triggering a build, which needs a CSRF crumb), and a wrong one shows the authentication hint.
 - The Job Catalog lists your folders and Multibranch Projects correctly, and the status badges match each job's last build.
@@ -106,13 +106,13 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 
 ### Before releasing v0.2.0
 - [x] Integration pass (plan I1): README, GLOSSARY, `docs/ui-contract.md` and HANDOFF agree with the code; wiki pages updated; screenshots regenerated, with a new Overview shot.
-- [ ] Real-Jenkins check of the new features (plan O3): matrix and Maven test reports, stop and cancel, commits on freestyle jobs, causes and parameters, the folder colours and queue names the Overview reads, notifications on your desktop, copy over SSH and in tmux.
+- [x] Real-Jenkins check of the new features (plan O3): matrix and Maven test reports, stop and cancel, commits on freestyle jobs, causes and parameters, the folder colours and queue names the Overview reads, notifications on your desktop, copy over SSH and in tmux.
 - [x] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing"). Released before the real-Jenkins check above, at the owner's request; the tap formula installed `0.2.0` on the owner's Mac.
 
 ### Nested Collections
 - [x] Collections nest to any depth (folders hold jobs and sub-folders; a job may be in several). Folder Run Monitor, Trigger and Overview count cover the subtree; `jenktui a/b`, `Ctrl+P` and move/copy/delete-with-counts handle paths. See GLOSSARY "Collection" and `docs/ui-contract.md` "Folders".
 - [x] The Collections screen is one expandable tree (empty-folder creation, folders and jobs together, expand/collapse); spec in `docs/spec-collections-tree.md`.
-- [ ] Real-Jenkins check of a deep tree, and (screenshot regenerated as a tree).
+- [x] Real-Jenkins check of a deep tree; the README screenshot is regenerated as a tree.
 - Known gap: a hand-edited file in the old flat shape keeps working, but a top-level name that contains `/` cannot be addressed from the command line until it is renamed.
 
 ### Needs a decision
