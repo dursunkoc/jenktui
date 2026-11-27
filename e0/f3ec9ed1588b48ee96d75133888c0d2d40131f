@@ -1,0 +1,64 @@
+main.go
+  s_40952eb7451ddc::t_270814a4a3f4b7 110,140,197-200
+TODO.md
+  s_40952eb7451ddc::t_23d8739f073c61 118-120
+  s_40952eb7451ddc::t_39d5f97357eb53 7
+  s_40952eb7451ddc::t_1b94d39bd872cb 134-185
+  s_40952eb7451ddc::t_848866b449d2a9 121,186
+internal/ui/trigger/presets_test.go
+  s_40952eb7451ddc::t_b19599c7f52794 164,246,338-340
+  s_40952eb7451ddc::t_147496baf5ad8e 264,345-346,348,358,375,377,433
+  s_40952eb7451ddc::t_b3b2f0b91e50c7 440
+  s_40952eb7451ddc::t_7e9cd48a8e10a4 1-163,165-245,247-263,265-337,341-344,347,349-357,359-374,376,378-432,434-439,441-496
+docs/spec-presets.md
+  s_40952eb7451ddc::t_5ef4304e075aa4 1-10,12-63,78-165
+  s_40952eb7451ddc::t_f21e2a5cea0462 11,64-77
+docs/plan-presets.md
+  s_40952eb7451ddc::t_62f6efdbc3b345 1-12,15-58,60-71,73-83,85-91,93-113,115-119,121-128,130-134,136-162,164-194,196-209
+  s_40952eb7451ddc::t_f64695d8eb4e6c 13-14,59,72,84,92,114,120,129,135,163,195
+internal/ui/trigger/presets.go
+  s_40952eb7451ddc::t_e90aac5ee487c0 1-296,298,300-301,303,305-431,433-442,444-449
+  s_40952eb7451ddc::t_39c162a5d5aee7 297,299,302,304,432,443
+e2e_presets_test.go
+  s_40952eb7451ddc::t_5067ed2369c2a0 27
+  s_40952eb7451ddc::t_73afedfaf6b998 33
+  s_40952eb7451ddc::t_fdfe1e60f33a13 9
+  s_40952eb7451ddc::t_36ff47541d560a 1-7,10-26,28-32,34-68,92-93
+  s_40952eb7451ddc::t_911456e5447df3 8,69-91
+internal/config/presets.go
+  s_40952eb7451ddc::t_903cada9df47ea 1-150
+docs/HANDOFF.md
+  s_40952eb7451ddc::t_ce093e10b12a1e 24,37,46
+  s_40952eb7451ddc::t_39d5f97357eb53 11-12
+internal/ui/trigger/trigger.go
+  s_40952eb7451ddc::t_7ba754efaed314 17,49-51,70,80-84,116-131,161,176-188,197-200,202-203,215-217,220-224,257-261,306-307,319-346,351,356,359,362,388-394,397,515-524,618-620,631-632,656-657,659-662,664-667,693-695,737-743,818-819,826,828-831,833-841,848
+  s_40952eb7451ddc::t_b19599c7f52794 842-843
+internal/ui/trigger/trigger_test.go
+  s_40952eb7451ddc::t_7e9cd48a8e10a4 96-99
+  s_40952eb7451ddc::t_f7b6d7acff93a2 92-95
+internal/config/presets_test.go
+  s_40952eb7451ddc::t_e989188cf6bd44 1-93,97,103,106-225
+  s_40952eb7451ddc::t_6912cd0ef5c0bf 94-96,98-102,104-105
+docs/ui-contract.md
+  s_40952eb7451ddc::t_ce093e10b12a1e 125-136
+GLOSSARY.md
+  s_40952eb7451ddc::t_cb79a28be40ad7 23-27
+README.md
+  s_40952eb7451ddc::t_9f5aed4e7a2b7a 27,121-122,136,173-174
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "e0f3ec9ed1588b48ee96d75133888c0d2d40131f",
+  "prompts": {},
+  "sessions": {
+    "s_40952eb7451ddc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3f2cbe-464d-4861-8876-f45a8fbddb08",
+        "model": "claude-fable-5-2"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
