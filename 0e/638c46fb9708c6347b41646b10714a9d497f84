@@ -1,0 +1,33 @@
+internal/ui/entry/login.go
+  s_40952eb7451ddc::t_b2f87c51c447fc 117-121
+  s_40952eb7451ddc::t_d49bc8d42d981f 12,34-36,49-50,63-64,66,71-83,96-97,102,110-114,116,122,132-133,135,141-163,201,212-216,240-254,257,262-265
+internal/ui/entry/entry.go
+  s_40952eb7451ddc::t_d49bc8d42d981f 33-35
+internal/ui/entry/entry_test.go
+  s_40952eb7451ddc::t_363c46d642e2f2 474,527,544,549,552,564-565,572,584
+  s_40952eb7451ddc::t_2bd53d21266b5b 460-473,475-526,528-543,545-548,550-551,553-563,566-571,573-583,585-588
+docs/ui-contract.md
+  s_40952eb7451ddc::t_f59dfc3a65fd05 45
+docs/spec-remember-me.md
+  s_40952eb7451ddc::t_6dd7808f3e326c 1-2,4-41,43-61
+  s_40952eb7451ddc::t_82185f97667da8 42
+  s_40952eb7451ddc::t_f59dfc3a65fd05 3
+README.md
+  s_40952eb7451ddc::t_740432ec60c7e0 114,125
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0e638c46fb9708c6347b41646b10714a9d497f84",
+  "prompts": {},
+  "sessions": {
+    "s_40952eb7451ddc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3f2cbe-464d-4861-8876-f45a8fbddb08",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
