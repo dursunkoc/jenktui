@@ -4,7 +4,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.2.0` is the current release (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
+`v0.3.0` is the current release (nested Collections tree, Remember me, terminal notifications) (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
@@ -13,7 +13,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 - [x] Checked against the real Jenkins by the owner, who reports it works. The checklist below was not itemised, so keep using it as a guide for anything that looks off.
 - [x] Homebrew cask published by the `v0.1.1` release; the release job used `HOMEBREW_TAP_TOKEN` successfully, and the cask's checksums match the release files.
 - [ ] Run the Windows PowerShell install steps (README, wiki Getting Started) on a Windows machine; they were written without one.
-- [ ] Test `brew install dursunkoc/tap/jenktui` on Linux. On macOS the formula works: `brew upgrade` took the owner's Mac from `0.1.4` to `0.2.0`.
+- [ ] Test `brew install dursunkoc/tap/jenktui` on Linux. On macOS the formula works: `brew upgrade` took the owner's Mac from `0.1.4` to `0.2.0`, and then to `0.3.0`.
 - [x] End-to-end tests (`e2e_test.go`, 11 scenarios, about 2s) cover the joins between screens through the real wiring in `main.go`. Not covered: the monitor's automatic 3s/30s schedule (timers are dropped in the harness), the spinner animation, and a job deleted from Jenkins between loading and triggering (the fake cannot delete jobs).
 
 ### Real-Jenkins checklist
