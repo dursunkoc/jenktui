@@ -1,0 +1,77 @@
+internal/sysint/notify_test.go
+  s_3d4a4d4fa362bd::t_b45b2fdd09c86d 1-3,5-10,32-34,49,55-60,64-70,72-74
+  s_3d4a4d4fa362bd::t_1a3c2bddcb3e0a 4,11-31,35-48,50-54,61-63,71
+docs/ui-contract.md
+  s_40952eb7451ddc::t_638ae7e1b95bc0 129
+  s_3d4a4d4fa362bd::t_c805a930ed6c96 123
+  s_40952eb7451ddc::t_62609e1f9c61d6 60,127-128
+  s_40952eb7451ddc::t_3b034146ac5f4c 130
+internal/ui/monitor/notify_test.go
+  s_3d4a4d4fa362bd::t_e917afde357150 169,215,237-275
+  s_3d4a4d4fa362bd::t_9e6859a3b24f04 152-168,170-180,182-205,207-214,216-218,220-236,276-277
+  s_3d4a4d4fa362bd::t_84d7f76e0dd0a9 181,206,219
+GLOSSARY.md
+  s_3d4a4d4fa362bd::t_c805a930ed6c96 44
+main.go
+  s_3d4a4d4fa362bd::t_f6bd29a1bde9ce 64
+  s_3d4a4d4fa362bd::t_c1214ebef9090d 72-75,110
+e2e_test.go
+  s_3d4a4d4fa362bd::t_5f81a0b5a86f0f 2115
+  s_3d4a4d4fa362bd::t_8d13ea22366c36 2103-2114,2116-2129
+  s_40952eb7451ddc::t_63e6e79206bb82 2130
+TODO.md
+  s_3d4a4d4fa362bd::t_ee72f6138a2e94 81,118,128-129
+docs/icon/make_icon.py
+  s_3d4a4d4fa362bd::t_b1d906f5d4d62b 1-9,12-19,21-70
+  s_3d4a4d4fa362bd::t_c144dffc01d776 10-11
+  s_3d4a4d4fa362bd::t_daf58472f95534 20
+internal/ui/monitor/monitor.go
+  s_3d4a4d4fa362bd::t_e917afde357150 495-497,642
+  s_3d4a4d4fa362bd::t_f6bd29a1bde9ce 453,494,563-564
+internal/sysint/sysint.go
+  s_3d4a4d4fa362bd::t_bd6a2a5ff7dd39 16,52,77-80,84-93
+  s_3d4a4d4fa362bd::t_c144dffc01d776 50-51
+internal/ui/monitor/notify.go
+  s_3d4a4d4fa362bd::t_e917afde357150 17-21,60,66-73,75-78,87
+  s_3d4a4d4fa362bd::t_375027479b6506 61
+  s_3d4a4d4fa362bd::t_f6bd29a1bde9ce 4,7-8,16,52,57-59,62-65,74,79-86,88-108
+internal/sysint/notify.go
+  s_3d4a4d4fa362bd::t_c144dffc01d776 7,13-29,35-37,39-40,49,64-79,81,84-91,94
+  s_3d4a4d4fa362bd::t_9de652639cdee2 1-6,8-12,30-34,38,41-48,50-63,80,82-83,92-93,95-108
+internal/ui/monitor/actions.go
+  s_3d4a4d4fa362bd::t_e917afde357150 23-24
+  s_3d4a4d4fa362bd::t_f6bd29a1bde9ce 22
+docs/HANDOFF.md
+  s_3d4a4d4fa362bd::t_ee72f6138a2e94 31,53
+README.md
+  s_3d4a4d4fa362bd::t_c805a930ed6c96 123
+  s_3d4a4d4fa362bd::t_ee72f6138a2e94 171
+e2e_helpers_test.go
+  s_3d4a4d4fa362bd::t_80272af66d07ed 26
+  s_3d4a4d4fa362bd::t_c1214ebef9090d 90-99
+  s_40952eb7451ddc::t_da7a61bdc0b25e 100
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.6",
+  "base_commit_sha": "0dfe84d8b684d4be98a9d8d31319533b363aa6e7",
+  "prompts": {},
+  "sessions": {
+    "s_3d4a4d4fa362bd": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "df72e1d0-78ba-4f5c-ab98-c373564975b8",
+        "model": "claude-opus-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    },
+    "s_40952eb7451ddc": {
+      "agent_id": {
+        "tool": "claude",
+        "id": "3c3f2cbe-464d-4861-8876-f45a8fbddb08",
+        "model": "claude-sonnet-5-5"
+      },
+      "human_author": "dursunkoc <dursunkoc@gmail.com>"
+    }
+  }
+}
