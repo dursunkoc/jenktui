@@ -448,16 +448,16 @@ func TestHelpBarAndPanel(t *testing.T) {
 		lines := strings.Split(h.screenText(), "\n")
 		return lines[len(lines)-1]
 	}
-	if got := bar(); !strings.HasPrefix(got, "t trigger") || !strings.HasSuffix(got, "? all keys") || strings.Contains(got, "x remove missing") {
+	if got := bar(); !strings.HasPrefix(got, "enter go into folder") || !strings.HasSuffix(got, "? all keys") || strings.Contains(got, "delete / remove") {
 		t.Fatalf("help bar = %q", got)
 	}
 
 	h.key("?")
-	h.expect("Navigation", "Selection", "Filter", "Actions", "General", "x remove missing", "R refresh", "shift+↑", "esc/? close help")
+	h.expect("Navigation", "Selection", "Folders", "Filter", "Actions", "General", "delete / remove", "R refresh", "shift+↑", "esc/? close help")
 	h.expect("team/web/test") // the Collection stays visible above the panel
 	h.key("esc")              // closes the panel, does not leave the Collection
-	h.expectTitle("Collection · Ops")
-	h.expectNot("x remove missing")
+	h.expectTitle("Collections")
+	h.expectNot("delete / remove")
 
 	// in the filter box ? is text and the bar shows the box's keys.
 	h.key("/")
@@ -505,14 +505,22 @@ func TestCollectionsLifecycle(t *testing.T) {
 	h := newApp(t, f)
 	h.loginOK()
 	h.openCollections()
-	h.expect("No collections yet")
+	h.expect("No folders yet")
 
-	// n: new collection, pick jobs.
-	h.key("n")
-	h.expect("New collection")
+	// N: a new top-level folder, empty at once (no job picker).
+	h.key("N")
+	h.expect("New folder")
 	h.typeText("Release")
 	h.key("enter")
-	h.expectTitle("New Release")
+	h.expectTitle("Collections")
+	h.expect("Release")
+	if cs := loadCollections(t, h); len(cs.Items) != 1 || len(cs.Items[0].Jobs) != 0 {
+		t.Fatalf("a new folder must start empty: %+v", cs)
+	}
+
+	// e: pick its jobs.
+	h.key("e")
+	h.expectTitle("Edit Release")
 	h.expect("8 jobs", "0 selected")
 	h.key("/")
 	h.typeText("team/web")
@@ -525,15 +533,12 @@ func TestCollectionsLifecycle(t *testing.T) {
 	h.expect("2 selected", "[x] team/web/build", "[x] team/web/test")
 	h.key("esc") // leaving the picker without enter saves nothing
 	h.expectTitle("Collections")
-	h.expect("No collections yet")
-	if got := loadCollections(t, h).Items; len(got) != 0 {
+	if got := loadCollections(t, h).Items[0].Jobs; len(got) != 0 {
 		t.Fatalf("esc must not save: %+v", got)
 	}
 
 	// again, and this time confirm with enter.
-	h.key("n")
-	h.typeText("Release")
-	h.key("enter")
+	h.key("e")
 	h.key("/")
 	h.typeText("team/web")
 	h.key("enter", "space", "down", "space")
@@ -549,14 +554,13 @@ func TestCollectionsLifecycle(t *testing.T) {
 		t.Fatalf("collections.toml: %v %v", st, err)
 	}
 	// duplicate names (case-insensitive) are refused.
-	h.key("n")
+	h.key("N")
 	h.typeText("release")
 	h.key("enter")
 	h.expect(`collection "release" already exists`)
 	h.key("esc")
 
-	// open it: jobs and badges in order.
-	h.openCollection("Release")
+	// the saved folder is open (the picker opens it): jobs and badges in order.
 	h.expect("2 jobs")
 	b, tst := strings.Index(h.screenText(), "team › web › build"), strings.Index(h.screenText(), "team › web › test")
 	if b < 0 || tst < 0 || b > tst {
@@ -565,8 +569,8 @@ func TestCollectionsLifecycle(t *testing.T) {
 	h.expectRow("team/web/build", "SUCCESS")
 	h.expectRow("team/web/test", "RUNNING")
 
-	// shift+down reorders and persists.
-	h.key("shift+down")
+	// shift+down reorders and persists (cursor on the folder: down to the first job).
+	h.key("down", "shift+down")
 	cs = loadCollections(t, h)
 	if want := []string{"team/web/test", "team/web/build"}; !reflect.DeepEqual(cs.Items[0].Jobs, want) {
 		t.Fatalf("after reorder jobs = %v, want %v", cs.Items[0].Jobs, want)
@@ -576,12 +580,10 @@ func TestCollectionsLifecycle(t *testing.T) {
 		t.Fatalf("reorder back: %v", loadCollections(t, h).Items[0].Jobs)
 	}
 	h.key("shift+down")
-	h.key("esc")
-	h.expectTitle("Collections")
 
-	// rename.
-	h.key("r")
-	h.expect("Rename collection")
+	// rename: left from a job goes to its folder.
+	h.key("left", "r")
+	h.expect("Rename folder")
 	h.replaceField("Release 2")
 	h.key("enter")
 	h.expect("Release 2", "2 jobs")
@@ -599,21 +601,21 @@ func TestCollectionsLifecycle(t *testing.T) {
 		t.Fatal("n deleted the collection")
 	}
 	h.key("d", "y")
-	h.expect("No collections yet", `deleted "Release 2"`)
+	h.expect("No folders yet", `deleted "Release 2"`)
 	if len(loadCollections(t, h).Items) != 0 {
 		t.Fatal("collection still on disk")
 	}
 }
 
-// The Collections list starts one blank line under the title.
+// The Collections tree starts one blank line under the title.
 func TestCollectionsListBlankLineUnderTitle(t *testing.T) {
 	f := newFixture(t)
 	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/test", "team/api/build")))
 	h.loginOK()
 	h.openCollections()
 	rows := strings.Split(h.screenText(), "\n")
-	if rows[0] != "Collections" || rows[1] != "" || !strings.HasPrefix(rows[2], "> Ops") {
-		t.Fatalf("collections rows:\n%s", strings.Join(rows[:4], "\n"))
+	if !strings.HasPrefix(rows[0], "Collections") || rows[1] != "" || rows[2] != "press / to filter" || !strings.HasPrefix(rows[4], "> [ ] ▸ Ops") {
+		t.Fatalf("collections rows:\n%s", strings.Join(rows[:6], "\n"))
 	}
 }
 
@@ -628,13 +630,13 @@ func TestJobNamesRelativeToParent(t *testing.T) {
 	h.openCollections()
 	h.expectTitle("Collections · team")
 	h.openCollection("Ops")
-	h.expectTitle("Collection · team · Ops")
-	h.expect("[ ] web/test", "[ ] api/build", "tools/cleanup")
+	h.expectTitle("Collections · team")
+	h.expect("web/test", "api/build", "tools/cleanup")
 	h.expectNot("team/web/test", "team/api/build")
 
 	h.key("/")
 	h.typeText("team/web") // matches the full name, though "team/" is not shown
-	h.expect("[ ] web/test")
+	h.expect("web/test")
 	h.expectNot("api/build")
 	h.key("esc")
 
@@ -675,7 +677,7 @@ func TestCollectionEditMembers(t *testing.T) {
 	h.typeText("tools/clean")
 	h.key("enter", "space", "down", "space")
 	h.key("enter")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	want := []string{"team/web/test", "tools/clean-up", "tools/clean_up"}
 	if got := loadCollections(t, h).Items[0].Jobs; !reflect.DeepEqual(got, want) {
 		t.Fatalf("jobs = %v, want %v", got, want)
@@ -696,7 +698,7 @@ func TestMissingMemberBadgeSkippedByTriggerAndRemovable(t *testing.T) {
 
 	// Only the missing job under the cursor: nothing to trigger.
 	h.key("t")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	h.expect("nothing to trigger", "team/gone/job")
 
 	// Select a real job and trigger: the missing one is skipped, with a notice.
@@ -704,25 +706,24 @@ func TestMissingMemberBadgeSkippedByTriggerAndRemovable(t *testing.T) {
 	h.expectTitle("Trigger")
 	h.expect("Trigger team/api/build?")
 	h.key("n") // cancel
-	h.expectTitle("Collection · Ops")
-	h.expect("skipped missing: team/gone/job")
+	h.expectTitle("Collections")
 	if n := len(f.Triggers()); n != 0 {
 		t.Fatalf("cancelled trigger posted %d builds", n)
 	}
 
 	// Select everything that can be selected, trigger: the missing job never reaches Jenkins.
-	h.key("a", "t")
+	h.key("left", "space", "t")
 	h.expectTitle("Trigger")
 	h.key("n")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	if n := len(f.Triggers()); n != 0 {
 		t.Fatalf("triggers = %d", n)
 	}
 
-	// x on a non-missing row refuses, x on the missing row removes it.
-	h.key("x")
-	h.expect("x removes a missing job")
-	h.key("up", "x")
+	// d on the missing row removes it from the folder, after asking.
+	h.key("down", "d")
+	h.expect("Remove team › gone › job from Ops?")
+	h.key("y")
 	h.expect("removed team/gone/job", "2 jobs")
 	h.expectNot("MISSING", "1 missing")
 	if want := []string{"team/api/build", "team/web/test"}; !reflect.DeepEqual(loadCollections(t, h).Items[0].Jobs, want) {
@@ -927,7 +928,7 @@ func TestBranchFilterKeepsBranchesAlreadyInCollection(t *testing.T) {
 	h.expect("2 selected", "branches: filtered (2 patterns)")
 	h.expectNoBranch("proj", "release/1.0", "proj", "develop")
 	h.key("enter")
-	h.expectTitle("Collection · Branches")
+	h.expectTitle("Collections")
 	if want := []string{"proj/release%2F1.0", "proj/main"}; !reflect.DeepEqual(loadCollections(t, h).Items[0].Jobs, want) {
 		t.Fatalf("jobs = %v, want %v", loadCollections(t, h).Items[0].Jobs, want)
 	}
@@ -989,7 +990,7 @@ func TestTriggerShowsShortNames(t *testing.T) {
 	h.loginOK()
 	h.openCollections()
 	h.openCollection("Ops")
-	h.key("a", "t") // both jobs
+	h.key("left", "space", "t") // both jobs
 	h.expectTitle("Trigger")
 	rows := strings.Split(h.screenText(), "\n")
 	if rows[1] != "" || rows[2] == "" {
@@ -1100,9 +1101,9 @@ func TestTriggerCancelledPostsNothing(t *testing.T) {
 	h.key("t")
 	h.expect("Trigger team/api/build?")
 	h.key("esc")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	h.key("t", "n")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	if n := len(f.Triggers()); n != 0 {
 		t.Fatalf("%d builds posted", n)
 	}
@@ -1232,7 +1233,7 @@ func TestTriggerFormEscReturnsToCollection(t *testing.T) {
 	h.key("t")
 	h.expect("(password)")
 	h.key("esc")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	if len(f.Triggers()) != 0 {
 		t.Fatal("esc triggered a build")
 	}
@@ -1270,7 +1271,7 @@ func driveFleet(h *harness) map[string]map[string]string {
 	h.loginOK()
 	h.openCollections()
 	h.openCollection("Fleet")
-	h.key("a", "t") // select all three, trigger
+	h.key("left", "space", "t") // select all three, trigger
 	h.expectTitle("Trigger")
 
 	// Common step: asked once.
@@ -1399,7 +1400,7 @@ func TestTriggerMultipleJobsNoCommonParameters(t *testing.T) {
 	h.loginOK()
 	h.openCollections()
 	h.openCollection("Mix")
-	h.key("a", "t")
+	h.key("left", "space", "t")
 	h.expectTitle("Trigger")
 	h.expectNot("Common Parameters")
 	h.expect("team/api/build (1/1)", "A_ONLY")
@@ -1452,7 +1453,7 @@ func TestMonitorOpensHidingSuccessAndToggles(t *testing.T) {
 	h.expectTitle("Run Monitor: Mix")
 	h.expect("hiding 2 successful", "team/web/test")
 	h.key("esc")
-	h.expectTitle("Collection · Mix")
+	h.expectTitle("Collections")
 	h.expect("4 jobs")
 }
 
@@ -1608,7 +1609,7 @@ func TestMonitorKeptAcrossLeavingTriggerAndRename(t *testing.T) {
 	// leave and reopen from the Collection: the same monitor, still tracking the queued run
 	// (a fresh monitor would show the job's previous SUCCESS build instead).
 	h.key("esc")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 	h.key("m")
 	if h.router.Top() != mon {
 		t.Fatal("reopening created a new monitor")
@@ -1639,9 +1640,9 @@ func TestMonitorKeptAcrossLeavingTriggerAndRename(t *testing.T) {
 	}
 
 	// rename keeps the monitor.
-	h.key("esc", "esc")
+	h.key("esc")
 	h.expectTitle("Collections")
-	h.key("r")
+	h.key("left", "r")
 	h.replaceField("Ops Renamed")
 	h.key("enter")
 	h.expect("Ops Renamed")
@@ -1694,14 +1695,15 @@ func TestCredentialsNeverOnDisk(t *testing.T) {
 
 	// create a Collection, trigger a parameterised job with a password, edit the branch filter.
 	h.openCollections()
-	h.key("n")
+	h.key("N")
 	h.typeText("Release")
 	h.key("enter")
+	h.key("e")
 	h.key("/")
 	h.typeText("api/deploy")
 	h.key("enter", "space", "enter")
 	h.expectTitle("Collections")
-	h.openCollection("Release")
+	h.key("down")
 	h.key("t")
 	fillDeployForm(h)
 	h.key("y")
@@ -1833,7 +1835,7 @@ func TestRerunFromMonitorPrefillsFormAndTracksNewBuild(t *testing.T) {
 
 	// The router kept one monitor, so one esc leaves it.
 	h.key("esc")
-	h.expectTitle("Collection · Ops")
+	h.expectTitle("Collections")
 }
 
 func TestRerunCancelReturnsToMonitorAndResumesPolling(t *testing.T) {
@@ -1878,6 +1880,48 @@ func TestStartCollectionLandsOnItsMonitorAfterLogin(t *testing.T) {
 	if h.sess.StartCollection != "" {
 		t.Fatal("StartCollection was not cleared")
 	}
+}
+
+func TestStartNestedFolderByPathMonitorsItsWholeSubtree(t *testing.T) {
+	f := mixFixture(t)
+	toml := "[[collection]]\nname = 'Ops'\njobs = ['team/web/test']\n\n" +
+		"[[collection.folder]]\nname = 'Api'\njobs = ['team/api/build']\n\n" +
+		"[[collection.folder.folder]]\nname = 'Deep'\njobs = ['team/api/deploy']\n"
+	h := newApp(t, f, withStart("ops/API"), withCollections(toml))
+	h.loginNoMenu()
+	h.expectTitle("Run Monitor: Ops/Api")
+	h.expectRow("team/api/deploy", "FAILED", "#7") // from the sub-folder below it
+	h.expectNot("team/web/test")                   // a job of the parent folder only
+}
+
+func TestTreeNewEmptyFolderThenSubFolderAndExpandCollapse(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f)
+	h.loginOK()
+	h.openCollections()
+	h.key("N")
+	h.typeText("Platform")
+	h.key("enter")
+	h.key("n") // a folder inside it, straight away: no jobs were added to Platform
+	h.typeText("Web")
+	h.key("enter")
+	h.expect("▾ Platform", "▸ Web")
+	cs := loadCollections(t, h)
+	if cs.Get("Platform/Web") == nil || len(cs.Get("Platform").Jobs) != 0 {
+		t.Fatalf("collections.toml = %+v", cs)
+	}
+	h.key("e") // jobs go into Web
+	h.key("/")
+	h.typeText("team/web/test")
+	h.key("enter", "space", "enter")
+	h.expect("▾ Web", "team › web › test")
+	h.key("left") // left on an open folder closes it
+	h.expectNot("team › web › test")
+	h.expect("▸ Web", "1 job")
+	h.key("left") // a closed folder: left goes to its parent
+	h.key("left") // an open folder: left closes it
+	h.expect("▸ Platform")
+	h.expectNot("Web")
 }
 
 func TestStartCollectionUnknownShowsMenuWithNotice(t *testing.T) {
@@ -2042,14 +2086,15 @@ func TestKeptMonitorKeepsItsToggleAndADeletedCollectionsMonitorIsDropped(t *test
 
 	h.key("d", "y")
 	h.expect(`deleted "Mix"`)
-	h.key("n")
+	h.key("N")
 	h.typeText("Mix")
 	h.key("enter")
+	h.key("e")
 	h.key("/")
 	h.typeText("team/api/build")
 	h.key("enter", "space", "enter")
 	h.expectTitle("Collections")
-	h.key("down", "m") // Other, then the new Mix
+	h.key("m") // the cursor stays on the new Mix
 	h.expectTitle("Run Monitor: Mix")
 	// a new Collection with the old name gets a fresh monitor: successes hidden again.
 	h.expect("All 1 jobs succeeded")

@@ -111,10 +111,23 @@ func TestScreenshots(t *testing.T) {
 	f := shopFixture(t)
 	h := newApp(t, f,
 		withConfigExtra(`parent_job = "shop"`),
-		withCollections(collectionsTOML("Release checklist",
-			"shop/api/build", "shop/api/unit-tests", "shop/api/deploy", "shop/api/integration",
-			"shop/web/build", "shop/web/e2e", "shop/payments/main", "shop/payments/feature%2Frefund-flow")+
-			collectionsTOML("Docs and web", "shop/docs/publish", "shop/web/build")+
+		withCollections(`[[collection]]
+name = "Release checklist"
+jobs = []
+
+[[collection.folder]]
+name = "api"
+jobs = ["shop/api/build", "shop/api/unit-tests", "shop/api/deploy", "shop/api/integration"]
+
+[[collection.folder]]
+name = "web"
+jobs = ["shop/web/build", "shop/web/e2e"]
+
+[[collection.folder]]
+name = "payments"
+jobs = ["shop/payments/main", "shop/payments/feature%2Frefund-flow"]
+
+`+collectionsTOML("Docs and web", "shop/docs/publish", "shop/web/build")+
 			collectionsTOML("Payments", "shop/payments/main", "shop/payments/feature%2Frefund-flow")))
 	snap := func(name string, rows int) {
 		t.Helper()
@@ -145,9 +158,11 @@ func TestScreenshots(t *testing.T) {
 
 	h.key("up")
 	h.openCollections()
-	h.openCollection("Release checklist")
-	h.expect("8 jobs")
-	snap("collection", 17)
+	h.key("right", "down", "right") // open Release checklist, then its api folder
+	h.expect("3 folders · 8 jobs", "api")
+	h.key("down", "down", "down", "down", "down", "right") // then its web folder
+	snap("collection", 19)
+	h.key("up", "up", "up", "up", "up", "up", "up", "up", "up") // back on Release checklist: its whole subtree
 
 	h.key("m")
 	h.expectTitle("Run Monitor · shop · Release checklist")

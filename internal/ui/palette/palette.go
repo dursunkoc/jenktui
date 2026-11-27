@@ -126,7 +126,7 @@ func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 func (s *screen) refill() {
 	var out []widgets.Item
 	for _, c := range s.colls {
-		out = append(out, widgets.Item{Key: collectionMark + c, Label: collectionMark + c})
+		out = append(out, widgets.Item{Key: collectionMark + c, Label: collectionMark + strings.ReplaceAll(c, "/", " › ")})
 	}
 	for _, j := range s.jobs {
 		r := catalog.Row(j, s.deps.Parent, core.StatusUnknown)

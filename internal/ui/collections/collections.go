@@ -1,16 +1,13 @@
 // Package collections implements the Collections feature: the Collections
-// screen, an opened Collection (status, reorder, trigger) and the shared Job
-// picker used to create and edit Collections.
+// tree (folders and their jobs, status, reorder, trigger, move and copy), the
+// folder picker and the shared Job picker used to edit a folder's jobs.
 package collections
 
 import (
 	"context"
 	"fmt"
-	"slices"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
@@ -56,17 +53,21 @@ type Deps struct {
 	// JobURL builds a job's web URL from its full name (the client's JobURL).
 	// `o` needs both Opener and JobURL.
 	JobURL func(fullName string) string
+	// Expanded is which folders are open in the tree, keyed by lower-cased
+	// path. main.go keeps one map for the run, so leaving the screen and
+	// coming back finds the folders as they were. nil: every visit starts
+	// with all folders closed.
+	Expanded map[string]bool
 	// BranchFilter wires the Branch Filter patterns and their persistence into
 	// the picker, exactly as for the Job Catalog.
 	BranchFilter catalog.Settings
 }
 
-// New returns the Collections screen (the menu entry).
+// New returns the Collections screen (the menu entry): one tree of folders
+// and their jobs.
 func New(deps Deps) core.Screen {
 	e := &env{deps: deps, theme: core.NewTheme(), patterns: append([]string(nil), deps.BranchFilter.Patterns...)}
-	s := &listScreen{env: e, w: 80, h: 20, load: core.NewLoading(e.theme)}
-	s.reload()
-	return s
+	return newTree(e)
 }
 
 // env is state shared by the screens of one Collections session.
@@ -166,292 +167,6 @@ func newInput(placeholder, value string) textinput.Model {
 	ti.SetValue(value)
 	ti.Focus()
 	return ti
-}
-
-var (
-	keyNew     = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "new"))
-	keyEdit    = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit members"))
-	keyRename  = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename"))
-	keyDelete  = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete"))
-	keyYes     = key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "yes"))
-	keyNo      = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "no"))
-	keyMonitor = key.NewBinding(key.WithKeys("m"), key.WithHelp("m", "monitor"))
-	keyConfirm = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "ok"))
-	keyCancel  = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))
-	keyOpen    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open"))
-)
-
-type mode int
-
-const (
-	modeList mode = iota
-	modeNew
-	modeRename
-	modeDelete
-)
-
-// listScreen lists the Collections.
-type listScreen struct {
-	*env
-	cs     *config.Collections
-	err    error
-	cursor int
-	mode   mode
-	input  textinput.Model
-	notice string
-	w, h   int
-	load   core.Loading
-
-	monSeq  int      // identifies the catalog load a pending `m` waits for
-	monName string   // Collection waiting for that load ("" = none)
-	monJobs []string // its members when `m` was pressed
-}
-
-func (s *listScreen) reload() {
-	cs, err := config.LoadCollections(s.deps.Path)
-	s.cs, s.err = cs, err
-	if cs == nil {
-		s.cs = &config.Collections{}
-	}
-	s.cursor = max(min(s.cursor, len(s.cs.Items)-1), 0)
-}
-
-func (s *listScreen) Init() tea.Cmd { return nil }
-
-// Busy is true while `m` waits for the catalog (the reply would be lost if
-// the jump palette covered the screen).
-func (s *listScreen) Busy() bool { return s.monName != "" }
-
-func (s *listScreen) Title() string { return s.titled("Collections") }
-
-func (s *listScreen) Keys() []key.Binding {
-	if s.monName != "" {
-		return []key.Binding{keyCancel}
-	}
-	switch s.mode {
-	case modeNew, modeRename:
-		return []key.Binding{keyConfirm, keyCancel}
-	case modeDelete:
-		return []key.Binding{keyYes, keyNo}
-	}
-	return []key.Binding{keyOpen, keyNew, keyMonitor, core.KeyBack}
-}
-
-// FullHelp groups every key of the Collections list for the help panel. It
-// is nil while a name is typed, a delete is confirmed or a monitor waits.
-func (s *listScreen) FullHelp() []core.HelpGroup {
-	if s.monName != "" || s.mode != modeList {
-		return nil
-	}
-	return []core.HelpGroup{
-		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Collections", Keys: []key.Binding{keyOpen, keyNew, keyEdit, keyRename, keyDelete, keyMonitor}},
-		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
-	}
-}
-
-func (s *listScreen) current() (config.Collection, bool) {
-	if s.cursor < 0 || s.cursor >= len(s.cs.Items) {
-		return config.Collection{}, false
-	}
-	return s.cs.Items[s.cursor], true
-}
-
-func (s *listScreen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
-	switch m := msg.(type) {
-	case tea.WindowSizeMsg:
-		s.w, s.h = m.Width, m.Height
-		return s, nil
-	case spinner.TickMsg:
-		return s, s.load.Update(m)
-	case tea.KeyMsg:
-		return s.key(m)
-	case loadedMsg:
-		return s.monitorLoaded(m)
-	}
-	if s.mode == modeNew || s.mode == modeRename {
-		var c tea.Cmd
-		s.input, c = s.input.Update(msg)
-		return s, c
-	}
-	return s, nil
-}
-
-func (s *listScreen) key(m tea.KeyMsg) (core.Screen, tea.Cmd) {
-	if s.monName != "" { // waiting for the catalog behind the loading modal
-		if key.Matches(m, core.KeyBack) {
-			s.monName = ""
-			s.monSeq++ // drop the pending result
-			s.load.StopNow()
-		}
-		return s, nil
-	}
-	switch s.mode {
-	case modeNew, modeRename:
-		return s.inputKey(m)
-	case modeDelete:
-		switch {
-		case key.Matches(m, keyYes):
-			if c, ok := s.current(); ok {
-				if err := s.mutate(func(cs *config.Collections) error { return cs.Delete(c.Name) }); err != nil {
-					s.notice = "could not delete: " + err.Error()
-				} else {
-					s.notice = fmt.Sprintf("deleted %q", c.Name)
-					if s.deps.Deleted != nil {
-						s.deps.Deleted(c.Name)
-					}
-				}
-				s.reload()
-			}
-			s.mode = modeList
-		case key.Matches(m, keyNo):
-			s.mode = modeList
-		}
-		return s, nil
-	}
-	c, have := s.current()
-	switch {
-	case key.Matches(m, core.KeyBack):
-		return s, core.Cmd(core.Pop{})
-	case key.Matches(m, core.KeyQuit):
-		return s, core.Cmd(core.Quit{})
-	case key.Matches(m, core.KeyUp):
-		s.cursor = max(s.cursor-1, 0)
-	case key.Matches(m, core.KeyDown):
-		s.cursor = max(min(s.cursor+1, len(s.cs.Items)-1), 0)
-	case key.Matches(m, keyNew):
-		s.mode, s.notice = modeNew, ""
-		s.input = newInput("collection name", "")
-		return s, textinput.Blink
-	case !have:
-	case key.Matches(m, core.KeyEnter):
-		s.notice = ""
-		return s, core.Cmd(core.Push{Screen: newView(s.env, c.Name, s.reload)})
-	case key.Matches(m, keyMonitor):
-		return s.openMonitor(c)
-	case key.Matches(m, keyEdit):
-		s.notice = ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("Edit", c.Name), c.Jobs, func(keys []string) error {
-			err := s.mutate(func(cs *config.Collections) error { return cs.SetJobs(c.Name, keys) })
-			s.reload()
-			return err
-		})})
-	case key.Matches(m, keyRename):
-		s.mode, s.notice = modeRename, ""
-		s.input = newInput("collection name", c.Name)
-		return s, textinput.Blink
-	case key.Matches(m, keyDelete):
-		s.mode, s.notice = modeDelete, ""
-	}
-	return s, nil
-}
-
-// openMonitor fetches the Job Catalog (to know which members are missing) and
-// then pushes the Collection's Run Monitor.
-func (s *listScreen) openMonitor(c config.Collection) (core.Screen, tea.Cmd) {
-	if s.deps.Monitor == nil {
-		s.notice = "monitor unavailable"
-		return s, nil
-	}
-	s.monSeq++
-	s.monName, s.monJobs = c.Name, slices.Clone(c.Jobs)
-	s.notice = ""
-	return s, tea.Batch(s.load.Start(), s.loadCatalog(s.monSeq))
-}
-
-func (s *listScreen) monitorLoaded(m loadedMsg) (core.Screen, tea.Cmd) {
-	if m.seq != s.monSeq || s.monName == "" {
-		return s, nil
-	}
-	name, jobs := s.monName, s.monJobs
-	s.load.StopNow()
-	s.monName, s.notice = "", ""
-	var missing map[string]bool
-	if m.err != nil {
-		s.notice = "could not check for missing jobs: " + m.err.Error()
-	} else {
-		missing = catalog.MissingOf(jobs, m.cat)
-	}
-	return s, core.Cmd(core.Push{Screen: s.deps.Monitor(name, jobs, missing, catalog.NamesOf(jobs, m.cat, s.deps.Parent))})
-}
-
-func (s *listScreen) inputKey(m tea.KeyMsg) (core.Screen, tea.Cmd) {
-	switch {
-	case key.Matches(m, keyCancel):
-		s.mode, s.notice = modeList, ""
-		return s, nil
-	case key.Matches(m, keyConfirm):
-		name := strings.TrimSpace(s.input.Value())
-		if name == "" {
-			s.notice = "name is required"
-			return s, nil
-		}
-		if s.mode == modeRename {
-			c, _ := s.current()
-			if err := s.mutate(func(cs *config.Collections) error { return cs.Rename(c.Name, name) }); err != nil {
-				s.notice = err.Error()
-				return s, nil
-			}
-			s.mode, s.notice = modeList, ""
-			s.reload()
-			if s.deps.Renamed != nil {
-				s.deps.Renamed(c.Name, name)
-			}
-			return s, nil
-		}
-		if s.cs.Find(name) >= 0 {
-			s.notice = fmt.Sprintf("collection %q already exists", name)
-			return s, nil
-		}
-		s.mode, s.notice = modeList, ""
-		return s, core.Cmd(core.Push{Screen: newPicker(s.env, s.pickerTitle("New", name), nil, func(keys []string) error {
-			err := s.mutate(func(cs *config.Collections) error { return cs.Add(name, keys) })
-			s.reload()
-			return err
-		})})
-	}
-	var c tea.Cmd
-	s.input, c = s.input.Update(m)
-	return s, c
-}
-
-func (s *listScreen) View() string {
-	if s.err != nil {
-		return s.theme.ErrorView("Could not read collections", s.err, "check "+s.deps.Path+", esc to go back")
-	}
-	if s.monName != "" {
-		return s.load.Modal("Loading jobs for "+s.monName+"…", s.w, s.h)
-	}
-	var b strings.Builder
-	b.WriteString("\n") // a blank line under the title
-	switch s.mode {
-	case modeNew:
-		b.WriteString(s.theme.Title.Render("New collection") + "\n" + s.input.View() + "\n")
-	case modeRename:
-		b.WriteString(s.theme.Title.Render("Rename collection") + "\n" + s.input.View() + "\n")
-	case modeDelete:
-		c, _ := s.current()
-		b.WriteString(s.theme.Title.Render(fmt.Sprintf("Delete %q?", c.Name)) + "\n" + s.theme.MutedTxt.Render("y to delete, n to keep") + "\n")
-	}
-	if s.mode != modeList {
-		b.WriteString("\n")
-	}
-	if s.notice != "" {
-		b.WriteString(s.theme.ErrTitle.Render(s.notice) + "\n")
-	}
-	if len(s.cs.Items) == 0 {
-		b.WriteString(s.theme.MutedTxt.Render("No collections yet. Press n to create one."))
-		return b.String()
-	}
-	for i, c := range s.cs.Items {
-		line := fmt.Sprintf("%s  %s", c.Name, s.theme.MutedTxt.Render(plural(len(c.Jobs), "job")))
-		if i == s.cursor {
-			b.WriteString(s.theme.Selected.Render("> ") + line + "\n")
-		} else {
-			b.WriteString("  " + line + "\n")
-		}
-	}
-	return strings.TrimRight(b.String(), "\n")
 }
 
 func plural(n int, word string) string {

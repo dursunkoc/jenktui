@@ -109,6 +109,12 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [x] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing"). Released before the real-Jenkins check above, at the owner's request; the tap formula installed `0.2.0` on the owner's Mac.
 
 ### Needs a decision
+### Nested Collections
+- [x] Collections nest to any depth (folders hold jobs and sub-folders; a job may be in several). Folder Run Monitor, Trigger and Overview count cover the subtree; `jenktui a/b`, `Ctrl+P` and move/copy/delete-with-counts handle paths. See GLOSSARY "Collection" and `docs/ui-contract.md` "Folders".
+- [x] The Collections screen is one expandable tree (empty-folder creation, folders and jobs together, expand/collapse); spec in `docs/spec-collections-tree.md`.
+- [ ] Real-Jenkins check of a deep tree, and (screenshot regenerated as a tree).
+- Known gap: a hand-edited file in the old flat shape keeps working, but a top-level name that contains `/` cannot be addressed from the command line until it is renamed.
+
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
 
 ## Later (out of v1)

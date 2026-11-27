@@ -32,7 +32,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. A blank line, the filter row, a blank line and the column titles (Pipeline, Branch, Status) sit above the rows. |
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
-| `internal/ui/collections` | Collections list, opened Collection view, picker. |
+| `internal/ui/collections` | Collections tree (`tree.go`: folders and jobs, expand/collapse, select, trigger, move/copy), folder picker (`dest.go`), job picker. |
 | `internal/ui/params`, `internal/ui/trigger` | Parameter form widgets and the single/multi-job trigger flow. |
 | `internal/ui/monitor` | Per-Collection Run Monitor and its polling. `seams.go` lists the hooks features use; each feature lives in its own file (`actions.go`, `abort.go`, `rerun.go`, `testreport.go`, `notify.go`, `history.go`, `display.go`, `logview.go`, `logsave.go`). |
 

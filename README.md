@@ -23,7 +23,7 @@
 - **Job Catalog**: every buildable job under a parent folder, flattened, with Multibranch Projects shown one row per branch. Filter by text (with wildcards) and by status.
 - **Jump** (`Ctrl+P`): from any screen after login, a list of your Collections (`◆`) and every catalog job. Type to filter, `Enter` opens the Collection's Run Monitor, or the Job Catalog filtered to the job; `Esc` clears the filter, then closes it. The screen you came from pauses underneath and picks up again when you close the palette.
 - **Overview**: every Collection with how many of its jobs last failed (or were unstable), are running and are queued, and how many are missing from Jenkins. It reads Jenkins' job colours (one request per folder), so it is cheap, and refreshes every 30 seconds while it is on show. `Enter` opens that Collection's Run Monitor, `R` refreshes now, `Esc` goes back.
-- **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions. `jenktui <collection>` opens that Collection's Run Monitor right after login.
+- **Collections**: named, ordered groups of jobs you pick from the catalog and keep between sessions. They are one tree: folders hold jobs, sub-folders or both, to any depth, and a job may be in several folders. Folders open and close in place (`→`/`←`), or you go into one with `Enter` so the screen shows only what is in it (the title becomes a breadcrumb, `Esc` steps back out); jobs show their last status. `n` makes a new empty folder inside the one you are on, `e` adds jobs to it, `Space` on a folder selects everything under it, and `M`/`C` move or copy folders and jobs through a folder picker. A folder's Run Monitor and Trigger cover its whole subtree. `jenktui <collection>` opens that Collection's Run Monitor right after login; name a nested folder by its path, `jenktui backend/develop`.
 - **Trigger**: a single job gets a confirmation or a parameter form; several jobs share their Common Parameters, with per-job overrides (also from the summary, with `e`) and a summary to confirm.
 - **Run Monitor**: the latest build of every job in a Collection, refreshed live (3 s while something runs, 30 s otherwise; the first load shows a modal and the header spinner only a manual `R`), with pipeline stages for running builds. Successful jobs are hidden by default so only what needs attention is left. Running rows show progress against Jenkins' estimate, finished rows when they started, and rows with history the last five results as dots.
 - **Build details and console log**: move through a build's stages and steps, and read the log of the highlighted stage or step, or of the whole build, in a modal with line numbers, wildcard search and go to line. It follows new output while the build runs. Details also show why the build started and its commits.
@@ -42,7 +42,7 @@ The data in these screenshots is invented (a fake "shop" Jenkins); nothing comes
 
 | | |
 |---|---|
-| **Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.<br><br><img alt="Job Catalog" src="docs/images/catalog.png"> | **Collection**: a named, ordered group of jobs, ready to trigger or watch.<br><br><img alt="Collection" src="docs/images/collection.png"> |
+| **Job Catalog**: every job under the parent folder, with a branch column for Multibranch Projects.<br><br><img alt="Job Catalog" src="docs/images/catalog.png"> | **Collections**: one tree of folders and jobs, folders opened and closed in place, ready to trigger or watch.<br><br><img alt="Collection" src="docs/images/collection.png"> |
 | **Build details**: who started it, commits, test counts, stages and steps. `↑`/`↓` move the marker and `l` opens the log of the highlighted stage or step.<br><br><img alt="Build details" src="docs/images/details.png"> | **Console log**: line numbers, error lines highlighted, find with wildcards, go to line, follow while the build runs.<br><br><img alt="Console log" src="docs/images/log.png"> |
 | **Overview**: every Collection with its failed, running, queued and missing jobs.<br><br><img alt="Overview" src="docs/images/overview.png"> | |
 
@@ -97,10 +97,10 @@ or build from a checkout with `go build -o jenktui .`. `jenktui --version` print
 
 1. Run `jenktui`. On first run, if there is no config file, it asks for your Jenkins URL and an optional parent job and writes `config.toml` for you.
 2. Log in with your Jenkins username and a password or an API token (an API token is recommended). Credentials are asked on every start and kept in memory only.
-3. Choose **Collections**, press `n`, name the Collection, then tick its jobs in the picker with `Space` (`/` filters) and press `Enter` to save.
-4. Open the Collection with `Enter`. Press `t` to trigger and `m` to open its Run Monitor.
+3. Choose **Collections**, press `N`, name the folder, then press `e` to tick its jobs in the picker with `Space` (`/` filters) and `Enter` to save.
+4. `→` opens a folder in place and `Enter` goes into it. With the cursor on a job or folder, press `t` to trigger and `m` to open its Run Monitor.
 
-To skip the menu, name a Collection on the command line: `jenktui nightly` logs in and opens that Collection's Run Monitor (the name's letter case does not matter). An unknown name shows the menu with a notice. `Esc` in the monitor goes back to the menu.
+To skip the menu, name a Collection on the command line: `jenktui nightly` logs in and opens that Collection's Run Monitor (the name's letter case does not matter; a folder inside another is named by its path, `jenktui backend/develop`). An unknown name shows the menu with a notice. `Esc` in the monitor goes back to the menu.
 
 The [wiki](https://github.com/dursunkoc/jenktui/wiki) walks through each step in more detail.
 
@@ -118,7 +118,7 @@ branch_filter = ["main", "release/*"]   # optional; globs for Multibranch branch
 notify = "failures"      # "failures" (default), "all" or "off": bell and desktop notification when a build you watched finishes
 ```
 
-Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app.
+Collections are stored in `~/.config/jenktui/collections.toml` and managed by the app. A folder inside another is a `[[collection.folder]]` table under its parent (`[[collection.folder.folder]]` below that, and so on); a file with only flat `[[collection]]` entries keeps working. Folder names are unique among siblings (case-insensitive) and cannot contain `/`.
 
 **Notifications.** While a Run Monitor is on screen and a build it saw queued or running finishes, it rings the terminal bell and sends a desktop notification (`FAILED api/deploy #57`): for failed and unstable builds with `notify = "failures"`, for every finished build with `"all"`, never with `"off"`. Builds that were already finished when the monitor first loaded do not notify. **Limit:** only the monitor on show polls, so nothing fires while you are in another screen (the Collections list, the catalog); jenktui is meant to stay open on the monitor in a tmux pane or a background window.
 
@@ -129,7 +129,7 @@ Collections are stored in `~/.config/jenktui/collections.toml` and managed by th
 Flow: Splash → Login → Menu (Collections, Job Catalog, Overview, Quit).
 
 - **Job Catalog**: every buildable job under the parent job, flattened and filterable.
-- **Collections**: named, ordered groups of jobs you pick from the catalog. Open one to trigger its jobs or watch them. A member that no longer exists in Jenkins stays in the Collection, marked missing, and is skipped when triggering.
+- **Collections**: named, ordered groups of jobs you pick from the catalog, nested as folders to any depth and shown as one tree. Open a folder to see its sub-folders and jobs, trigger them or watch them; a folder's monitor and trigger cover everything under it. A member that no longer exists in Jenkins stays in its folder, marked missing, and is skipped when triggering.
 - **Trigger**: one job gets a confirmation or a parameter form. Several jobs get Common Parameters first (same name and type, entered once), then one step for each job that has parameters of its own (with the Common Parameters it can override), then a summary to confirm. On the summary, `↑`/`↓` pick a job and `e` edits it, so any job, including one with only Common Parameters, can override a Common Parameter. Passwords are shown as `••••`.
 - **Run Monitor**: one per Collection, opened with `m`. It shows the latest build of every job, hides successful ones by default, and shows pipeline stages for running builds. A running row shows its progress (`1m36s / ~4m` from Jenkins' estimate, `4m12s (over)` once it overruns) and a finished row shows when it started (`2m ago`, `3h ago`, `yesterday`). Each row ends with the last five results as dots (`●✕●◐◌`: success `●`, failure `✕`, unstable `◐`, aborted `○`, running `◌`; newest on the right), and the details view shows why the build started ("Started by alice") and up to five commits. Leaving it keeps its state (including the `s` show/hide choice) for the session, until its Collection is deleted.
   - `Enter` opens a build's details; `↑`/`↓` move between its stages and steps.
@@ -165,15 +165,14 @@ Limits which branches of Multibranch Projects are shown when browsing or picking
 | Filter box | type to filter, `Enter`/`↓` go to the list, `Esc` clear the filter |
 | Catalog and picker | `b` Branch Filter on/off, `B` edit patterns, `o` open the highlighted job in the browser (Catalog only) |
 | Overview | `↑`/`↓` pick a Collection, `Enter` open its Run Monitor, `R` refresh now, `Esc` back, `q` quit |
-| Collections list | `Enter` open, `n` new, `e` edit members, `r` rename, `d` delete, `m` monitor |
-| Opened Collection | `t` trigger selected (or the highlighted job), `m` monitor, `e` edit members, `x` remove a missing job, `o` open the highlighted job in the browser, `R` refresh, `Shift+↑/↓` reorder |
+| Collections (tree) | `→`/`←` open or close a folder, `Enter` go into a folder (`Esc` out), `Space` select (a folder selects its whole subtree), `n` new folder inside it, `N` new top-level folder, `e` edit its jobs, `r` rename, `d` delete or remove a job, `M`/`C` move or copy, `Shift+↑/↓` reorder, `t` trigger, `m` monitor, `o` open in browser, `/` filter, `R` refresh |
 | Parameter forms | `Tab`/`Shift+Tab` move, `Enter` next/submit, `Esc` back a step |
 | Trigger summary (several jobs) | `↑`/`↓` pick a job, `PgUp`/`PgDn` scroll, `e` edit it (`Enter` on the last field applies, `Esc` cancels), `y`/`Enter` trigger, `n`/`Esc` back |
 | Run Monitor | `Enter` details (on a failed build the marker starts on the failed stage; `↑`/`↓` move between stages, `l` stage log (a failed build's log opens at its end), `L` full log (in the log: `/` find, `e`/`E` next/previous error, `w` wrap, `S` save, `y` copy line, `o` open build, `:` go to line), `t` test report (failed tests; `Enter` shows a test's stack trace)), `s` show/hide successful, `R` refresh now, `f` jump to the next failed job, `X` abort the running build (or cancel the queued one) after a `y`/`n` question, `r` rerun the highlighted build with its parameters (list and details; a password is asked for again), `o` open the build in the browser (the job if it has no build yet), `y` copy its URL (list and details), `Esc` back (from details: back to the list) |
 
 ## Scope
 
-**In:** job catalog, Collections (create, edit, rename, delete, reorder), triggering with parameters (common and per-job), a per-Collection Run Monitor with stages, logs, abort and rerun, Branch Filter.
+**In:** job catalog, Collections as a tree of nested folders (create, edit, rename, move, copy, delete, reorder), triggering with parameters (common and per-job), a per-Collection Run Monitor with stages, logs, abort and rerun, Branch Filter.
 
 **Out for now:** multiple servers, credential storage. See [TODO.md](TODO.md) for remaining work and known gaps.
 

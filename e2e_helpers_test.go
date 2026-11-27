@@ -301,7 +301,7 @@ func (h *harness) expect(subs ...string) {
 // branchRow matches a list row that shows name and branch in their own
 // columns: "[ ] proj      main     ● SUCCESS".
 func branchRow(name, branch string) *regexp.Regexp {
-	return regexp.MustCompile(`\[.\] ` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
+	return regexp.MustCompile(`\[.\] +` + regexp.QuoteMeta(name) + `\s{2,}` + regexp.QuoteMeta(branch) + `(\s|$)`)
 }
 
 // expectBranch takes name, branch pairs; each must be a list row.
@@ -449,13 +449,16 @@ func (h *harness) openCatalog() {
 	}
 }
 
-// openCollection opens the Collection under the cursor on the Collections list.
+// openCollection expands the folder under the cursor in the Collections tree
+// and moves the cursor to its first row (its first job, when it has no
+// sub-folders), the way the old Collection screen started.
 func (h *harness) openCollection(name string) {
 	h.t.Helper()
-	h.key("enter")
-	if t := h.title(); t != "Collection · "+name && !(strings.HasPrefix(t, "Collection · ") && strings.HasSuffix(t, " · "+name)) {
-		h.t.Fatalf("title = %q, want Collection · [parent · ]%s", t, name)
+	h.key("right", "down")
+	if t := h.title(); t != "Collections" && !strings.HasPrefix(t, "Collections · ") {
+		h.t.Fatalf("title = %q, want the Collections tree", t)
 	}
+	h.expect(name)
 }
 
 // ---- files ----

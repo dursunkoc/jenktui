@@ -3,15 +3,12 @@ package collections
 import (
 	"context"
 	"errors"
-	"fmt"
 	"path/filepath"
 	"regexp"
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
@@ -160,114 +157,6 @@ func pushed(t *testing.T, navs []tea.Msg) core.Screen {
 	return nil
 }
 
-func TestCreateCollectionFlow(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue"), job("b", "red"), job("c", "")}},
-		config.Collection{Name: "Existing"})
-	s := New(r.deps)
-	s, _ = send(s, "n")
-	s = typeText(s, "existing")
-	s, navs := send(s, "enter")
-	if len(navs) != 0 || !strings.Contains(shown(s), "already exists") {
-		t.Fatalf("duplicate name (case-insensitive) must be rejected; view=%q", shown(s))
-	}
-	for range "existing" {
-		s, _ = s.Update(tea.KeyMsg{Type: tea.KeyBackspace})
-	}
-	s = typeText(s, "Mine")
-	s, navs = send(s, "enter")
-	p := open(pushed(t, navs))
-	p, _ = send(p, "space", "down", "down", "space") // a and c
-	_, navs = send(p, "enter")
-	if _, ok := navs[len(navs)-1].(core.Pop); !ok {
-		t.Fatalf("enter should pop: %v", navs)
-	}
-	cs := r.file()
-	if i := cs.Find("Mine"); i < 0 || !slices.Equal(cs.Items[i].Jobs, []string{"a", "c"}) {
-		t.Fatalf("saved: %+v", cs)
-	}
-	if !strings.Contains(shown(s), "Mine") || !strings.Contains(shown(s), "2 jobs") {
-		t.Fatalf("list not refreshed: %q", shown(s))
-	}
-}
-
-func TestRenameAndDelete(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{}, config.Collection{Name: "One"}, config.Collection{Name: "Two", Jobs: []string{"x"}})
-	s := New(r.deps)
-	s, _ = send(s, "r")
-	s = typeText(s, "!")
-	s, _ = send(s, "enter")
-	if r.file().Find("One!") < 0 {
-		t.Fatalf("rename failed: %+v", r.file())
-	}
-	s, _ = send(s, "d")
-	if !strings.Contains(shown(s), "Delete") {
-		t.Fatal("no confirmation")
-	}
-	s, _ = send(s, "n")
-	if len(r.file().Items) != 2 {
-		t.Fatal("n must keep")
-	}
-	s, _ = send(s, "d", "y")
-	if cs := r.file(); len(cs.Items) != 1 || cs.Items[0].Name != "Two" {
-		t.Fatalf("after delete: %+v", cs)
-	}
-	_ = s
-}
-
-func TestViewStatusMissingReorderTrigger(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue"), job("b", "red"), job("c", "blue_anime")}},
-		config.Collection{Name: "C", Jobs: []string{"a", "gone", "b", "c"}})
-	s := New(r.deps)
-	s, navs := send(s, "enter")
-	v := open(pushed(t, navs))
-	out := shown(v)
-	if !strings.Contains(out, "MISSING") || !strings.Contains(out, "1 missing") {
-		t.Fatalf("missing badge absent: %q", out)
-	}
-
-	// Trigger with cursor on a: only a.
-	v, navs = send(v, "t")
-	if len(r.triggered) != 1 || !slices.Equal(r.triggered[0], []string{"a"}) {
-		t.Fatalf("triggered %v", r.triggered)
-	}
-	if _, ok := navs[0].(core.Push); !ok || !strings.Contains(shown(v), "skipped missing: gone") {
-		t.Fatalf("navs=%v view=%q", navs, shown(v))
-	}
-
-	// Select b and c via 'a' (all skips missing); triggers b, c in order; a too.
-	v, _ = send(v, "a", "t")
-	if got := r.triggered[1]; !slices.Equal(got, []string{"a", "b", "c"}) {
-		t.Fatalf("triggered %v", got)
-	}
-	v, _ = send(v, "n") // none
-
-	// Cursor on missing: nothing to trigger, no push.
-	v, _ = send(v, "down")
-	v, navs = send(v, "t")
-	if len(navs) != 0 || len(r.triggered) != 2 || !strings.Contains(shown(v), "nothing to trigger") {
-		t.Fatalf("navs=%v view=%q", navs, shown(v))
-	}
-
-	// Remove missing explicitly.
-	v, _ = send(v, "x")
-	if got := r.file().Items[0].Jobs; !slices.Equal(got, []string{"a", "b", "c"}) {
-		t.Fatalf("after x: %v", got)
-	}
-
-	// Reorder: cursor on b (index 1), move up.
-	v, _ = send(v, "shift+up")
-	if got := r.file().Items[0].Jobs; !slices.Equal(got, []string{"b", "a", "c"}) {
-		t.Fatalf("after reorder: %v", got)
-	}
-	if !strings.Contains(shown(s), "3 jobs") {
-		t.Fatalf("list count not refreshed: %q", shown(s))
-	}
-	_, navs = send(v, "esc")
-	if _, ok := navs[0].(core.Pop); !ok {
-		t.Fatal("esc should pop")
-	}
-}
-
 func TestMissingNeverDroppedOnEdit(t *testing.T) {
 	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", ""), job("b", "")}},
 		config.Collection{Name: "C", Jobs: []string{"gone", "a"}})
@@ -365,140 +254,6 @@ func TestPickerCancelAndBranchEditorSave(t *testing.T) {
 	}
 }
 
-func TestMonitorKeyFromOpenedCollection(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue"), job("b", "red")}},
-		config.Collection{Name: "C", Jobs: []string{"a", "gone", "b"}})
-	s := New(r.deps)
-	s, navs := send(s, "enter")
-	v := open(pushed(t, navs))
-	if _, navs = send(v, "m"); len(navs) != 1 || len(r.monitored) != 1 {
-		t.Fatalf("navs=%v monitored=%v", navs, r.monitored)
-	}
-	got := r.monitored[0]
-	if got.name != "C" || !slices.Equal(got.jobs, []string{"a", "gone", "b"}) || !got.missing["gone"] || got.missing["a"] {
-		t.Fatalf("monitor args %+v", got)
-	}
-	// Triggering carries the Collection's name.
-	send(v, "t")
-	if len(r.trigNames) != 1 || r.trigNames[0] != "C" {
-		t.Fatalf("trigger collection %v", r.trigNames)
-	}
-	_ = s
-}
-
-func TestMonitorKeyFromCollectionsList(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue"), job("b", "red")}},
-		config.Collection{Name: "One", Jobs: []string{"a"}},
-		config.Collection{Name: "Two", Jobs: []string{"b", "gone"}})
-	s := New(r.deps)
-	s, _ = send(s, "down")
-	_, navs := send(s, "m")
-	if len(navs) != 1 || len(r.monitored) != 1 {
-		t.Fatalf("navs=%v monitored=%v", navs, r.monitored)
-	}
-	got := r.monitored[0]
-	if got.name != "Two" || !slices.Equal(got.jobs, []string{"b", "gone"}) || !got.missing["gone"] || got.missing["b"] {
-		t.Fatalf("monitor args %+v", got)
-	}
-}
-
-func TestMonitorUnavailableAndRenameHook(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}}, config.Collection{Name: "C", Jobs: []string{"a"}})
-	r.deps.Monitor = nil
-	s := New(r.deps)
-	s, navs := send(s, "m")
-	if len(navs) != 0 || !strings.Contains(shown(s), "monitor unavailable") {
-		t.Fatalf("list: %v %q", navs, shown(s))
-	}
-	s, navs = send(s, "enter")
-	v := open(pushed(t, navs))
-	v, navs = send(v, "m")
-	if len(navs) != 0 || !strings.Contains(shown(v), "monitor unavailable") {
-		t.Fatalf("view: %v %q", navs, shown(v))
-	}
-	s, _ = send(s, "r")
-	s = typeText(s, "2")
-	send(s, "enter")
-	if len(r.renamed) != 1 || r.renamed[0] != [2]string{"C", "C2"} {
-		t.Fatalf("renamed %v", r.renamed)
-	}
-}
-
-func TestViewLoadingModalNamesCollection(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}},
-		config.Collection{Name: "Nightly", Jobs: []string{"a"}})
-	s := New(r.deps)
-	s, navs := send(s, "enter")
-	v := pushed(t, navs)
-	v.Update(tea.WindowSizeMsg{Width: 80, Height: 20})
-	cmd := v.Init()
-	if out := shown(v); !strings.Contains(out, "Loading Nightly") || !strings.Contains(out, "╭") {
-		t.Fatalf("first load: %q", out)
-	}
-	v, _ = run(v, cmd)
-	if out := shown(v); strings.Contains(out, "Loading") || strings.Contains(out, "refreshing") {
-		t.Fatalf("loaded: %q", out)
-	}
-	// R over existing data: rows stay, header shows the spinner.
-	now := time.Unix(1000, 0)
-	v.(*viewScreen).load.SetNow(func() time.Time { return now })
-	v, cmd = v.Update(kmsg("R"))
-	if out := shown(v); !strings.Contains(out, "refreshing…") || !strings.Contains(out, "a") || strings.Contains(out, "Refreshing") {
-		t.Fatalf("refresh with data: %q", out)
-	}
-	v, _ = run(v, cmd)
-	if !strings.Contains(shown(v), "refreshing") {
-		t.Fatal("fast refresh must keep the spinner until the minimum elapsed")
-	}
-	now = now.Add(time.Second)
-	v.Update(spinner.TickMsg{})
-	if strings.Contains(shown(v), "refreshing") || v.(*viewScreen).load.Active() {
-		t.Fatal("spinner must stop")
-	}
-	// R with no data (after a failed load): blocking modal with the name.
-	vs := v.(*viewScreen)
-	vs.loaded, vs.err = false, fmt.Errorf("boom")
-	v, _ = v.Update(kmsg("R"))
-	if out := shown(v); !strings.Contains(out, "Refreshing Nightly…") {
-		t.Fatalf("R without data: %q", out)
-	}
-	_ = s
-}
-
-func TestStaleSpinnerTickIgnoredAfterLoad(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}}, config.Collection{Name: "C", Jobs: []string{"a"}})
-	_, navs := send(New(r.deps), "enter")
-	v := open(pushed(t, navs))
-	vs := v.(*viewScreen)
-	if _, c := v.Update(spinner.TickMsg{}); c != nil || vs.load.Active() {
-		t.Fatal("idle screen must ignore ticks")
-	}
-}
-
-func TestMonitorFromListShowsModalUntilLoaded(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}},
-		config.Collection{Name: "One", Jobs: []string{"a"}})
-	s := New(r.deps)
-	s, cmd := s.Update(kmsg("m"))
-	if out := shown(s); !strings.Contains(out, "Loading jobs for One…") {
-		t.Fatalf("modal expected: %q", out)
-	}
-	if !s.(*listScreen).load.Active() {
-		t.Fatal("spinner must run")
-	}
-	s, navs := run(s, cmd)
-	if len(navs) != 1 || s.(*listScreen).load.Active() || strings.Contains(shown(s), "Loading") {
-		t.Fatalf("navs=%v view=%q", navs, shown(s))
-	}
-	// esc cancels a pending load and drops its result.
-	s, cmd = s.Update(kmsg("m"))
-	s, _ = s.Update(kmsg("esc"))
-	_, navs = run(s, cmd)
-	if len(navs) != 0 || strings.Contains(shown(s), "Loading") {
-		t.Fatalf("cancel failed: navs=%v", navs)
-	}
-}
-
 func TestPickerShowsModalWhileLoading(t *testing.T) {
 	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{job("a", "blue")}})
 	p := newPicker(&env{deps: r.deps, theme: core.NewTheme()}, "New x", nil, nil)
@@ -570,67 +325,461 @@ func pressOpen(s core.Screen) core.Screen {
 	return s
 }
 
-func TestViewOpenKey(t *testing.T) {
-	o := &recOpener{}
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{
-		{FullName: "a", Color: "blue"}, {FullName: "b", Color: "blue"}}},
-		config.Collection{Name: "C", Jobs: []string{"a", "b", "gone"}})
-	r.deps.Opener = o
-	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
-	s, navs := send(New(r.deps), "enter")
-	v := open(pushed(t, navs))
+// ---- the tree ----
 
-	v = pressOpen(v)
-	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" || !strings.Contains(shown(v), "opened in browser") {
-		t.Fatalf("opened %v\n%s", o.urls, shown(v))
+func nested() []config.Collection {
+	return []config.Collection{{
+		Name: "backend", Jobs: []string{"own"},
+		Folders: []config.Collection{
+			{Name: "develop", Jobs: []string{"a", "b"}, Folders: []config.Collection{{Name: "deep", Jobs: []string{"c"}}}},
+			{Name: "empty"},
+		},
+	}, {Name: "libs", Jobs: []string{"l"}}}
+}
+
+func nestedCat() jenkins.Catalog {
+	return jenkins.Catalog{Jobs: []jenkins.Job{job("own", "blue"), job("a", "blue"), job("b", "red"), job("c", "blue_anime"), job("l", "blue")}}
+}
+
+func tree(t *testing.T, r *rig) *treeScreen {
+	t.Helper()
+	return open(New(r.deps)).(*treeScreen)
+}
+
+func rowNames(s *treeScreen) []string {
+	var out []string
+	for _, r := range s.rows {
+		out = append(out, strings.Repeat(".", r.depth)+r.name)
 	}
-	v, _ = send(v, "down")
-	v = pressOpen(v)
-	if len(o.urls) != 2 || o.urls[1] != "http://j/job/b/" {
-		t.Fatalf("opened %v", o.urls)
+	return out
+}
+
+func TestTreeStartsCollapsedAndExpandsInPlace(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := tree(t, r)
+	if got := rowNames(s); !slices.Equal(got, []string{"backend", "libs"}) {
+		t.Fatalf("collapsed: %v", got)
 	}
-	v, _ = send(v, "down")
-	v = pressOpen(v) // missing member
-	if len(o.urls) != 2 {
-		t.Fatalf("opened %v", o.urls)
+	if v := shown(s); !strings.Contains(v, "▸ backend") || !strings.Contains(v, "3 folders · 4 jobs") {
+		t.Fatalf("view: %q", v)
+	}
+	// right opens; sub-folders first, then the folder's own jobs
+	var scr core.Screen = s
+	scr, _ = send(scr, "right")
+	if got := rowNames(scr.(*treeScreen)); !slices.Equal(got, []string{"backend", ".develop", ".empty", ".own", "libs"}) {
+		t.Fatalf("expanded: %v", got)
+	}
+	if !strings.Contains(shown(scr), "▾ backend") {
+		t.Fatal("no open marker")
+	}
+	// right on an open folder goes to its first child; right opens it
+	scr, _ = send(scr, "right", "right")
+	if got := rowNames(scr.(*treeScreen)); !slices.Equal(got, []string{"backend", ".develop", "..deep", "..a", "..b", ".empty", ".own", "libs"}) {
+		t.Fatalf("deep: %v", got)
+	}
+}
+
+func TestTreeLeftGoesToParent(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := tree(t, r)
+	s.expanded["backend"], s.expanded["backend/develop"] = true, true
+	s.build()
+	var scr core.Screen = s
+	scr, _ = send(scr, "down", "down", "down") // develop, deep, a
+	if r, _ := scr.(*treeScreen).current(); r.key != "a" {
+		t.Fatalf("cursor %+v", r)
+	}
+	scr, _ = send(scr, "left")
+	if r, _ := scr.(*treeScreen).current(); !r.folder || r.path != "backend/develop" {
+		t.Fatalf("left on a job: %+v", r)
+	}
+	scr, _ = send(scr, "left") // closes develop
+	if len(scr.(*treeScreen).rows) != 5 {
+		t.Fatalf("rows %v", rowNames(scr.(*treeScreen)))
+	}
+	scr, _ = send(scr, "left") // closed: to the parent
+	if r, _ := scr.(*treeScreen).current(); r.path != "backend" {
+		t.Fatalf("left on a closed folder: %+v", r)
+	}
+}
+
+func TestTreeExpansionLivesInTheSharedMap(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	r.deps.Expanded = map[string]bool{}
+	s := open(New(r.deps))
+	send(s, "right")
+	again := open(New(r.deps)).(*treeScreen)
+	if len(again.rows) != 5 {
+		t.Fatalf("a new visit lost the open folder: %v", rowNames(again))
+	}
+}
+
+func TestTreeShowsStatusAndMissing(t *testing.T) {
+	r := newRig(t, nestedCat(), config.Collection{Name: "C", Jobs: []string{"a", "gone", "b"}})
+	s := tree(t, r)
+	send(s, "right")
+	v := shown(s)
+	if !strings.Contains(v, "SUCCESS") || !strings.Contains(v, "FAILED") || !strings.Contains(v, "MISSING") {
+		t.Fatalf("badges: %q", v)
+	}
+}
+
+func TestNewFolderIsEmptyAndTakesASubFolderStraightAway(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	s, _ = send(s, "N")
+	s = typeText(s, "ops")
+	s, navs := send(s, "enter")
+	if len(navs) != 0 {
+		t.Fatal("creating a folder must not open the job picker")
+	}
+	if c := r.file().Get("ops"); c == nil || len(c.Jobs) != 0 {
+		t.Fatalf("file: %v", r.file().Paths())
+	}
+	if cur, _ := s.(*treeScreen).current(); cur.path != "ops" {
+		t.Fatalf("cursor should land on the new folder: %+v", cur)
+	}
+	// and now a folder inside it, with the cursor still on ops
+	s, _ = send(s, "n")
+	s = typeText(s, "child")
+	s, _ = send(s, "enter")
+	if r.file().Get("ops/child") == nil {
+		t.Fatalf("sub-folder: %v", r.file().Paths())
+	}
+	if cur, _ := s.(*treeScreen).current(); cur.path != "ops/child" || !strings.Contains(shown(s), "child") {
+		t.Fatalf("new sub-folder should show, open under its parent: %+v", cur)
+	}
+	// a duplicate sibling is refused: back on ops, "CHILD" clashes with child
+	s, _ = send(s, "up", "n")
+	s = typeText(s, "CHILD")
+	s, _ = send(s, "enter")
+	if !strings.Contains(shown(s), "already exists") {
+		t.Fatalf("dup: %q", shown(s))
+	}
+}
+
+func TestNewOnAJobCreatesInItsFolder(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := tree(t, r)
+	s.expanded["backend"] = true
+	s.build()
+	var scr core.Screen = s
+	scr, _ = send(scr, "down", "down", "down") // develop, empty, own
+	if cur, _ := scr.(*treeScreen).current(); cur.key != "own" {
+		t.Fatalf("cursor %+v", cur)
+	}
+	scr, _ = send(scr, "n")
+	scr = typeText(scr, "x")
+	send(scr, "enter")
+	if r.file().Get("backend/x") == nil {
+		t.Fatalf("%v", r.file().Paths())
+	}
+}
+
+func TestSpaceOnAFolderSelectsItsSubtreeAndTriggersIt(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	s, _ = send(s, "space")
+	if v := shown(s); !strings.Contains(v, "[x] ▸ backend") || !strings.Contains(v, "4 selected") {
+		t.Fatalf("view: %q", v)
+	}
+	s, navs := send(s, "t")
+	if len(navs) != 1 || len(r.triggered) != 1 {
+		t.Fatalf("navs=%v trig=%v", navs, r.triggered)
+	}
+	if got := r.triggered[0]; len(got) != 4 || r.trigNames[0] != "backend" {
+		t.Fatalf("triggered %v for %v", got, r.trigNames)
+	}
+	s, _ = send(s, "space") // again clears
+	if strings.Contains(shown(s), "selected") {
+		t.Fatalf("not cleared: %q", shown(s))
+	}
+}
+
+func TestTriggerTargetIsTheDeepestCommonFolderElseSelection(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := tree(t, r)
+	s.expanded["backend"], s.expanded["backend/develop"] = true, true
+	s.build()
+	var scr core.Screen = s
+	// a and b are both in develop
+	scr, _ = send(scr, "down", "down", "down", "down", "space", "down", "space", "t") // develop, deep, c... see below
+	_ = scr
+	if len(r.triggered) == 0 {
+		t.Fatal("no trigger")
+	}
+	if r.trigNames[0] != "backend/develop" {
+		t.Fatalf("target %q for %v", r.trigNames[0], r.triggered[0])
+	}
+	// a (backend) and l (libs): no common folder
+	s2 := tree(t, r)
+	s2.selected["a"], s2.selected["l"] = true, true
+	send(s2, "t")
+	if got := r.trigNames[len(r.trigNames)-1]; got != SelectionName {
+		t.Fatalf("target %q", got)
+	}
+}
+
+func TestTriggerOnAJobUsesItsFolderAndSkipsMissing(t *testing.T) {
+	r := newRig(t, nestedCat(), config.Collection{Name: "C", Jobs: []string{"gone", "a"}})
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "right", "down") // open C, cursor on gone
+	s, navs := send(s, "t")
+	if len(navs) != 0 || !strings.Contains(shown(s), "nothing to trigger") {
+		t.Fatalf("navs=%v %q", navs, shown(s))
+	}
+	s, navs = send(s, "down", "t")
+	if len(navs) != 1 || r.trigNames[0] != "C" || !slices.Equal(r.triggered[0], []string{"a"}) {
+		t.Fatalf("%v %v %v", navs, r.trigNames, r.triggered)
+	}
+}
+
+func TestMonitorCoversTheSubtree(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	_, navs := send(s, "m")
+	if len(navs) != 1 || len(r.monitored) != 1 {
+		t.Fatalf("navs=%v", navs)
+	}
+	if got := r.monitored[0]; got.name != "backend" || !slices.Equal(got.jobs, []string{"c", "a", "b", "own"}) {
+		t.Fatalf("monitor %+v", got)
+	}
+}
+
+func TestMonitorUnavailable(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	r.deps.Monitor = nil
+	s := open(New(r.deps))
+	s, navs := send(s, "m")
+	if len(navs) != 0 || !strings.Contains(shown(s), "monitor unavailable") {
+		t.Fatalf("%v %q", navs, shown(s))
+	}
+}
+
+func TestRenameFolderAndDeleteWithCounts(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	s, _ = send(s, "r")
+	s = typeText(s, "2")
+	s, _ = send(s, "enter")
+	if r.file().Get("backend2") == nil || r.renamed[len(r.renamed)-1] != [2]string{"backend", "backend2"} {
+		t.Fatalf("rename: %v %v", r.file().Paths(), r.renamed)
+	}
+	s, _ = send(s, "d")
+	if v := shown(s); !strings.Contains(v, `Delete "backend2" with 3 folders and 4 jobs?`) {
+		t.Fatalf("question: %q", v)
+	}
+	s, _ = send(s, "n")
+	if len(r.file().Items) != 2 {
+		t.Fatal("n must keep")
+	}
+	send(s, "d", "y")
+	if len(r.file().Items) != 1 {
+		t.Fatalf("subtree not deleted: %v", r.file().Paths())
+	}
+}
+
+func TestRemoveAJobFromItsFolder(t *testing.T) {
+	r := newRig(t, nestedCat(), config.Collection{Name: "C", Jobs: []string{"gone", "a"}})
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "right", "down", "d")
+	if !strings.Contains(shown(s), "Remove gone from C?") {
+		t.Fatalf("%q", shown(s))
+	}
+	s, _ = send(s, "y")
+	if got := r.file().Get("C").Jobs; !slices.Equal(got, []string{"a"}) {
+		t.Fatalf("%v", got)
+	}
+}
+
+func TestReorderStaysInsideTheFolder(t *testing.T) {
+	r := newRig(t, nestedCat(), config.Collection{Name: "C", Jobs: []string{"a", "b", "c"}}, config.Collection{Name: "D"})
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "right", "down", "down", "shift+up")
+	if got := r.file().Get("C").Jobs; !slices.Equal(got, []string{"b", "a", "c"}) {
+		t.Fatalf("%v", got)
+	}
+	s, _ = send(s, "shift+up", "shift+up") // at the top already: stays in the folder
+	if got := r.file().Get("C").Jobs; len(got) != 3 || got[0] != "b" && got[0] != "a" || got[1] == "c" && got[2] != "c" {
+		t.Fatalf("%v", got)
+	}
+	s, _ = send(s, "up", "up", "up", "shift+down") // the folder C moves below D
+	if got := r.file().Paths(); !slices.Equal(got, []string{"D", "C"}) {
+		t.Fatalf("%v", got)
 	}
 	_ = s
+}
 
-	o.err = errors.New("sysint: no display")
-	v, _ = send(v, "up", "up")
-	v = pressOpen(v)
-	if !strings.Contains(shown(v), "could not open: no display") {
-		t.Fatalf("no error notice:\n%s", shown(v))
+func TestMoveAndCopyJobs(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := tree(t, r)
+	s.expanded["backend"], s.expanded["backend/develop"] = true, true
+	s.build()
+	var scr core.Screen = s
+	scr, _ = send(scr, "down", "down", "down", "space") // a selected
+	_, navs := send(scr, "C")
+	dest := open(pushed(t, navs))
+	// rows: backend, develop, deep, empty, libs
+	send(dest, "down", "down", "down", "down", "enter")
+	if !slices.Equal(r.file().Get("libs").Jobs, []string{"l", "a"}) || !slices.Contains(r.file().Get("backend/develop").Jobs, "a") {
+		t.Fatalf("copy: %+v", r.file())
+	}
+	_, navs = send(scr, "M")
+	dest = open(pushed(t, navs))
+	send(dest, "down", "down", "down", "enter") // empty
+	if !slices.Equal(r.file().Get("backend/empty").Jobs, []string{"a"}) || slices.Contains(r.file().Get("backend/develop").Jobs, "a") {
+		t.Fatalf("move: %+v", r.file())
 	}
 }
 
-func TestViewOpenKeyHiddenWithoutOpener(t *testing.T) {
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "a"}}}, config.Collection{Name: "C", Jobs: []string{"a"}})
-	r.deps.Opener = &recOpener{} // an opener without JobURL is not enough
-	_, navs := send(New(r.deps), "enter")
-	v := open(pushed(t, navs))
-	if _, cmd := v.Update(kmsg("o")); cmd != nil {
-		t.Error("o acted without an opener")
+func TestMoveFolderRefusesItsOwnSubtree(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	_, navs := send(s, "M")
+	dest := open(pushed(t, navs))
+	dest, _ = send(dest, "down", "down", "enter") // develop: under backend
+	if !strings.Contains(shown(dest), "cannot") || r.file().Get("backend/develop/backend") != nil {
+		t.Fatalf("not refused: %q", shown(dest))
 	}
-	for _, k := range v.(core.Screen).Keys() {
-		if k.Help().Desc == "open in browser" {
-			t.Error("o shown without an opener")
-		}
+	dest, _ = send(dest, "up", "up", "up", "up") // (top level) ... then libs
+	_ = dest
+	_, navs = send(s, "down", "M")
+	d2 := open(pushed(t, navs))
+	send(d2, "down", "enter") // into backend
+	if r.file().Get("backend/libs") == nil {
+		t.Fatalf("move: %v", r.file().Paths())
 	}
 }
 
-func TestViewOpenKeyTypesInFilterBox(t *testing.T) {
+func TestFilterShowsMatchesWithTheirParentsAndRestoresState(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	s := open(New(r.deps))
+	s, _ = send(s, "/")
+	s = typeText(s, "deep")
+	if got := rowNames(s.(*treeScreen)); !slices.Equal(got, []string{"backend", ".develop", "..deep"}) {
+		t.Fatalf("filtered: %v", got)
+	}
+	s = typeText(s, "x") // nothing matches
+	if !strings.Contains(shown(s), "no matches") {
+		t.Fatalf("%q", shown(s))
+	}
+	s, _ = send(s, "esc")
+	if got := rowNames(s.(*treeScreen)); !slices.Equal(got, []string{"backend", "libs"}) {
+		t.Fatalf("not restored: %v", got)
+	}
+	// a job match shows the job under open parents
+	s, _ = send(s, "/")
+	s = typeText(s, "own")
+	if got := rowNames(s.(*treeScreen)); !slices.Equal(got, []string{"backend", ".own"}) {
+		t.Fatalf("job match: %v", got)
+	}
+}
+
+func TestOpenKeyOnAJob(t *testing.T) {
 	o := &recOpener{}
-	r := newRig(t, jenkins.Catalog{Jobs: []jenkins.Job{{FullName: "foo"}}}, config.Collection{Name: "C", Jobs: []string{"foo"}})
+	r := newRig(t, nestedCat(), config.Collection{Name: "C", Jobs: []string{"a", "gone"}})
 	r.deps.Opener = o
 	r.deps.JobURL = func(n string) string { return "http://j/job/" + n + "/" }
-	_, navs := send(New(r.deps), "enter")
-	v := open(pushed(t, navs))
-	v, _ = send(v, "/", "o")
-	if len(o.urls) != 0 || !strings.Contains(shown(v), "o") {
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "right", "down")
+	scr := s
+	scr = pressOpen(scr)
+	if len(o.urls) != 1 || o.urls[0] != "http://j/job/a/" {
 		t.Fatalf("opened %v", o.urls)
 	}
-	if vs := v.(*viewScreen); vs.list.Filter() != "o" {
-		t.Fatalf("filter %q", vs.list.Filter())
+	scr, _ = send(scr, "down")
+	scr = pressOpen(scr) // missing
+	if len(o.urls) != 1 || !strings.Contains(shown(scr), "not in Jenkins") {
+		t.Fatalf("%v %q", o.urls, shown(scr))
+	}
+	o.err = errors.New("sysint: no display")
+	scr, _ = send(scr, "up")
+	scr = pressOpen(scr)
+	if !strings.Contains(shown(scr), "could not open: no display") {
+		t.Fatalf("%q", shown(scr))
+	}
+}
+
+func TestFolderRowsHaveNoOpenKey(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	r.deps.Opener = &recOpener{}
+	r.deps.JobURL = func(n string) string { return n }
+	s := open(New(r.deps))
+	if _, cmd := s.Update(kmsg("o")); cmd != nil {
+		t.Fatal("o acted on a folder")
+	}
+}
+
+func TestGoIntoAFolderShowsOnlyItsContentsAndEscLeaves(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "enter") // into backend: its sub-folders, then its own jobs, from the top
+	ts := s.(*treeScreen)
+	if got := rowNames(ts); !slices.Equal(got, []string{"develop", "empty", "own"}) {
+		t.Fatalf("inside backend: %v", got)
+	}
+	if got := ts.Title(); !strings.HasSuffix(got, "backend") {
+		t.Fatalf("title %q", got)
+	}
+	// expanding still works inside, and a deeper go-into stacks
+	s, _ = send(s, "right")
+	if got := rowNames(s.(*treeScreen)); !slices.Equal(got, []string{"develop", ".deep", ".a", ".b", "empty", "own"}) {
+		t.Fatalf("expanded inside: %v", got)
+	}
+	s, _ = send(s, "enter")
+	ts = s.(*treeScreen)
+	if got := rowNames(ts); !slices.Equal(got, []string{"deep", "a", "b"}) || !strings.HasSuffix(ts.Title(), "backend › develop") {
+		t.Fatalf("inside develop: %v %q", got, ts.Title())
+	}
+	// esc leaves one level at a time, landing on the folder left, then goes back
+	s, navs := send(s, "esc")
+	if cur, _ := s.(*treeScreen).current(); cur.path != "backend/develop" || len(navs) != 0 {
+		t.Fatalf("cursor %+v navs %v", cur, navs)
+	}
+	s, navs = send(s, "esc")
+	if got := rowNames(s.(*treeScreen)); !slices.Equal(got, []string{"backend", "libs"}) || len(navs) != 0 {
+		t.Fatalf("top: %v", got)
+	}
+	_, navs = send(s, "esc")
+	if _, ok := navs[len(navs)-1].(core.Pop); !ok {
+		t.Fatal("esc at the top should leave the screen")
+	}
+}
+
+func TestInsideAFolderNewGoesThereAndAnEmptyOneTakesJobs(t *testing.T) {
+	r := newRig(t, nestedCat(), nested()...)
+	var s core.Screen = tree(t, r)
+	s, _ = send(s, "enter", "down", "enter") // into backend, then into its empty folder
+	if got := rowNames(s.(*treeScreen)); len(got) != 0 {
+		t.Fatalf("empty folder shows rows: %v", got)
+	}
+	if !strings.Contains(shown(s), "This folder is empty") {
+		t.Fatalf("%q", shown(s))
+	}
+	s, _ = send(s, "n")
+	s = typeText(s, "kid")
+	s, _ = send(s, "enter")
+	if r.file().Get("backend/empty/kid") == nil {
+		t.Fatalf("%v", r.file().Paths())
+	}
+	s, _ = send(s, "esc", "esc") // out of empty, out of backend; then N at the top level
+	s, _ = send(s, "N")
+	s = typeText(s, "top")
+	send(s, "enter")
+	if r.file().Get("top") == nil {
+		t.Fatalf("%v", r.file().Paths())
+	}
+}
+
+func TestBreadcrumbCollapsesMiddle(t *testing.T) {
+	names := []string{"one", "two", "three", "four", "five"}
+	if got := Breadcrumb(names, 100); got != "one › two › three › four › five" {
+		t.Fatal(got)
+	}
+	if got := Breadcrumb(names, 10); got != "one › … › four › five" {
+		t.Fatal(got)
+	}
+	if got := Breadcrumb(names[:2], 1); got != "one › two" {
+		t.Fatal(got)
 	}
 }

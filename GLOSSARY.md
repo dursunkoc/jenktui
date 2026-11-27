@@ -10,7 +10,7 @@ A buildable item on the Jenkins server, identified by its full path (e.g. `team/
 The configured Jenkins folder or Multibranch Project whose descendants make up the Job Catalog. When not configured, the Jenkins root is used.
 
 **Collection**
-A named, ordered group of Jobs curated by the user from the Job Catalog. Builds are triggered from a Collection.
+A named, ordered group of Jobs curated by the user from the Job Catalog, which can also hold other Collections as **sub-folders**, to any depth. A Collection and a folder are the same thing. A top-level Collection sits directly under the root, which holds only folders; a Job can be in any number of folders. On the Collections screen all folders form one **tree**: a folder opens and closes in place and shows its sub-folders, then its own Jobs, each with its last status; the open folders are remembered while the app runs. **Going into** a folder (`Enter`) narrows the tree to what that folder holds, shown under a breadcrumb title; `Esc` goes back out one level. A folder is addressed by its **path**, its names from the top joined with `/` (`backend/develop`), letter case ignored. Builds are triggered from a Collection, and its Run Monitor, Trigger and Overview count cover its whole **subtree**: its own Jobs and those of every folder below it, each Job once.
 _Avoid_: list, sublist.
 
 **Overview**
