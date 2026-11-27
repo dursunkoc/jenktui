@@ -23,6 +23,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/dursunkoc/jenktui/internal/jenkins/jenkinstest"
+	"github.com/dursunkoc/jenktui/internal/sysint"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 	"github.com/dursunkoc/jenktui/internal/ui/entry"
 )
@@ -85,6 +86,17 @@ func newApp(t *testing.T, fake *jenkinstest.Server, opts ...appOpt) *harness {
 	}
 	if c.collections != "" {
 		writeFile(t, filepath.Join(dir, "collections.toml"), c.collections)
+	}
+	// No real browser, clipboard or desktop notification from tests: the
+	// commands are dropped and the notifier's cache is a temp dir.
+	cache := t.TempDir()
+	newSys = func() sysint.Sys {
+		return sysint.Sys{
+			Run:      func(string, ...string) error { return nil },
+			RunIn:    func(string, string, ...string) error { return nil },
+			GOOS:     runtime.GOOS,
+			CacheDir: cache,
+		}
 	}
 	deps := newDeps(dir)
 	deps.MinSplash = time.Millisecond

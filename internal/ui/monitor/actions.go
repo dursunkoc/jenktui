@@ -19,6 +19,9 @@ type maState struct {
 	focusFailed bool
 	counts      map[buildKey]countsEntry // test counts per build (MA3)
 	seen        map[string]bool          // jobs seen queued or running, until they finish (MA5)
+	jump        buildKey                 // the last failed build that notified, until its log is shown
+	jumpOnFocus bool                     // jump arrived while the terminal was not focused: focus opens it
+	blurred     bool                     // the terminal reported losing focus and has not regained it
 }
 
 var (

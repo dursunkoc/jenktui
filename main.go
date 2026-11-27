@@ -61,7 +61,7 @@ func main() {
 	}
 	sess := &core.Session{StartCollection: strings.TrimSpace(flag.Arg(0))}
 	core.ApplyColorEnv()
-	p := tea.NewProgram(core.NewRouter(sess, entry.NewSplash(sess, newDeps(dir))), tea.WithAltScreen())
+	p := tea.NewProgram(core.NewRouter(sess, entry.NewSplash(sess, newDeps(dir))), tea.WithAltScreen(), tea.WithReportFocus())
 	if _, err := p.Run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
@@ -69,6 +69,10 @@ func main() {
 }
 
 // newDeps wires the screens together: Menu -> Catalog / Collections -> Trigger -> the Collection's Run Monitor.
+// newSys returns the operating-system integration (browser, clipboard,
+// notifications). Tests replace it so they never start a real process.
+var newSys = func() sysint.Sys { return sysint.New(os.Stdout) }
+
 func newDeps(dir string) entry.Deps {
 	configPath := filepath.Join(dir, "config.toml")
 
@@ -103,7 +107,7 @@ func newDeps(dir string) entry.Deps {
 	}
 
 	collectionsPath := filepath.Join(dir, "collections.toml")
-	sys := sysint.New(os.Stdout)
+	sys := newSys()
 
 	// Each Collection has its own Run Monitor for the session, keyed by the
 	// lower-cased name (config.Collections.Find is case-insensitive). Leaving

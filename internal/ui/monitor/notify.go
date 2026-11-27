@@ -1,7 +1,10 @@
 package monitor
 
 import (
+	"slices"
 	"strconv"
+
+	"github.com/charmbracelet/bubbles/key"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -10,6 +13,12 @@ import (
 // MA5: ring the bell and send a desktop notification when a build the monitor
 // watched running finishes. Only the screen on show receives poll results, so
 // this fires only while this monitor is on screen.
+//
+// A failed or unstable build that notified becomes the jump target: `!` opens
+// that build's failed stage log, and so does the terminal getting focus back
+// (clicking the notification does that) when the failure notified while the
+// terminal was not focused, so a failure the user watched happen does not
+// pull them into its log later.
 
 // Values of Deps.Notify (the config's notify).
 const (
@@ -40,11 +49,63 @@ func (m *model) notifyOnFinish(prev, st runState) tea.Cmd {
 	if st.num > 0 {
 		body += " #" + strconv.Itoa(st.num)
 	}
-	return func() tea.Msg {
+	notify := func() tea.Msg {
 		sys.Bell()
 		_ = sys.Notify(title, body) // a missing notifier must not disturb the monitor
 		return nil
 	}
+	if !st.failed() || st.num == 0 {
+		return notify
+	}
+	m.ma.jump, m.ma.jumpOnFocus = buildKey{job, st.num}, m.ma.blurred
+	return notify
+}
+
+var keyJump = key.NewBinding(key.WithKeys("!"), key.WithHelp("!", "log of the last notified failure"))
+
+// focusChanged follows the terminal's focus reports. Regaining focus opens
+// the jump target's log when it notified while the terminal was not focused,
+// unless the user is busy with a log, an overlay or a question; a target whose
+// row was replaced is dropped quietly.
+func (m *model) focusChanged(focused bool) tea.Cmd {
+	m.ma.blurred = !focused
+	if !focused || !m.ma.jumpOnFocus || m.log != nil || m.overlay != nil || m.confirm != nil {
+		return nil
+	}
+	if i := m.index(m.ma.jump.job); i < 0 || m.runs[i].num != m.ma.jump.num {
+		m.ma.jump, m.ma.jumpOnFocus = buildKey{}, false
+		return nil
+	}
+	return m.jumpToFailed()
+}
+
+// jumpToFailed selects the jump target's row, opens its details and shows the
+// end of its failed stage's log, or of the whole log when no stage failed or
+// the build has no stages. The target is used once.
+func (m *model) jumpToFailed() tea.Cmd {
+	j := m.ma.jump
+	m.ma.jump, m.ma.jumpOnFocus = buildKey{}, false
+	if j.job == "" {
+		return m.flash("no failure notified yet")
+	}
+	i := m.index(j.job)
+	if i < 0 || m.runs[i].num != j.num {
+		return m.flash(ansi.Strip(m.jobName(j.job)) + " #" + strconv.Itoa(j.num) + " is no longer shown")
+	}
+	m.cursor = max(slices.Index(m.visible(), i), 0)
+	m.details, m.ma.focusFailed = true, false
+	cmds := []tea.Cmd{m.detailStages(), m.hooks.detailsOpen(i), m.fetchCounts(i)}
+	if l := failedLine(m.runs[i].stages); l >= 0 {
+		m.stageCur = l
+		cmds = append(cmds, m.openFailedLog())
+	} else {
+		m.stageCur = 0
+		cmds = append(cmds, m.openLog(false))
+		if m.log != nil {
+			m.log.follow, m.log.top = false, 1<<30 // clamped to the last page
+		}
+	}
+	return tea.Batch(cmds...)
 }
 
 // wantsNotice applies Deps.Notify: failures (the default) notify for a failed

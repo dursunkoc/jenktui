@@ -2100,3 +2100,31 @@ func TestKeptMonitorKeepsItsToggleAndADeletedCollectionsMonitorIsDropped(t *test
 	h.expect("All 1 jobs succeeded")
 	h.expectNot("showing all")
 }
+
+// A failure that notifies while the terminal is in the background opens its
+// log when the terminal gets focus back (the Router passes focus reports to
+// the Run Monitor).
+func TestFocusOpensTheNotifiedFailureLog(t *testing.T) {
+	f := newFixture(t)
+	h := newApp(t, f, withCollections(collectionsTOML("Ops", "team/web/build")))
+	h.loginOK()
+	h.openCollections()
+	h.openCollection("Ops")
+	h.key("t", "y")
+	h.expectTitle("Run Monitor: Ops")
+	f.ResolveQueueItem(triggerFor(t, f, "team/web/build").QueueID, 40)
+	f.Job("team/web/build").LastBuild(jenkinstest.Build{Number: 40, Building: true, Timestamp: now()})
+	h.key("R")
+	h.expectRow("team/web/build", "RUNNING", "#40")
+
+	h.send(tea.BlurMsg{})
+	f.Job("team/web/build").
+		LastBuild(jenkinstest.Build{Number: 40, Result: "FAILURE", Timestamp: now(), Duration: 45 * time.Second}).
+		Log("Building\nerror: disk full\nFinished: FAILURE\n")
+	h.key("R")
+	h.expectRow("team/web/build", "FAILED", "#40")
+	h.expectNot("disk full")
+
+	h.send(tea.FocusMsg{})
+	h.expect("error: disk full", "Finished: FAILURE")
+}

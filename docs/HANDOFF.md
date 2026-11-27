@@ -28,7 +28,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/ui/core` | `Screen` interface, `Router` (with `Ctrl+P` and the optional `Pauser`, `Resumer` and `Busy` interfaces), theme (`ApplyColorEnv` for `NO_COLOR`), keymap, `Loading` spinner. Documented in `docs/ui-contract.md`. |
 | `internal/ui/overview` | Overview from the menu: each Collection's failed, running, queued and missing jobs, counted from folder `color` listings. |
 | `internal/ui/palette` | `Ctrl+P` jump: Collections and jobs, `Enter` opens a Collection's Run Monitor or the catalog filtered to a job. |
-| `internal/sysint` | Opening the browser, copying, desktop notifications and the bell, with injectable runners. |
+| `internal/sysint` | Opening the browser, copying, desktop notifications and the bell, with injectable runners. Notifications go through the terminal (OSC 9/777/99) when it supports them, else `osascript` or `notify-send` with the embedded icon (`docs/icon/make_icon.py`). Tests swap `newSys` in `main.go` so they never start a real process. |
 | `internal/ui/widgets` | Filterable multi-select list (text filter with wildcards, status filter, reorder) with name, branch and status columns. A blank line, the filter row, a blank line and the column titles (Pipeline, Branch, Status) sit above the rows. |
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
@@ -50,6 +50,7 @@ These were agreed with the user. Change them only if the user asks.
 - **Missing jobs** stay in a Collection, marked missing, skipped when triggering, and are never removed silently.
 - **Abort and rerun are in (v0.2).** Still out: multiple servers, credential storage.
 - **Notifications fire only from the Run Monitor on show** (bell and desktop, `notify` in `config.toml`): the Router delivers replies only to the top screen, so a monitor that is covered or left does not poll and does not notify. Changing that needs a Router change.
+- **No app bundle for notifications.** A notifier app built at run time (for a custom icon and click action on macOS) is blocked by the owner's corporate endpoint-privilege tool, which asks for admin rights. Notifications use the terminal's own mechanism or `osascript`, and the click-to-failure flow is a focus event plus `!` inside the TUI.
 - **URLs to open or copy** are built from the configured `jenkins_url` (`Client.JobURL`, `Client.BuildURL`), never from the `url` Jenkins reports: its own root URL is often internal or a default.
 
 ## Conventions

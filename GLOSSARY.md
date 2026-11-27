@@ -41,7 +41,7 @@ Stopping a running build, or cancelling a queued one, after the user confirms.
 A new Trigger of a build's Job with the build's parameter values filled in. Jenkins does not keep password values, so they are asked for again. The new build joins the same Run Monitor.
 
 **Notification**
-A terminal bell and a desktop message sent when a build the Run Monitor saw queued or running finishes. The **Notify mode** (failures, all or off) says which results notify. It happens only while that Run Monitor is the screen on show.
+A terminal bell and a desktop message sent when a build the Run Monitor saw queued or running finishes. When a failed or unstable build notifies while the terminal is in the background, returning to the terminal opens its failed log in the Run Monitor; `!` does so on demand. The **Notify mode** (failures, all or off) says which results notify. It happens only while that Run Monitor is the screen on show.
 
 **History Dots**
 The results of a Job's last five builds as glyphs at the end of its Run Monitor row, newest last, so a flaky Job stands out.

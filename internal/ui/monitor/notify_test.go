@@ -149,3 +149,129 @@ func TestNotifyTriggeredRunFailingBeforeFirstPoll(t *testing.T) {
 		t.Fatal("failed start is not seen")
 	}
 }
+
+func jumpModel(t *testing.T) (*model, *noteSys) {
+	t.Helper()
+	s := &noteSys{}
+	m := noteModel("failures", s)
+	m.deps.Client = &fakeClient{
+		stages: []jenkins.Stage{
+			{ID: "1", Name: "Build", Status: jenkins.StageSuccess},
+			{ID: "2", Name: "Deploy", Status: jenkins.StageFailed},
+		},
+		stageLogs: map[string]string{"2": "error: connection refused\n"},
+		log:       "whole log\n",
+	}
+	return m, s
+}
+
+func failBuild(m *model, num int) {
+	m.Update(tea.BlurMsg{}) // the user is in another window
+	feed(m, phRunning, "", num)
+	st := m.runs[0]
+	st.stages = m.deps.Client.(*fakeClient).stages
+	m.runs[0] = st
+	feed(m, phFinished, "FAILURE", num)
+}
+
+func TestFocusAfterFailureOpensFailedStageLog(t *testing.T) {
+	m, _ := jumpModel(t)
+	failBuild(m, 57)
+	_, cmd := m.Update(tea.FocusMsg{})
+	runMD(m, cmd)
+	if !m.details || m.log == nil || m.log.what != "stage Deploy" || m.log.num != 57 {
+		t.Fatalf("details %v log %+v", m.details, m.log)
+	}
+	if !strings.Contains(strings.Join(m.log.lines, "\n"), "connection refused") {
+		t.Fatalf("log lines %q", m.log.lines)
+	}
+	// used once: closing the log and focusing again stays put
+	m.closeLog()
+	m.Update(tea.FocusMsg{})
+	if m.log != nil {
+		t.Fatal("jumped twice")
+	}
+}
+
+func TestFocusWhileReadingALogKeepsTheTarget(t *testing.T) {
+	m, _ := jumpModel(t)
+	failBuild(m, 3)
+	m.log = &logView{job: "other", num: 1}
+	m.Update(tea.FocusMsg{})
+	if m.log.job != "other" || m.ma.jump.job == "" {
+		t.Fatal("focus must not replace an open log")
+	}
+	m.closeLog()
+	_, cmd := m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	runMD(m, cmd)
+	if m.log == nil || m.log.num != 3 {
+		t.Fatalf("! did not jump: %+v", m.log)
+	}
+}
+
+func TestJumpWithoutStagesShowsTheWholeLog(t *testing.T) {
+	m, _ := jumpModel(t)
+	m.deps.Client.(*fakeClient).stages = nil
+	m.Update(tea.BlurMsg{})
+	feed(m, phRunning, "", 4)
+	feed(m, phFinished, "UNSTABLE", 4)
+	_, cmd := m.Update(tea.FocusMsg{})
+	runMD(m, cmd)
+	if m.log == nil || len(m.log.nodes) != 0 || m.log.follow {
+		t.Fatalf("log %+v", m.log)
+	}
+}
+
+func TestNoJumpTargetWithoutAFailure(t *testing.T) {
+	s := &noteSys{}
+	m := noteModel("all", s)
+	feed(m, phRunning, "", 1)
+	feed(m, phFinished, "SUCCESS", 1)
+	m.Update(tea.FocusMsg{})
+	if m.log != nil || m.details {
+		t.Fatal("a success must not jump")
+	}
+	m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	if !strings.Contains(m.Subtitle(), "no failure notified yet") {
+		t.Fatalf("subtitle %q", m.Subtitle())
+	}
+}
+
+func TestFailureSeenWhileFocusedDoesNotJumpOnFocus(t *testing.T) {
+	m, _ := jumpModel(t)
+	feed(m, phRunning, "", 8)
+	st := m.runs[0]
+	st.stages = m.deps.Client.(*fakeClient).stages
+	m.runs[0] = st
+	feed(m, phFinished, "FAILURE", 8) // the terminal never lost focus
+	m.Update(tea.BlurMsg{})
+	m.Update(tea.FocusMsg{})
+	if m.log != nil || m.details {
+		t.Fatal("a failure seen while focused must not jump on a later focus")
+	}
+	_, cmd := m.key(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("!")})
+	runMD(m, cmd)
+	if m.log == nil || m.log.num != 8 {
+		t.Fatalf("! must still jump: %+v", m.log)
+	}
+}
+
+func TestLeavingTheMonitorDropsTheJumpTarget(t *testing.T) {
+	m, _ := jumpModel(t)
+	failBuild(m, 9)
+	m.pause()
+	m.Update(tea.FocusMsg{})
+	if m.log != nil || m.ma.jump.job != "" {
+		t.Fatal("a target from before leaving must not jump")
+	}
+}
+
+func TestFocusDropsAReplacedTargetQuietly(t *testing.T) {
+	m, _ := jumpModel(t)
+	failBuild(m, 10)
+	m.runs[0].num = 11 // a newer build took the row
+	m.Update(tea.FocusMsg{})
+	if m.log != nil || m.ma.jump.job != "" || m.noticeShown() {
+		t.Fatalf("log %v jump %v notice %q", m.log, m.ma.jump, m.notice)
+	}
+}

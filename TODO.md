@@ -78,6 +78,7 @@ Developer-facing features, in suggested order. [docs/plan-v0.2.md](docs/plan-v0.
 
 ### 3. Notifications
 - [x] When a watched build finishes, ring the terminal bell and/or send a desktop notification (`osascript` / `notify-send`), configurable, optionally only on failure. Only for builds the monitor saw queued or running, not on its first load.
+- [x] Terminal notifications (OSC 9/777/99) in iTerm2, Ghostty, WezTerm and kitty, so a click brings the terminal forward; returning to the terminal (focus) or `!` opens the last notified failure's log. jenktui's icon (`docs/icon/make_icon.py`) on Linux `notify-send`.
 
 ### 4. Abort and rerun
 This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions); update HANDOFF when it lands.
@@ -108,13 +109,13 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [ ] Real-Jenkins check of the new features (plan O3): matrix and Maven test reports, stop and cancel, commits on freestyle jobs, causes and parameters, the folder colours and queue names the Overview reads, notifications on your desktop, copy over SSH and in tmux.
 - [x] Push `main` and the wiki, then release `v0.2.0` as in HANDOFF ("Releasing"). Released before the real-Jenkins check above, at the owner's request; the tap formula installed `0.2.0` on the owner's Mac.
 
-### Needs a decision
 ### Nested Collections
 - [x] Collections nest to any depth (folders hold jobs and sub-folders; a job may be in several). Folder Run Monitor, Trigger and Overview count cover the subtree; `jenktui a/b`, `Ctrl+P` and move/copy/delete-with-counts handle paths. See GLOSSARY "Collection" and `docs/ui-contract.md` "Folders".
 - [x] The Collections screen is one expandable tree (empty-folder creation, folders and jobs together, expand/collapse); spec in `docs/spec-collections-tree.md`.
 - [ ] Real-Jenkins check of a deep tree, and (screenshot regenerated as a tree).
 - Known gap: a hand-edited file in the old flat shape keeps working, but a top-level name that contains `/` cannot be addressed from the command line until it is renamed.
 
+### Needs a decision
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
 
 ## Later (out of v1)
@@ -124,3 +125,5 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - A Branch Filter per Multibranch Project instead of one global list.
 - Keep Run Monitor state across restarts.
 - Notify from a Run Monitor that is not on show (needs a Router change; see Known gaps).
+- jenktui's icon on macOS notifications. macOS takes the icon from the sending app, so it needs an app bundle of jenktui's own; an unsigned one built at run time was tried and is blocked by corporate endpoint-privilege tools (they ask for admin rights). It would need a Developer ID signed and notarised notifier shipped with releases.
+- Check that Apple Terminal sends focus events (`tea.WithReportFocus`); without them only `!` jumps to the failure.

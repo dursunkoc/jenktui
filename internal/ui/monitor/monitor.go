@@ -450,7 +450,7 @@ func (m *model) FullHelp() []core.HelpGroup {
 	}
 	return []core.HelpGroup{
 		{Title: "Navigation", Keys: []key.Binding{core.KeyUp, core.KeyDown}},
-		{Title: "Run Monitor", Keys: append(append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed}, m.actionKeys()...), append(m.abortKeys(), m.rerunKeys()...)...)},
+		{Title: "Run Monitor", Keys: append(append([]key.Binding{keyDetails, keyShow, keyRefresh, keyFailed, keyJump}, m.actionKeys()...), append(m.abortKeys(), m.rerunKeys()...)...)},
 		{Title: "General", Keys: []key.Binding{core.KeyBack, core.KeyQuit}},
 	}
 }
@@ -491,6 +491,10 @@ func (m *model) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 		m.w, m.h = msg.Width, msg.Height
 	case spinner.TickMsg:
 		return m, m.load.Update(msg)
+	case tea.FocusMsg:
+		return m, m.focusChanged(true)
+	case tea.BlurMsg:
+		return m, m.focusChanged(false)
 	case tickMsg:
 		if msg.gen != m.gen {
 			return m, nil // stale tick
@@ -556,6 +560,8 @@ func (m *model) key(msg tea.KeyMsg) (core.Screen, tea.Cmd) {
 	switch {
 	case m.confirm != nil:
 		return m, m.confirmKey(msg)
+	case key.Matches(msg, keyJump):
+		return m, m.jumpToFailed()
 	case key.Matches(msg, keyAbort):
 		return m, m.abortKey()
 	case key.Matches(msg, keyRerun):
@@ -633,6 +639,7 @@ func (m *model) pause() {
 	m.gen++
 	m.epoch++
 	m.ma.seen = nil
+	m.ma.jump, m.ma.jumpOnFocus = buildKey{}, false
 	m.load.StopNow()
 }
 

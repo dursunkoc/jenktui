@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -46,6 +47,9 @@ type Sys struct {
 	Getenv func(string) string
 	// Stdout receives OSC 52 sequences and the bell; nil disables both.
 	Stdout io.Writer
+	// CacheDir is where the notification icon is written for notify-send.
+	// Empty means notifications without an icon.
+	CacheDir string
 }
 
 // commandTimeout bounds every command started by New's runners.
@@ -70,10 +74,21 @@ func New(out io.Writer) Sys {
 			// would make Wait hang forever.
 			return c.Run()
 		},
-		GOOS:   runtime.GOOS,
-		Getenv: os.Getenv,
-		Stdout: out,
+		GOOS:     runtime.GOOS,
+		Getenv:   os.Getenv,
+		Stdout:   out,
+		CacheDir: cacheDir(),
 	}
+}
+
+// cacheDir is jenktui's folder in the user cache directory, or "" when the
+// system has none.
+func cacheDir() string {
+	d, err := os.UserCacheDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(d, "jenktui")
 }
 
 var errNoRunner = errors.New("sysint: no command runner configured")
@@ -162,38 +177,6 @@ func (s Sys) copyTool(text string) error {
 		return s.RunIn(text, "clip.exe")
 	}
 	return fmt.Errorf("sysint: copy is not supported on %q", s.GOOS)
-}
-
-// appleScript reads title and body from argv, so user text is never part of
-// the script source.
-var appleScript = []string{
-	"on run argv",
-	"display notification (item 2 of argv) with title (item 1 of argv)",
-	"end run",
-}
-
-// Notify shows a desktop notification. It is a no-op on windows.
-func (s Sys) Notify(title, body string) error {
-	switch s.GOOS {
-	case "darwin":
-		if s.Run == nil {
-			return errNoRunner
-		}
-		args := make([]string, 0, 9)
-		for _, line := range appleScript {
-			args = append(args, "-e", line)
-		}
-		args = append(args, "--", title, body)
-		return s.Run("osascript", args...)
-	case "linux":
-		if s.Run == nil {
-			return errNoRunner
-		}
-		return s.Run("notify-send", "--", title, body)
-	case "windows":
-		return nil
-	}
-	return fmt.Errorf("sysint: notify is not supported on %q", s.GOOS)
 }
 
 // Bell rings the terminal bell.
