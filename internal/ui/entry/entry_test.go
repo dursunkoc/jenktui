@@ -457,3 +457,132 @@ func TestMenuIsBusyWhileACollectionIsOpening(t *testing.T) {
 		t.Fatal("still busy after a key")
 	}
 }
+
+func press(s core.Screen, k tea.KeyType) core.Screen {
+	s, _ = s.Update(tea.KeyMsg{Type: k})
+	return s
+}
+
+// loginWith logs in against a fake Jenkins with the given deps and returns
+// the menu it lands on.
+func loginWith(t *testing.T, cfg config.Config, deps Deps, tick bool, username string) (*Login, *Menu) {
+	t.Helper()
+	srv := jenkinstest.New(t)
+	cfg.JenkinsURL = srv.URL
+	sess := &core.Session{Config: cfg}
+	l := NewLogin(sess, deps)
+	l.user.SetValue(srv.User())
+	l.token.SetValue(srv.Token())
+	l.setFocus(1)
+	if tick {
+		l.remember = true
+	}
+	_, cmd := l.submit()
+	_, cmd = l.Update(runCmd(cmd))
+	rep, ok := runCmd(cmd).(core.Replace)
+	if !ok {
+		t.Fatal("login did not succeed")
+	}
+	return l, rep.Screen.(*Menu)
+}
+
+func TestRememberMeBoxStartsUntickedAndToggles(t *testing.T) {
+	l, _ := newLogin(t, config.Config{JenkinsURL: "http://x"})
+	if l.locked || l.remember {
+		t.Fatal("no username: the box must start unticked and unlocked")
+	}
+	var s core.Screen = l
+	s = press(s, tea.KeyTab)
+	s = press(s, tea.KeyTab)
+	if l.focus != 2 {
+		t.Fatalf("focus = %d, want the checkbox", l.focus)
+	}
+	s = press(s, tea.KeySpace)
+	if !l.remember || !strings.Contains(ansi.Strip(l.View()), "[x] Remember me") {
+		t.Fatal("space should tick the box")
+	}
+	press(s, tea.KeySpace)
+	if l.remember {
+		t.Fatal("space should untick it")
+	}
+	press(s, tea.KeyTab)
+	if l.focus != 0 {
+		t.Fatal("tab wraps to the username")
+	}
+}
+
+func TestRememberMeLockedWhenConfigHasUsername(t *testing.T) {
+	l, _ := newLogin(t, config.Config{JenkinsURL: "http://x", Username: "me"})
+	if !l.locked || !l.remember {
+		t.Fatal("a saved username locks the box ticked")
+	}
+	var s core.Screen = l
+	for i := 0; i < 4; i++ {
+		s = press(s, tea.KeyTab)
+		if l.focus == 2 {
+			t.Fatal("tab must skip a locked box")
+		}
+	}
+	l.setFocus(1)
+	s, _ = s.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}}) // typed in the password field
+	if !l.remember || l.token.Value() != " " {
+		t.Fatalf("space in the password field must type, token=%q", l.token.Value())
+	}
+	text := ansi.Strip(l.View())
+	if !strings.Contains(text, "[x] Remember me") || !strings.Contains(text, "Edit the file to forget it") {
+		t.Fatalf("locked view:\n%s", text)
+	}
+	for _, k := range l.Keys() {
+		if k.Help().Desc == "remember me" {
+			t.Fatal("the space hint must be hidden while locked")
+		}
+	}
+}
+
+func TestRememberMeSavesUsernameAfterGoodLogin(t *testing.T) {
+	dir := t.TempDir()
+	l, m := loginWith(t, config.Config{}, Deps{ConfigDir: dir}, true, "")
+	if m.notice != "" {
+		t.Fatalf("notice = %q", m.notice)
+	}
+	cfg, err := config.Load(filepath.Join(dir, "config.toml"))
+	if err != nil || cfg.Username != l.user.Value() || cfg.Username == "" {
+		t.Fatalf("saved = %+v, %v", cfg, err)
+	}
+	if l.sess.Config.Username != cfg.Username {
+		t.Fatal("session config not updated")
+	}
+	b, _ := os.ReadFile(filepath.Join(dir, "config.toml"))
+	if strings.Contains(string(b), l.token.Value()) {
+		t.Fatal("the password must never be written")
+	}
+}
+
+func TestRememberMeNotSavedWhenUntickedFailedOrLocked(t *testing.T) {
+	calls := 0
+	deps := Deps{ConfigDir: t.TempDir(), SaveUsername: func(string) error { calls++; return nil }}
+	loginWith(t, config.Config{}, deps, false, "")
+	loginWith(t, config.Config{Username: "me"}, deps, true, "")
+	if calls != 0 {
+		t.Fatalf("SaveUsername called %d times for an unticked or locked login", calls)
+	}
+	// a failed login writes nothing
+	srv := jenkinstest.New(t)
+	l := NewLogin(&core.Session{Config: config.Config{JenkinsURL: srv.URL}}, deps)
+	l.user.SetValue(srv.User())
+	l.token.SetValue("wrong")
+	l.remember = true
+	_, cmd := l.submit()
+	l.Update(runCmd(cmd))
+	if calls != 0 {
+		t.Fatal("a failed login must not save")
+	}
+}
+
+func TestRememberMeSaveFailureStillLogsIn(t *testing.T) {
+	deps := Deps{ConfigDir: t.TempDir(), SaveUsername: func(string) error { return errors.New("disk full") }}
+	_, m := loginWith(t, config.Config{}, deps, true, "")
+	if !strings.Contains(m.notice, "Logged in, but the username could not be saved: disk full") {
+		t.Fatalf("notice = %q", m.notice)
+	}
+}

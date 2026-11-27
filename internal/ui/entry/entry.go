@@ -30,6 +30,9 @@ type Deps struct {
 	// Monitor (the Session's StartCollection); it yields a Start. nil ignores
 	// the name.
 	OpenCollection func(s *core.Session, name string) tea.Cmd
+	// SaveUsername stores the username after a login with "Remember me"
+	// ticked. nil writes it to config.toml in ConfigDir.
+	SaveUsername func(username string) error
 }
 
 // Start is the result of Deps.OpenCollection. The command does the slow work

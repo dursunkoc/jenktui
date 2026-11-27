@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/dursunkoc/jenktui/internal/config"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/ui/core"
 )
@@ -30,6 +31,9 @@ type Login struct {
 	msg           string
 	busy          bool
 	width, height int
+	// remember is the "Remember me" box. locked: the config already holds a
+	// username, so the box is ticked and cannot be changed.
+	remember, locked bool
 }
 
 // NewLogin returns the login screen, username prefilled from config.
@@ -42,6 +46,8 @@ func NewLogin(sess *core.Session, deps Deps) *Login {
 	t.Prompt, t.CharLimit, t.Width = "", 256, 40
 	t.EchoMode, t.EchoCharacter = textinput.EchoPassword, '•'
 	l := &Login{sess: sess, deps: deps, th: core.NewTheme(), user: u, token: t}
+	l.locked = strings.TrimSpace(sess.Config.Username) != ""
+	l.remember = l.locked
 	if u.Value() != "" {
 		l.setFocus(1)
 	}
@@ -54,11 +60,25 @@ func (l *Login) setFocus(i int) {
 	l.focus = i
 	l.user.Blur()
 	l.token.Blur()
-	if i == 0 {
+	switch i {
+	case 0:
 		l.user.Focus()
-	} else {
+	case 1:
 		l.token.Focus()
 	}
+}
+
+// stops is the number of focus stops: the checkbox is skipped when locked.
+func (l *Login) stops() int {
+	if l.locked {
+		return 2
+	}
+	return 3
+}
+
+func (l *Login) step(d int) {
+	n := l.stops()
+	l.setFocus((l.focus + d + n) % n)
 }
 
 func (l *Login) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
@@ -73,11 +93,13 @@ func (l *Login) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 			return l, nil
 		}
 		l.sess.Client = m.client
+		menu := NewMenu(l.sess, l.deps, m.name)
+		menu.notice = l.saveUsername()
 		if l.deps.Palette != nil {
 			sess, f := l.sess, l.deps.Palette
 			l.sess.Palette = func() core.Screen { return f(sess) }
 		}
-		return l, core.Cmd(core.Replace{Screen: NewMenu(l.sess, l.deps, m.name)})
+		return l, core.Cmd(core.Replace{Screen: menu})
 	case tea.KeyMsg:
 		if l.busy {
 			return l, nil
@@ -85,9 +107,19 @@ func (l *Login) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 		switch m.String() {
 		case "esc":
 			return l, core.Cmd(core.Quit{})
-		case "tab", "shift+tab", "up", "down":
-			l.setFocus(1 - l.focus)
+		case "tab", "down":
+			l.step(1)
 			return l, nil
+		case "shift+tab", "up":
+			l.step(-1)
+			return l, nil
+		case " ":
+			if l.focus == 2 {
+				if !l.locked {
+					l.remember = !l.remember
+				}
+				return l, nil
+			}
 		case "enter":
 			if l.focus == 0 {
 				l.setFocus(1)
@@ -97,12 +129,36 @@ func (l *Login) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 		}
 	}
 	var cmd tea.Cmd
-	if l.focus == 0 {
+	switch l.focus {
+	case 0:
 		l.user, cmd = l.user.Update(msg)
-	} else {
+	case 1:
 		l.token, cmd = l.token.Update(msg)
 	}
 	return l, cmd
+}
+
+// saveUsername writes the typed username to config.toml after a good login,
+// when "Remember me" is ticked and was not already locked. It returns the
+// notice for the menu: empty on success.
+func (l *Login) saveUsername() string {
+	if !l.remember || l.locked {
+		return ""
+	}
+	user := strings.TrimSpace(l.user.Value())
+	save := l.deps.SaveUsername
+	if save == nil {
+		save = func(u string) error {
+			cfg := l.sess.Config
+			cfg.Username = u
+			return config.Save(l.deps.configPath(), &cfg)
+		}
+	}
+	if err := save(user); err != nil {
+		return "Logged in, but the username could not be saved: " + err.Error()
+	}
+	l.sess.Config.Username = user
+	return ""
 }
 
 func (l *Login) submit() (core.Screen, tea.Cmd) {
@@ -142,7 +198,7 @@ func (l *Login) submit() (core.Screen, tea.Cmd) {
 }
 
 // memoryNote closes the login box: where the secret goes.
-const memoryNote = "Your password or API token is kept in memory only and never written to disk."
+const memoryNote = "Your password or API token is kept in memory only and never written to disk. Only your username is saved."
 
 func (l *Login) View() string {
 	lines := []string{
@@ -153,6 +209,11 @@ func (l *Login) View() string {
 		"",
 		"Password or API token",
 		l.token.View(),
+		"",
+		l.checkbox(),
+	}
+	if l.locked {
+		lines = append(lines, l.th.MutedTxt.Render("Saved in config.toml. Edit the file to forget it."))
 	}
 	switch {
 	case l.busy:
@@ -176,11 +237,30 @@ func (l *Login) View() string {
 	return lipgloss.Place(l.width, l.height, lipgloss.Center, lipgloss.Center, body)
 }
 
+func (l *Login) checkbox() string {
+	box := "[ ]"
+	if l.remember {
+		box = "[x]"
+	}
+	text := box + " Remember me"
+	switch {
+	case l.locked:
+		return l.th.MutedTxt.Render(text)
+	case l.focus == 2:
+		return l.th.Title.Render(text)
+	}
+	return text
+}
+
 func (l *Login) Title() string { return "Login" }
 func (l *Login) Keys() []key.Binding {
-	return []key.Binding{
+	keys := []key.Binding{
 		key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next field")),
 		key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "log in")),
 		key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "quit")),
 	}
+	if !l.locked {
+		keys = append(keys, key.NewBinding(key.WithKeys(" "), key.WithHelp("space", "remember me")))
+	}
+	return keys
 }
