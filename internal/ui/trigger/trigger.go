@@ -14,6 +14,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dursunkoc/jenktui/internal/jenkins"
 	"github.com/dursunkoc/jenktui/internal/paramsmerge"
@@ -45,6 +46,9 @@ type Deps struct {
 	// (a rerun). A name the job no longer defines is ignored and a parameter
 	// not in it keeps its default. Several jobs ignore it.
 	Prefill map[string]string
+	// Presets stores named parameter values. nil turns the feature off: no
+	// preset step and no save key.
+	Presets PresetStore
 	// Next builds the screen shown after triggering (Replace). When nil a
 	// simple result list is shown.
 	Next func(started []Started) core.Screen
@@ -63,6 +67,7 @@ const (
 	stEdit // editing one job's form from the summary
 	stTriggering
 	stResult
+	stPreset // choose a Preset before any form
 )
 
 const timeout = 30 * time.Second
@@ -72,7 +77,11 @@ type loadRes struct {
 	defs []jenkins.ParamDef
 	err  error
 }
-type loadedMsg []loadRes
+type loadedMsg struct {
+	res       []loadRes
+	presets   map[string]map[string]map[string]string
+	presetErr error
+}
 type doneMsg []Started
 
 type screen struct {
@@ -104,6 +113,22 @@ type screen struct {
 	editJob  string
 	editForm *params.Form
 
+	// Presets (see presets.go).
+	presets     map[string]map[string]map[string]string // job -> name -> values
+	presetErr   error
+	prow        int  // cursor on the preset step
+	pdel        bool // delete confirm open
+	pmsg        string
+	applied     string // display name of the applied preset
+	saveName    string // prefill of the save prompt
+	presetNotes []string
+	pwNote      bool
+	naming      bool
+	nameIn      textinput.Model
+	flash       string
+	flashErr    bool
+	sawStep     bool
+
 	started []Started
 	w, h    int
 }
@@ -133,6 +158,7 @@ func (s *screen) name(job string) string {
 
 func (s *screen) Init() tea.Cmd {
 	keys, c := s.keys, s.deps.Client
+	store, rerun := s.deps.Presets, s.deps.Prefill != nil
 	load := func() tea.Msg {
 		res := make([]loadRes, len(keys))
 		var wg sync.WaitGroup
@@ -147,7 +173,19 @@ func (s *screen) Init() tea.Cmd {
 			}()
 		}
 		wg.Wait()
-		return loadedMsg(res)
+		msg := loadedMsg{res: res}
+		if store != nil && !rerun {
+			var ok []string
+			for _, r := range res {
+				if r.err == nil && len(r.defs) > 0 {
+					ok = append(ok, r.job)
+				}
+			}
+			if len(ok) > 0 {
+				msg.presets, msg.presetErr = store.Load(ok)
+			}
+		}
+		return msg
 	}
 	return tea.Batch(s.spin.Tick, load)
 }
@@ -156,7 +194,13 @@ func (s *screen) Keys() []key.Binding {
 	confirm := key.NewBinding(key.WithKeys("y"), key.WithHelp("y", "trigger"))
 	no := key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "cancel"))
 	next := key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab/shift+tab", "move"))
+	if s.naming && s.st == stSummary {
+		return []key.Binding{key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "save")),
+			key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))}
+	}
 	switch s.st {
+	case stPreset:
+		return s.presetKeys()
 	case stConfirm:
 		return []key.Binding{confirm, no}
 	case stForm, stCommon, stJob, stEdit:
@@ -168,9 +212,16 @@ func (s *screen) Keys() []key.Binding {
 			if s.canEdit() {
 				ks = append(ks, key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "edit job")))
 			}
+			if s.canSave() {
+				ks = append(ks, saveKey)
+			}
 			return append(ks, core.KeyUp, core.KeyDown, paging, core.KeyBack)
 		}
-		return []key.Binding{confirm, no, core.KeyUp, core.KeyDown, core.KeyBack}
+		ks := []key.Binding{confirm, no}
+		if s.canSave() {
+			ks = append(ks, saveKey)
+		}
+		return append(ks, core.KeyUp, core.KeyDown, core.KeyBack)
 	case stTriggering, stLoading:
 		return nil
 	}
@@ -203,6 +254,11 @@ func (s *screen) Update(msg tea.Msg) (core.Screen, tea.Cmd) {
 }
 
 func (s *screen) forward(msg tea.Msg) tea.Cmd {
+	if s.st == stSummary && s.naming {
+		var c tea.Cmd
+		s.nameIn, c = s.nameIn.Update(msg)
+		return c
+	}
 	if f := s.activeForm(); f != nil {
 		return f.Update(msg)
 	}
@@ -247,8 +303,8 @@ func (s *screen) allForms() []*params.Form {
 	return fs
 }
 
-func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
-	for _, r := range res {
+func (s *screen) loaded(m loadedMsg) (core.Screen, tea.Cmd) {
+	for _, r := range m.res {
 		if r.err != nil {
 			s.notes = append(s.notes, fmt.Sprintf("%s excluded: %v", s.name(r.job), r.err))
 			continue
@@ -260,28 +316,50 @@ func (s *screen) loaded(res loadedMsg) (core.Screen, tea.Cmd) {
 		s.st = stFailed
 		return s, nil
 	}
+	s.presets = map[string]map[string]map[string]string{}
+	for j, byName := range m.presets {
+		if len(byName) > 0 && len(s.defs[j]) > 0 && slicesIndex(s.jobs, j) >= 0 {
+			s.presets[j] = byName
+		}
+	}
+	if m.presetErr != nil {
+		s.presetErr = m.presetErr
+		s.notes = append(s.notes, "Presets are unavailable: "+m.presetErr.Error())
+	}
+	if len(s.jobs) > 1 {
+		s.plan = paramsmerge.Build(s.jobs, s.defs)
+		for _, j := range s.jobs {
+			if len(s.plan.PerJob[j]) > 0 {
+				s.jobSeq = append(s.jobSeq, j)
+			}
+		}
+	}
+	if len(s.presetRows()) > 0 {
+		s.st = stPreset
+		s.sawStep = true
+		return s, nil
+	}
+	return s, s.startFlow()
+}
+
+// startFlow begins the flow from the job defaults (no preset).
+func (s *screen) startFlow() tea.Cmd {
 	if len(s.jobs) == 1 {
 		d := s.defs[s.jobs[0]]
 		if len(d) == 0 {
 			s.st = stConfirm
-			return s, nil
+			return nil
 		}
 		s.form = params.NewForm(s.name(s.jobs[0]), d, params.Options{Prefill: s.deps.Prefill})
 		s.st = stForm
 		s.resizeForms()
-		return s, s.form.Init()
-	}
-	s.plan = paramsmerge.Build(s.jobs, s.defs)
-	for _, j := range s.jobs {
-		if len(s.plan.PerJob[j]) > 0 {
-			s.jobSeq = append(s.jobSeq, j)
-		}
+		return s.form.Init()
 	}
 	if len(s.plan.Common) > 0 {
-		return s, s.enterCommon()
+		return s.enterCommon()
 	}
 	s.commonVals = map[string]string{}
-	return s, s.afterCommon()
+	return s.afterCommon()
 }
 
 // commonDefs converts common parameters into form definitions. Common
@@ -307,12 +385,16 @@ func (s *screen) commonDefs() ([]jenkins.ParamDef, map[string]string) {
 }
 
 // enterCommon shows the Common Parameters form; the command starts its cursor.
+func (s *screen) buildCommonForm(prefill map[string]string) {
+	defs, ph := s.commonDefs()
+	s.commonForm = params.NewForm(fmt.Sprintf("Common Parameters (applied to all %d jobs)", len(s.jobs)), defs,
+		params.Options{Prefill: prefill, Placeholder: ph, Hint: "Entered once. Parameters marked (differs) keep each job's own default when left unset."})
+	s.resizeForms()
+}
+
 func (s *screen) enterCommon() tea.Cmd {
 	if s.commonForm == nil {
-		defs, ph := s.commonDefs()
-		s.commonForm = params.NewForm(fmt.Sprintf("Common Parameters (applied to all %d jobs)", len(s.jobs)), defs,
-			params.Options{Placeholder: ph, Hint: "Entered once. Parameters marked (differs) keep each job's own default when left unset."})
-		s.resizeForms()
+		s.buildCommonForm(nil)
 	}
 	s.commonForm.Reopen()
 	s.st = stCommon
@@ -430,6 +512,16 @@ func (s *screen) enterSummary() {
 	} else {
 		s.final = paramsmerge.Resolve(s.plan, s.commonVals, s.overrides)
 	}
+	s.pwNote = false
+	if s.applied != "" {
+		for _, j := range s.jobs {
+			for _, d := range s.defs[j] {
+				if d.Type == "password" && s.final[j][d.Name] == "" {
+					s.pwNote = true
+				}
+			}
+		}
+	}
 	s.summary, s.jobStart = nil, nil
 	for _, j := range s.jobs {
 		s.jobStart = append(s.jobStart, len(s.summary))
@@ -523,6 +615,9 @@ func (s *screen) back() (core.Screen, tea.Cmd) {
 		if s.commonForm != nil {
 			return s, s.enterCommon()
 		}
+		if s.sawStep {
+			return s, s.toStep()
+		}
 	case stSummary:
 		switch {
 		case len(s.jobs) == 1:
@@ -533,6 +628,8 @@ func (s *screen) back() (core.Screen, tea.Cmd) {
 			return s, s.enterJob(len(s.jobSeq) - 1)
 		case s.commonForm != nil:
 			return s, s.enterCommon()
+		case s.sawStep:
+			return s, s.toStep()
 		}
 	}
 	return s, pop
@@ -556,8 +653,18 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 			return s, core.Cmd(core.Pop{})
 		}
 		return s, nil
+	case stPreset:
+		return s.presetKey(k)
 	case stSummary:
+		s.flash, s.flashErr = "", false
+		if s.naming {
+			return s.nameKey(k)
+		}
 		switch k.String() {
+		case "s":
+			if s.canSave() {
+				return s, s.startNaming()
+			}
 		case "y", "Y", "enter":
 			return s.fire()
 		case "n", "N", "esc":
@@ -583,6 +690,9 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 			return s, nil
 		}
 		if s.st == stForm || (s.st == stCommon) {
+			if s.sawStep {
+				return s, s.toStep()
+			}
 			return s, core.Cmd(core.Pop{})
 		}
 		return s.back()
@@ -624,7 +734,13 @@ func (s *screen) key(k tea.KeyMsg) (core.Screen, tea.Cmd) {
 	return s, nil
 }
 
-func (s *screen) summaryRows() int { return max(s.h-len(s.notes)-5, 3) }
+func (s *screen) summaryRows() int {
+	n := len(s.notes) + len(s.presetNotes) + 5
+	if s.pwNote {
+		n++
+	}
+	return max(s.h-n, 3)
+}
 
 // fire triggers every job concurrently, collecting per-job errors.
 func (s *screen) fire() (core.Screen, tea.Cmd) {
@@ -699,22 +815,37 @@ func (s *screen) view() string {
 		return s.banner() + s.th.NoticeView("Trigger "+s.name(s.jobs[0])+"?", "y trigger, n cancel (no parameters)")
 	case stForm, stCommon, stJob, stEdit:
 		return s.banner() + s.activeForm().View()
+	case stPreset:
+		return s.presetView()
 	case stSummary:
 		rows := s.summaryRows()
 		end := min(s.scroll+rows, len(s.summary))
 		head := s.th.Title.Render(fmt.Sprintf("Ready to trigger %d job(s)", len(s.jobs)))
 		foot := s.th.MutedTxt.Render("y/enter trigger, n/esc back")
 		if len(s.jobs) > 1 {
-			hint := "y/enter trigger, up/down select job, n/esc back"
+			hint := "y/enter trigger, "
 			if s.canEdit() {
-				hint = "y/enter trigger, e edit job, up/down select job, n/esc back"
+				hint += "e edit job, "
 			}
-			foot = s.th.MutedTxt.Render(hint)
+			if s.canSave() {
+				hint += "s save preset, "
+			}
+			foot = s.th.MutedTxt.Render(hint + "up/down select job, n/esc back")
+		} else if s.canSave() {
+			foot = s.th.MutedTxt.Render("y/enter trigger, s save preset, n/esc back")
+		}
+		switch {
+		case s.flash != "" && s.flashErr:
+			foot = s.th.FailTxt.Render(s.flash)
+		case s.flash != "":
+			foot = s.th.MutedTxt.Render(s.flash)
+		case s.naming:
+			foot = "Preset name: " + s.nameIn.View()
 		}
 		if len(s.summary) > rows {
 			foot += s.th.MutedTxt.Render(fmt.Sprintf("  (%d-%d of %d lines, pgup/pgdn scroll)", s.scroll+1, end, len(s.summary)))
 		}
-		return s.banner() + head + "\n\n" + strings.Join(s.summaryLines()[s.scroll:end], "\n") + "\n\n" + foot
+		return s.banner() + head + "\n" + s.summaryNotes() + "\n" + strings.Join(s.summaryLines()[s.scroll:end], "\n") + "\n\n" + foot
 	case stResult:
 		var b strings.Builder
 		b.WriteString(s.banner() + s.th.Title.Render("Trigger results") + "\n\n")

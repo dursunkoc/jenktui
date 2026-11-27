@@ -4,7 +4,7 @@ Work left for jenktui v1, then known gaps and ideas for later. Tick items off as
 
 ## Release status
 
-`v0.3.0` is the current release (nested Collections tree, Remember me, terminal notifications) (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
+`v0.4.0` is the current release (Parameter Presets; `v0.3.0` added the nested Collections tree, Remember me and terminal notifications) (six archives plus `checksums.txt`), CI is green, `install.sh` installs it, and the Homebrew tap holds a formula (a cask until `v0.1.2`). `v0.1.0` was tagged before the Homebrew config existed, so it has none.
 
 - [x] Push, and CI green on every commit pushed so far.
 - [x] Release setup: `jenktui --version`, `.goreleaser.yaml`, `.github/workflows/release.yml`; the first release ran successfully.
@@ -115,6 +115,10 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - [x] Real-Jenkins check of a deep tree; the README screenshot is regenerated as a tree.
 - Known gap: a hand-edited file in the old flat shape keeps working, but a top-level name that contains `/` cannot be addressed from the command line until it is renamed.
 
+### Parameter presets
+- [x] Named sets of parameter values, saved per job and applied from a preset step in the Trigger flow (moved from Later). A name spans jobs, passwords are never saved, `s` saves from the summary and `d` deletes. Spec: [docs/spec-presets.md](docs/spec-presets.md); plan: [docs/plan-presets.md](docs/plan-presets.md). Implemented and tested against the fake Jenkins; released in `v0.4.0`.
+- [ ] Real-Jenkins check of presets: save, apply to one job and to a folder, a choice that no longer exists, and a job with a password parameter.
+
 ### Needs a decision
 - [ ] Reading the API token from an environment variable or a command (`token_command = "op read …"`, `pass jenkins`), so jenktui still stores nothing but no one has to paste the token on every start. This touches the "credentials are never stored" decision; the owner decides.
 
@@ -127,3 +131,56 @@ This reverses "abort and rerun" being out of v1 (see HANDOFF, settled decisions)
 - Notify from a Run Monitor that is not on show (needs a Router change; see Known gaps).
 - jenktui's icon on macOS notifications. macOS takes the icon from the sending app, so it needs an app bundle of jenktui's own; an unsigned one built at run time was tried and is blocked by corporate endpoint-privilege tools (they ask for admin rights). It would need a Developer ID signed and notarised notifier shipped with releases.
 - Check that Apple Terminal sends focus events (`tea.WithReportFocus`); without them only `!` jumps to the failure.
+
+Features a developer who lives in Jenkins all day would expect and that jenktui does not have yet. These are ideas, not commitments.
+
+### Triggering
+
+- **Trigger with the last values.** One key refills the form from the job's previous build, for any job, not only as a rerun from the Run Monitor.
+- **Ordered runs.** Trigger a folder's jobs one after another, in list order, and stop at the first failure (build, then test, then deploy).
+- **Replay.** Rerun a Pipeline build with an edited Jenkinsfile, as Jenkins' Replay does.
+- **Trigger from the command line.** `jenktui trigger backend/develop --param ENV=staging --wait` runs without the UI and exits non-zero on failure, for scripts and git hooks.
+
+### Watching builds
+
+- **Answer `input` steps.** Show a Pipeline that waits for approval, and approve or abort it from the Run Monitor. Today such a build just looks stuck.
+- **A queue screen.** Everything waiting on the server, why each item waits (no free agent, a quiet period, a blocked upstream), and a key to cancel it.
+- **"My builds".** One list of the builds started by the logged-in user across every job, whether or not they are in a Collection.
+- **Watch a branch.** Give a branch name and see that branch's build in every Multibranch Project that has it. This fits a feature branch that spans several repos.
+- **Estimated time left.** Show a countdown or progress bar per stage from past stage durations, not only for the whole build.
+- **Follow downstream builds.** When a build triggers others, show them as children and open them from the parent.
+
+### Understanding failures
+
+- **Compare with the last good build.** Show which commits, parameters and stage durations differ between a failed build and the last success of the same job.
+- **Flaky test hints.** In the test report, mark a test that failed and passed in recent builds without a code change.
+- **Search across logs.** Search for a string in the latest logs of every job in a folder, to see whether the same error hit several jobs.
+- **Error patterns.** Configure regular expressions that count as errors in a log, in addition to the built-in ones, with a jump key between matches.
+- **Artifacts.** List a build's artifacts, download one, or copy its link.
+- **Log timestamps.** Show per-line times in the console log, from the Timestamper plugin (dropped earlier at the owner's request; listed in case it returns).
+
+### Jobs and the server
+
+- **Agents and executors.** Show which agents are online, offline or busy, and which build each executor runs. It answers "why is my build queued?".
+- **Enable and disable a job**, and see at a glance that a job is disabled.
+- **Scan a Multibranch Project now**, so a new branch shows up without waiting for the next scheduled scan.
+- **Job health.** Show a success rate and average duration over the last N builds per job, and for a folder as a whole.
+- **Favourite jobs.** Pin a job in the Job Catalog without building a Collection for it.
+- **View the job's configuration**: its parameters, triggers, and the Jenkinsfile path and repository of a Pipeline job (read-only).
+
+### Collections
+
+- **Export and import.** Share a folder with a team-mate as a file or a pasted snippet, with a merge on import.
+- **Dynamic folders.** Define a folder by a pattern (`team/*/deploy`, or "every job whose last build failed"), not a fixed list, and keep it current as jobs come and go.
+- **Persist the expansion state** of the tree across restarts (left out of the tree spec on purpose).
+- **Copy a folder**, with its sub-folders (also left out of the tree spec).
+- **Undo** for delete, move and remove, for the last change at least.
+
+### Comfort
+
+- **Custom key bindings and colours**, in `config.toml`.
+- **A status line for other tools.** `jenktui status backend` prints one line (`3 ok · 1 failed · 2 running`) for a shell prompt, tmux or a status bar.
+- **Session timeout handling.** When the session or token expires, ask for the password again in place and keep the current screen, without a restart.
+- **Mouse support**: click a row, scroll a log.
+- **Open in the editor.** Send a log to `$EDITOR` or `$PAGER`, for the search and navigation people already know.
+- **Webhook-style alerts.** Post a finished build to Slack or a URL, for people who are away from the terminal.

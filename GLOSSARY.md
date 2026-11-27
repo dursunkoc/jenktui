@@ -20,7 +20,11 @@ The screen that lists every Collection with the number of its Jobs whose latest 
 The quick way to a Collection or a Job from any screen after login: a filterable list of both (the palette). The screen it was opened over pauses and resumes when it closes. Choosing a Collection opens its Run Monitor; choosing a Job opens the Job Catalog filtered to it.
 
 **Trigger**
-Requesting a new build of one or more Jobs, optionally supplying build parameters.
+Requesting a new build of one or more Jobs, optionally supplying build parameters, by hand or from a **Preset**.
+
+**Preset**
+A named set of parameter values saved for a Job and applied when triggering it. A Preset belongs to a Job, not to a Collection or folder. One name can cover several Jobs, so a Trigger of many Jobs applies it to each Job that has it, and the others keep their defaults. Passwords are never part of a Preset. A Preset is chosen in the preset step before the forms and saved from the Trigger summary. A Rerun does not use Presets.
+_Avoid_: template, profile.
 
 **Common Parameters**
 Build parameters shared by name and type across the Jobs selected in one Trigger, entered once and applied to all of them. Any Job can override them: in its per-job step, or by editing it from the summary.

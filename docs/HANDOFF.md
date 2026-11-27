@@ -8,7 +8,8 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 
 ## Current state
 
-- **Released:** `v0.3.0` added the nested Collections tree, the login "Remember me" box and terminal notifications (released at the owner's request, before a real-Jenkins check of a deep tree, which the owner has since done; its brew upgrade from `0.2.0` was checked on the owner's Mac). `v0.2.0` (six archives, macOS/Linux/Windows on amd64 and arm64, plus `checksums.txt`), the v0.2 feature set (see [plan-v0.2.md](plan-v0.2.md) and the v0.2 section of TODO.md); it was released before the real-Jenkins check of the new features. `v0.1.4` was the first with stage navigation and the console log (PR #2). `v0.1.3` is the first release with a Homebrew formula (`v0.1.1` and `v0.1.2` published a cask). `v0.1.2` added the UI improvements (aligned list columns with titles, relative job names, help panel, password login).
+- **Released:** `v0.4.0` added Parameter Presets (released at the owner's request, before a real-Jenkins check of them). `v0.3.0` added the nested Collections tree, the login "Remember me" box and terminal notifications (released at the owner's request, before a real-Jenkins check of a deep tree, which the owner has since done; its brew upgrade from `0.2.0` was checked on the owner's Mac). `v0.2.0` (six archives, macOS/Linux/Windows on amd64 and arm64, plus `checksums.txt`), the v0.2 feature set (see [plan-v0.2.md](plan-v0.2.md) and the v0.2 section of TODO.md); it was released before the real-Jenkins check of the new features. `v0.1.4` was the first with stage navigation and the console log (PR #2). `v0.1.3` is the first release with a Homebrew formula (`v0.1.1` and `v0.1.2` published a cask). `v0.1.2` added the UI improvements (aligned list columns with titles, relative job names, help panel, password login).
+- **Parameter presets:** implemented (spec [spec-presets.md](spec-presets.md), plan [plan-presets.md](plan-presets.md)), covered by unit and end-to-end tests against the fake Jenkins; released in `v0.4.0`, not yet checked on a real Jenkins.
 - **Install channels:** Homebrew formula in `dursunkoc/homebrew-tap` (`brew install dursunkoc/tap/jenktui`), `install.sh` (checked against the real release), release archives, `go install`. The formula upgraded the owner's Mac from `0.1.4` to `0.2.0` and then `0.3.0`; the owner has since tried it on Linux and run the Windows PowerShell steps (README and wiki Getting Started).
 - **Verified:** CI is green (vet, gofmt, `go test -race`); there are unit tests per package and an end-to-end suite (`e2e_test.go`) against the fake Jenkins. The owner ran the app against their real Jenkins and reported it works. They did not itemise the checklist in TODO.md, so a server that behaves differently (parallel pipeline stages, Multibranch layouts, crumb settings) may still surprise. Stage and step logs (`l`) and the full log (`L`) were also checked there and work. That check predates v0.2: nothing added in v0.2 has run against a real Jenkins yet (see "Open work").
 - **Not covered by tests:** the monitor's automatic 3s/30s polling schedule, the log view's own tick chain (the tests drive `logTickMsg` by hand), spinner animation, and a job deleted from Jenkins between loading and triggering.
@@ -20,7 +21,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | Path | Role |
 |---|---|
 | `main.go` | Composition root. Wires screens together: Menu → Catalog or Collections → Trigger → Run Monitor. Holds one monitor per Collection for the session. |
-| `internal/config` | `config.toml` (hand-edited settings) and `collections.toml` (app-written). Atomic writes, `0600`. No secrets. |
+| `internal/config` | `config.toml` (hand-edited settings), `collections.toml` and `presets.toml` (both app-written; `PresetFile` is the trigger screen's preset store). Atomic writes, `0600`. No secrets. |
 | `internal/jenkins` | Jenkins JSON API client: login check, job listing (recursive, Multibranch aware), parameter definitions, trigger with CSRF crumb, queue resolution, build status, pipeline stages, console and stage logs, build context (causes, changes, parameters) and history, test reports, stop and cancel, folder colours and the queue list, job and build URLs from the configured base. |
 | `internal/jenkins/jenkinstest` | Fake Jenkins for tests (`httptest`). Models folders, Multibranch, parameters, queue, wfapi stages, crumbs, build history, causes and changes, test reports, stop and cancel; honours `tree=`. |
 | `internal/branchfilter` | Pure glob matcher and filter for Multibranch branch names. |
@@ -33,7 +34,7 @@ A Go 1.27 terminal UI for Jenkins built on Bubble Tea. The user supplies a Jenki
 | `internal/ui/entry` | Splash, first-run setup, login, menu. |
 | `internal/ui/catalog` | Job Catalog screen and the shared Branch Filter panel. |
 | `internal/ui/collections` | Collections tree (`tree.go`: folders and jobs, expand/collapse, select, trigger, move/copy), folder picker (`dest.go`), job picker. |
-| `internal/ui/params`, `internal/ui/trigger` | Parameter form widgets and the single/multi-job trigger flow. |
+| `internal/ui/params`, `internal/ui/trigger` | Parameter form widgets and the single/multi-job trigger flow, including the preset step (choose, save with `s`, delete with `d`). |
 | `internal/ui/monitor` | Per-Collection Run Monitor and its polling. `seams.go` lists the hooks features use; each feature lives in its own file (`actions.go`, `abort.go`, `rerun.go`, `testreport.go`, `notify.go`, `history.go`, `display.go`, `logview.go`, `logsave.go`). |
 
 Screens receive their dependencies through constructors (listers, factories, file paths) and never import each other. `main.go` is the only place that knows the whole graph. Keep it that way: it is what makes each screen testable with a fake.
@@ -42,7 +43,7 @@ Screens receive their dependencies through constructors (listers, factories, fil
 
 These were agreed with the user. Change them only if the user asks.
 
-- **Credentials are never stored.** Username and password or API token are asked on every start and live in memory inside the client.
+- **Credentials are never stored.** Username and password or API token are asked on every start and live in memory inside the client. Parameter presets skip `password` parameters too.
 - **Go with Bubble Tea** (the user chose it over Python with Textual).
 - **Config:** TOML, `~/.config/jenktui/`, overridable with `JENKTUI_CONFIG_DIR`. Settings and Collections are separate files so the app never rewrites the hand-edited one except for Branch Filter patterns.
 - **Branch Filter** is one global list of case-sensitive globs on the decoded branch name. It only affects browsing and picking, never branches already in a Collection.

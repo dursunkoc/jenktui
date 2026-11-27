@@ -93,6 +93,14 @@ func start(t *testing.T, c Client, next func([]Started) core.Screen, jobs ...str
 	return h
 }
 
+// startWith is start with the given Deps (Client and Next are the caller's).
+func startWith(t *testing.T, d Deps, jobs ...string) *harness {
+	h := &harness{t: t, s: New(d, jobs)}
+	h.send(tea.WindowSizeMsg{Width: 100, Height: 40})
+	h.pump(h.s.Init())
+	return h
+}
+
 func (h *harness) view() string { return h.s.View() }
 
 func (h *harness) wantView(sub string) {

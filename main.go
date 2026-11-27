@@ -107,6 +107,7 @@ func newDeps(dir string) entry.Deps {
 	}
 
 	collectionsPath := filepath.Join(dir, "collections.toml")
+	presetsPath := filepath.Join(dir, "presets.toml")
 	sys := newSys()
 
 	// Each Collection has its own Run Monitor for the session, keyed by the
@@ -136,6 +137,7 @@ func newDeps(dir string) entry.Deps {
 				Names:   monitorNames[m],
 				Parent:  s.Config.ParentJob,
 				Prefill: params,
+				Presets: config.PresetFile{Path: presetsPath},
 				// The monitor is already on the stack under the form; the new
 				// build joins it and the router drops the form.
 				Next: func(started []trigger.Started) core.Screen {
@@ -192,9 +194,10 @@ func newDeps(dir string) entry.Deps {
 	triggerFor := func(s *core.Session) func(string, []string, map[string]core.JobName) core.Screen {
 		return func(collection string, jobKeys []string, names map[string]core.JobName) core.Screen {
 			return trigger.New(trigger.Deps{
-				Client: client(s),
-				Names:  names,
-				Parent: s.Config.ParentJob,
+				Client:  client(s),
+				Names:   names,
+				Parent:  s.Config.ParentJob,
+				Presets: config.PresetFile{Path: presetsPath},
 				Next: func(started []trigger.Started) core.Screen {
 					runs := runsOf(started)
 					m := monitorFor(s, collection)
